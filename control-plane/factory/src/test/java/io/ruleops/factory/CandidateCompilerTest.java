@@ -89,9 +89,7 @@ class CandidateCompilerTest {
     void emittedRulesetPinsOwnerNameAndArity(@TempDir Path out) throws Exception {
         Path dir = new CandidateCompiler().compile(parse(goldenIntent()), out);
         String xml = Files.readString(dir.resolve("ruleset.xml"));
-        assertTrue(xml.contains("pmd-java:typeIs('java.lang.System')"), () -> xml);
-        assertTrue(xml.contains("@MethodName='exit'"), () -> xml);
-        assertTrue(xml.contains("@ArgumentCount=1"), () -> xml);
+        assertTrue(xml.contains("pmd-java:matchesSig('java.lang.System#exit(int)')"), () -> xml);
     }
 
     @Test

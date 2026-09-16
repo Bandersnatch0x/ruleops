@@ -2,6 +2,7 @@ package io.ruleops.factory.pmd;
 
 import io.ruleops.authoring.model.RuleIr;
 import io.ruleops.authoring.model.RuleIrKind;
+import java.util.List;
 
 /**
  * Emits a PMD 7.x XPath ruleset XML from a compiled SymbolRule IR node.
@@ -34,12 +35,14 @@ public final class PmdXPathEmitter {
         // "]]>" can never terminate the CDATA section early.
         String owner = xpathLiteral(symbol.owner());
         String name = xpathLiteral(symbol.name());
-        int argCount = symbol.parameters().size();
-        // PMD 7: MethodCall's type is the declaring type of the invoked method,
-        // so typeIs pins the owner; ArgumentCount pins the parameter arity.
-        String xpath = String.format(
-                "//MethodCall[pmd-java:typeIs('%s') and @MethodName='%s' and @ArgumentCount=%d]",
-                owner, name, argCount);
+        List<String> paramsLiteral = symbol.parameters().stream()
+                .map(PmdXPathEmitter::xpathLiteral)
+                .toList();
+        // PMD 7: pmd-java:matchesSig anchors the call on its declaring type,
+        // method name and exact parameter list through type resolution — the
+        // SymbolRule semantics (owner + name + parameters).
+        String signature = owner + "#" + name + "(" + String.join(",", paramsLiteral) + ")";
+        String xpath = String.format("//MethodCall[pmd-java:matchesSig('%s')]", signature);
         StringBuilder sb = new StringBuilder();
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         sb.append("<ruleset name=\"erf-candidate\"\n");
@@ -55,14 +58,14 @@ public final class PmdXPathEmitter {
         sb.append("        message=\"")
                 .append(xmlEscape("forbidden call to " + symbol.owner() + "." + symbol.name()))
                 .append("\"\n");
-        sb.append("        class=\"net.sourceforge.pmd.lang.rule.XPathRule\">\n");
+        sb.append("        class=\"net.sourceforge.pmd.lang.rule.xpath.XPathRule\">\n");
         sb.append("    <description>ERF candidate compiled from SymbolRule IR (template artifact)</description>\n");
         sb.append("    <priority>").append(priority).append("</priority>\n");
         sb.append("    <properties>\n");
+        // PMD 7 evaluates XPath 3.1 by default (Saxon); no version property.
         sb.append("      <property name=\"xpath\">\n");
         sb.append("        <value><![CDATA[").append(xpath).append("]]></value>\n");
         sb.append("      </property>\n");
-        sb.append("      <property name=\"version\" value=\"3.1\"/>\n");
         sb.append("    </properties>\n");
         sb.append("  </rule>\n");
         sb.append("</ruleset>\n");
