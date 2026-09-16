@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package erf.backend.v0;
+
+// Contract placeholder for the Phase 1 framing and capability slice.
+message HostRequest {
+  string request_id = 1;
+}
+
+message HostResponse {
+  string request_id = 1;
+}
+
