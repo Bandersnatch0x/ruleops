@@ -8,4 +8,5 @@ description = "Rust client for the ERF Workspace Resolution Contract: process li
 erf-contracts = { path = "../../contracts/rust" }
 erf-framing = { path = "../framing" }
 prost = "0.13"
+sha2 = "0.10"
 thiserror = "2"

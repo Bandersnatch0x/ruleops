@@ -4,7 +4,6 @@
 //! uncorrelatable responses).
 
 use erf_contracts::workspace::v0 as wb;
-use erf_framing as _;
 use prost::Message as _;
 use erf_resolver_client::{ResolverConfig, ResolverError, ResolverHandle};
 use sha2::{Digest, Sha256};
@@ -41,7 +40,7 @@ fn resolve_sample_layout_into_content_addressed_descriptor() {
     let repo = prepare_layout(&dir);
 
     let (mut resolver, ack) =
-        ResolverHandle::spawn(&mut fake_resolver_command(), &config_with(&["ecosystem.maven"]))
+        ResolverHandle::spawn(&mut fake_resolver_command(), &config_with(&["ecosystem.static-layout"]))
             .expect("handshake");
     assert_eq!(ack.resolver_name, "erf-fake-resolver");
 
@@ -131,6 +130,16 @@ fn uncorrelatable_ack_is_rejected() {
         Err(other) => panic!("expected uncorrelatable rejection, got: {other:?}"),
         Ok(_) => panic!("handshake unexpectedly succeeded"),
     }
+}
+
+#[test]
+fn cancel_is_acked_symmetrically() {
+    let (mut resolver, _) =
+        ResolverHandle::spawn(&mut fake_resolver_command(), &config_with(&[])).expect("handshake");
+    let ack = resolver.cancel().expect("cancel ack");
+    assert!(ack.accepted);
+    let completion = resolver.complete().expect("completion");
+    assert_eq!(completion.status, wb::completion::Status::Completed as i32);
 }
 
 #[test]

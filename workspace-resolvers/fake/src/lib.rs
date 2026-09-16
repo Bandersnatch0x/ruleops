@@ -14,10 +14,7 @@ use std::collections::HashMap;
 
 /// Capability facts of the reference resolver.
 pub fn facts() -> HashMap<String, bool> {
-    HashMap::from([
-        ("ecosystem.static-layout".to_string(), true),
-        ("ecosystem.maven".to_string(), true),
-    ])
+    HashMap::from([("ecosystem.static-layout".to_string(), true)])
 }
 
 /// Resolves the layout under `repo_root` into a descriptor.
@@ -52,8 +49,11 @@ pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDesc
     if roots.is_empty() {
         unresolved.push("module-structure:not-determined-statically".to_string());
     }
-    // Build outputs are never produced by static resolution.
+    // Static resolution never executes builds or reads dependency graphs
+    // that would require them; both are structured as unresolved facts
+    // (spec §21: never local guesses).
     unresolved.push("build-output:not-available-in-safe-static".to_string());
+    unresolved.push("dependency-classpath:not-determined-statically".to_string());
 
     for (module_id, src_root) in roots {
         let mut files: Vec<wb::FileEntry> = Vec::new();

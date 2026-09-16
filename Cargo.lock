@@ -139,6 +139,7 @@ dependencies = [
  "erf-contracts",
  "erf-framing",
  "prost",
+ "sha2",
  "thiserror",
 ]
 

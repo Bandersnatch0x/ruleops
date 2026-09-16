@@ -38,6 +38,8 @@ message HelloAck {
 
 message Limits {
   uint64 max_frame_bytes = 1;
+  // Field 2 is reserved (was a backend-only limit in erf.backend.v0); kept
+  // unassigned here so the two Limits shapes cannot be confused.
   uint64 deadline_ms = 3;
 }
 
@@ -81,7 +83,9 @@ message WorkspaceDescriptor {
   // Structure facts the resolver could not determine (spec §21: unresolved
   // facts enter planning/completeness, never local guesses).
   repeated string unresolved_facts = 5;
-  // sha256 over the canonical descriptor encoding (all fields except this one).
+  // sha256 over the prost encoding of this descriptor with this field blank;
+  // the runtime re-verifies it on receipt. A canonicalization step (needed
+  // before signing) lands with the trusted slice.
   bytes descriptor_sha256 = 6;
 }
 

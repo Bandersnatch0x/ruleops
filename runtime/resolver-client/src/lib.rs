@@ -6,6 +6,7 @@
 use erf_contracts::workspace::v0 as wb;
 use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
+use sha2::{Digest, Sha256};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::Duration;
@@ -189,12 +190,39 @@ impl ResolverHandle {
             });
         }
         match frame.payload {
-            Some(wb::wr_envelope::Payload::ResolveResponse(r)) => r
-                .workspace_descriptor
-                .ok_or_else(|| ResolverError::Violation("ResolveResponse without descriptor".into())),
+            Some(wb::wr_envelope::Payload::ResolveResponse(r)) => {
+                let descriptor = r.workspace_descriptor.ok_or_else(|| {
+                    ResolverError::Violation("ResolveResponse without descriptor".into())
+                })?;
+                verify_digest(&descriptor)?;
+                Ok(descriptor)
+            }
             Some(wb::wr_envelope::Payload::Error(e)) => Err(protocol_error(e)),
             Some(other) => Err(ResolverError::Violation(format!(
                 "expected ResolveResponse, got {other:?}"
+            ))),
+            None => Err(ResolverError::Violation("empty envelope".into())),
+        }
+    }
+
+    /// Cooperative cancellation of an in-flight resolution.
+    pub fn cancel(&mut self) -> Result<wb::CancelAck, ResolverError> {
+        let correlation = self.next_correlation();
+        self.write_frame(&wb::WrEnvelope {
+            correlation_id: correlation,
+            payload: Some(wb::wr_envelope::Payload::Cancel(wb::CancelRequest {})),
+        })?;
+        let frame = self.next_envelope()?;
+        if frame.correlation_id != correlation {
+            return Err(ResolverError::Uncorrelatable {
+                correlation_id: frame.correlation_id,
+            });
+        }
+        match frame.payload {
+            Some(wb::wr_envelope::Payload::CancelAck(ack)) => Ok(ack),
+            Some(wb::wr_envelope::Payload::Error(e)) => Err(protocol_error(e)),
+            Some(other) => Err(ResolverError::Violation(format!(
+                "expected CancelAck, got {other:?}"
             ))),
             None => Err(ResolverError::Violation("empty envelope".into())),
         }
@@ -266,6 +294,20 @@ impl ResolverHandle {
         self.next_correlation += 1;
         id
     }
+}
+
+/// Runtime-side re-verification of the resolver's content address.
+fn verify_digest(descriptor: &wb::WorkspaceDescriptor) -> Result<(), ResolverError> {
+    let mut blank = descriptor.clone();
+    let claimed = std::mem::take(&mut blank.descriptor_sha256);
+    let actual = Sha256::digest(blank.encode_to_vec()).to_vec();
+    if claimed != actual {
+        return Err(ResolverError::Violation(format!(
+            "descriptor digest mismatch: claimed {:x?}, computed {actual:x?}",
+            claimed
+        )));
+    }
+    Ok(())
 }
 
 fn protocol_error(e: wb::ProtocolError) -> ResolverError {

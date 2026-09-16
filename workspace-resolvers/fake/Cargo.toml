@@ -20,4 +20,3 @@ path = "src/main.rs"
 
 [dev-dependencies]
 erf-resolver-client = { path = "../../runtime/resolver-client" }
-erf-framing = { path = "../../runtime/framing" }
