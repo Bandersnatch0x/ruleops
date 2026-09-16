@@ -1,0 +1,22 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+
+metadata:
+  id: SEC-JAVA-017
+  version: 1.0.0
+  owner: security-platform
+
+spec:
+  title: 禁止业务代码直接终止 JVM
+  description: 业务代码不得直接调用 JVM 终止 API
+  languages: [java]
+
+  scenarios:
+    - id: direct-system-exit
+      expected: detectable
+
+    - id: runtime-halt
+      expected: needs-clarification
+
+    - id: reflective-invocation
+      expected: unsupported

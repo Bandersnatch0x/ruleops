@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+
+metadata:
+  id: corp.java.no-system-exit
+  version: 1.0.0
+
+spec:
+  standard:
+    id: SEC-JAVA-017
+    version: 1.0.0
+    scenario: direct-system-exit
+  script: "Runtime.getRuntime().halt(0);"
