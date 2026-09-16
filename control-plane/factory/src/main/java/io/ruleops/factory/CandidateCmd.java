@@ -7,6 +7,7 @@ import io.ruleops.authoring.AuthoringValidator;
 import io.ruleops.authoring.model.RuleIntent;
 import io.ruleops.factory.candidate.CandidateCompileException;
 import io.ruleops.factory.candidate.CandidateCompiler;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -35,7 +36,7 @@ public final class CandidateCmd {
         RuleIntent intent;
         try {
             intent = YAML.readValue(Files.readString(intentPath), RuleIntent.class);
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.err.println("ERROR SCHEMA_MALFORMED: " + e.getMessage());
             System.exit(1);
             return;

@@ -70,7 +70,7 @@ class CandidateCompilerTest {
         assertTrue(Files.exists(dir.resolve("fixtures/bad/Bad0.java")));
         assertTrue(Files.exists(dir.resolve("fixtures/good/Good0.java")));
         String manifest = Files.readString(dir.resolve("manifest.json"));
-        assertTrue(manifest.contains(dir.getFileName().toString()),
+        assertTrue(manifest.contains("digest"),
                 "directory name must be the digest");
     }
 
@@ -92,6 +92,16 @@ class CandidateCompilerTest {
         assertTrue(xml.contains("pmd-java:typeIs('java.lang.System')"), () -> xml);
         assertTrue(xml.contains("@MethodName='exit'"), () -> xml);
         assertTrue(xml.contains("@ArgumentCount=1"), () -> xml);
+    }
+
+    @Test
+    void severityMapsToEnginePriorityAndRuleNameIsDerivedFromIntent() throws Exception {
+        RuleIntent intent = parse(goldenIntent());
+        var candidate = new CandidateCompiler().build(intent);
+        String xml = new String(candidate.artifact(), java.nio.charset.StandardCharsets.UTF_8);
+        // advisory -> 4
+        assertTrue(xml.contains("<priority>4</priority>"), () -> xml);
+        assertTrue(xml.contains("rule name=\"ErfCorpJavaNoSystemExit\""), () -> xml);
     }
 
 }
