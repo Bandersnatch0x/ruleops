@@ -6,9 +6,16 @@ description = "Reference fake Backend Host: executable reference implementation 
 
 [dependencies]
 erf-contracts = { path = "../../contracts/rust" }
-erf-host-client = { path = "../../runtime/host-client" }
+erf-framing = { path = "../../runtime/framing" }
 prost = "0.13"
+
+[lib]
+name = "erf_fake_host"
+path = "src/lib.rs"
 
 [[bin]]
 name = "erf-fake-host"
 path = "src/main.rs"
+
+[dev-dependencies]
+erf-host-client = { path = "../../runtime/host-client" }

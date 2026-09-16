@@ -60,8 +60,16 @@ name = "erf-fake-host"
 version = "0.1.0"
 dependencies = [
  "erf-contracts",
+ "erf-framing",
  "erf-host-client",
  "prost",
+]
+
+[[package]]
+name = "erf-framing"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]
@@ -69,6 +77,7 @@ name = "erf-host-client"
 version = "0.1.0"
 dependencies = [
  "erf-contracts",
+ "erf-framing",
  "prost",
  "thiserror",
 ]

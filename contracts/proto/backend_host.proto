@@ -8,8 +8,12 @@ syntax = "proto3";
 //
 // Versioning: major.minor. A major mismatch refuses execution. Within one
 // major, evolution is additive only: published field numbers are never reused
-// or re-purposed. Unknown optional fields are ignorable; a required capability
-// that cannot be satisfied fails explicitly (no silent degradation).
+// or re-purposed. Unknown optional fields are ignorable (proto3 semantics);
+// cross-minor compatibility is guarded by capability negotiation and the
+// golden compatibility tests of the Contract Conformance Suite — senders must
+// never depend on a peer acknowledging fields its minor cannot know. A
+// required capability that cannot be satisfied fails explicitly (no silent
+// degradation).
 //
 // Governance messages must not use google.protobuf.Any, opaque JSON, or
 // backend-private payloads to bypass this contract.
@@ -48,10 +52,11 @@ message HelloAck {
 message CapabilityDescriptor {
   // Language ids the host can analyze, e.g. "java".
   repeated string languages = 1;
-  // Structured fact names with values, e.g. "java.ast"="true",
-  // "java.bytecode"="false". Capability ids use dot-notation
-  // (<language>.<fact>); the runtime treats a missing fact as absent.
-  map<string, string> facts = 2;
+  // Boolean capability facts, e.g. "java.ast"=true. Capability ids use
+  // dot-notation (<language>.<fact>); a missing fact means the capability is
+  // absent. Required capabilities must appear here or the host fails the
+  // handshake explicitly.
+  map<string, bool> facts = 2;
   // Rule IR kinds this backend can implement, e.g. "SymbolRule".
   repeated string rule_kinds = 3;
   // Engine identity executing the rules (e.g. "pmd-java" / "7.9.0").
@@ -124,10 +129,16 @@ message PlannedUnit {
   string batch_id = 2;
 }
 
+enum UnsupportedReason {
+  UNSUPPORTED_REASON_UNSPECIFIED = 0;
+  UNIT_UNSUPPORTED = 1;      // backend cannot ever execute this unit
+  UNIT_NOT_APPLICABLE = 2;   // unit is outside the backend's applicable scope
+  PLANNING_ERROR = 3;        // transient host-side error prevented planning
+}
+
 message UnsupportedUnit {
   string unit_id = 1;
-  // Closed vocabulary: UNSUPPORTED | NOT_APPLICABLE | ERROR.
-  string reason_code = 2;
+  UnsupportedReason reason_code = 2;
   string detail = 3;
 }
 
@@ -158,12 +169,23 @@ message ExecuteEvent {
   }
 }
 
+// The per-unit Completeness fact (spec §11.1): exactly one UnitStatus must be
+// emitted for every requested unit, and the runtime maps each planned unit to
+// exactly one terminal outcome. This message is the completeness accounting —
+// it is independent of how many BackendObservations were produced.
 message UnitStatus {
   string unit_id = 1;
   UnitOutcome outcome = 2;
   // Structured reason for anything other than EXECUTED.
-  string reason_code = 3;
+  UnitFailureReason reason_code = 3;
   string detail = 4;
+}
+
+enum UnitFailureReason {
+  UNIT_FAILURE_REASON_UNSPECIFIED = 0;
+  CANCELLED_BY_RUNTIME = 1;  // cooperative cancellation before completion
+  UNIT_DEADLINE_EXCEEDED = 2; // unit deadline elapsed
+  UNIT_INTERNAL_ERROR = 3;    // host/engine failure while executing the unit
 }
 
 enum UnitOutcome {
@@ -252,6 +274,8 @@ message Completion {
   }
   Status status = 1;
   string reason = 2;
+  // Total UnitStatus completeness facts emitted over the whole session.
+  uint64 units_reported = 3;
 }
 
 message ProtocolError {

@@ -2,25 +2,28 @@
 //! ERF Backend Host Contract v0. Serves canned capability/plan/execute
 //! responses. Failure-injection knobs (env):
 //!
-//! - `FAKE_POLLUTE_STDOUT=1`  — writes non-protocol bytes to stdout first
-//! - `FAKE_DELAY_MS=<n>`      — sleeps before each execute event (deadline &
-//!   cooperative-cancel window)
-//! - `FAKE_SUPPORTED_MAJOR`   — protocol major this fake accepts (default 0)
+//! - `FAKE_POLLUTE_STDOUT=1`   — writes non-protocol bytes to stdout first
+//! - `FAKE_DELAY_MS=<n>`       — sleeps before each execute event; the window
+//!   where a pending CancelRequest is detected (cooperative cancellation) and
+//!   where a client-side deadline can be observed to fire
+//! - `FAKE_SUPPORTED_MAJOR=<n>` — protocol major this fake accepts (default 0)
+//! - `FAKE_BAD_CORRELATION=1`  — answers Hello with a mismatched correlation id
 //!
-//! Deterministic behavior: with `FAKE_DELAY_MS` set, the fake sleeps before
-//! each execute event and then checks for a pending CancelRequest; a cancel
-//! completes the session with Completion(CANCELLED) and a UnitStatus(FAILED,
-//! CANCELLED) accounting for the interrupted unit.
+//! Deterministic cancellation: with `FAKE_DELAY_MS` set, the fake sleeps
+//! before each unit's first event and then checks for a pending CancelRequest;
+//! a cancel completes the session with Completion(CANCELLED) plus a
+//! UnitStatus(FAILED, CANCELLED_BY_RUNTIME) accounting the interrupted unit.
 //!
 //! Structure: a reader thread owns stdin and forwards envelopes over an mpsc
 //! channel; the main thread dispatches and, during execute, polls the channel
 //! between events to detect cooperative cancellation.
 
 use erf_contracts::backend::v0 as pb;
-use erf_host_client::framing::{FrameReader, FrameWriter};
+use erf_fake_host::canned_capabilities;
+use erf_framing::{FrameReader, FrameWriter};
 use prost::Message;
-use std::collections::HashMap;
 use std::io::Write;
+use std::process::exit;
 use std::sync::mpsc::{Receiver, RecvError, TryRecvError, channel};
 use std::time::Duration;
 
@@ -38,12 +41,13 @@ fn main() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
+    let bad_correlation = std::env::var("FAKE_BAD_CORRELATION").is_ok();
 
     let (tx, rx) = channel::<Inbound>();
     let _reader = std::thread::spawn(move || {
         let stdin = std::io::stdin();
         let mut reader =
-            FrameReader::new(stdin.lock(), erf_host_client::framing::DEFAULT_MAX_FRAME_BYTES);
+            FrameReader::new(stdin.lock(), erf_framing::DEFAULT_MAX_FRAME_BYTES);
         loop {
             match reader.read_frame() {
                 Ok(bytes) => {
@@ -61,13 +65,15 @@ fn main() {
 
     let stdout = std::io::stdout();
     let mut writer =
-        FrameWriter::new(stdout.lock(), erf_host_client::framing::DEFAULT_MAX_FRAME_BYTES);
+        FrameWriter::new(stdout.lock(), erf_framing::DEFAULT_MAX_FRAME_BYTES);
     let mut session = Session {
         supported_major,
         delay_ms,
+        bad_correlation,
         writer: &mut writer,
         rx: &rx,
         cancelled: false,
+        units_reported_total: 0,
     };
 
     loop {
@@ -78,7 +84,7 @@ fn main() {
                     Err(e) => {
                         let _ = session
                             .fail(pb::protocol_error::Code::MalformedFrame, e.to_string());
-                        std::process::exit(1);
+                        exit(1);
                     }
                 };
                 if !session.dispatch(envelope) {
@@ -87,23 +93,11 @@ fn main() {
             }
             Ok(Inbound::Eof) | Err(RecvError) => {
                 // stdin half-closed by the runtime: normal session end.
-                let _ = session.complete(pb::completion::Status::Completed, "session end");
+                let total = session.units_reported_total;
+                let _ = session.complete(pb::completion::Status::Completed, "session end", total);
                 return;
             }
         }
-    }
-}
-
-fn canned_capabilities() -> pb::CapabilityDescriptor {
-    pb::CapabilityDescriptor {
-        languages: vec!["java".to_string()],
-        facts: HashMap::from([
-            ("java.ast".to_string(), "true".to_string()),
-            ("java.symbol-resolution".to_string(), "true".to_string()),
-        ]),
-        rule_kinds: vec!["SymbolRule".to_string()],
-        backend_id: "fake-backend".to_string(),
-        backend_version: "0.1.0".to_string(),
     }
 }
 
@@ -115,9 +109,11 @@ enum Inbound {
 struct Session<'a> {
     supported_major: u32,
     delay_ms: u64,
+    bad_correlation: bool,
     writer: &'a mut FrameWriter<std::io::StdoutLock<'static>>,
     rx: &'a Receiver<Inbound>,
     cancelled: bool,
+    units_reported_total: u64,
 }
 
 impl<'a> Session<'a> {
@@ -139,12 +135,18 @@ impl<'a> Session<'a> {
         self.error(0, code, detail)
     }
 
-    fn complete(&mut self, status: pb::completion::Status, reason: &str) -> bool {
+    fn complete(
+        &mut self,
+        status: pb::completion::Status,
+        reason: &str,
+        units_reported: u64,
+    ) -> bool {
         self.send(pb::HostEnvelope {
             correlation_id: 0,
             payload: Some(pb::host_envelope::Payload::Completion(pb::Completion {
                 status: status as i32,
                 reason: reason.to_string(),
+                units_reported,
             })),
         })
     }
@@ -235,8 +237,10 @@ impl<'a> Session<'a> {
                 format!("missing required capabilities: {missing:?}"),
             );
         }
+        // Correlation-failure probe: wrong id on the handshake answer.
+        let ack_correlation = if self.bad_correlation { 999 } else { correlation };
         self.send(pb::HostEnvelope {
-            correlation_id: correlation,
+            correlation_id: ack_correlation,
             payload: Some(pb::host_envelope::Payload::HelloAck(pb::HelloAck {
                 protocol_major: hello.protocol_major,
                 protocol_minor: 1,
@@ -250,26 +254,33 @@ impl<'a> Session<'a> {
 
     fn execute(&mut self, correlation: u64, unit_ids: Vec<String>) -> bool {
         self.cancelled = false;
+        let mut units_reported: u64 = 0;
         for unit_id in &unit_ids {
             if self.delay_ms > 0 {
                 std::thread::sleep(Duration::from_millis(self.delay_ms));
                 if self.drain_cancel() {
-                    return self.finish_cancelled(correlation, unit_id);
+                    return self.finish_cancelled(correlation, unit_id, units_reported);
                 }
             }
             if !self.observation(correlation, unit_id) {
                 return false;
             }
-            if !self.unit_status(correlation, unit_id, pb::UnitOutcome::Executed, "", "") {
+            if !self.unit_status(
+                correlation,
+                unit_id,
+                pb::UnitOutcome::Executed,
+                pb::UnitFailureReason::Unspecified,
+                "",
+            ) {
                 return false;
             }
+            units_reported += 1;
+            self.units_reported_total += 1;
         }
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
             payload: Some(pb::host_envelope::Payload::ExecuteComplete(
-                pb::ExecuteComplete {
-                    units_reported: unit_ids.len() as u64,
-                },
+                pb::ExecuteComplete { units_reported },
             )),
         })
     }
@@ -278,31 +289,20 @@ impl<'a> Session<'a> {
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
             payload: Some(pb::host_envelope::Payload::ExecuteEvent(pb::ExecuteEvent {
-                event: Some(pb::execute_event::Event::Observation(pb::BackendObservation {
-                    rule_id: "corp.java.no-system-exit".into(),
-                    location: Some(pb::ObservationLocation {
-                        kind: Some(pb::observation_location::Kind::SourceSpan(pb::SourceSpan {
-                            path: "src/main/java/A.java".into(),
-                            blob_sha256: vec![0u8; 32],
-                            start_byte: 0,
-                            end_byte: 17,
-                            line: 1,
-                            column: 5,
-                        })),
-                    }),
-                    message: format!("canned violation in {unit_id}"),
-                    engine_severity: "error".into(),
-                })),
+                event: Some(pb::execute_event::Event::Observation(
+                    erf_fake_host::canned_observation(unit_id),
+                )),
             })),
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn unit_status(
         &mut self,
         correlation: u64,
         unit_id: &str,
         outcome: pb::UnitOutcome,
-        reason_code: &str,
+        reason_code: pb::UnitFailureReason,
         detail: &str,
     ) -> bool {
         self.send(pb::HostEnvelope {
@@ -311,7 +311,7 @@ impl<'a> Session<'a> {
                 event: Some(pb::execute_event::Event::UnitStatus(pb::UnitStatus {
                     unit_id: unit_id.to_string(),
                     outcome: outcome as i32,
-                    reason_code: reason_code.into(),
+                    reason_code: reason_code as i32,
                     detail: detail.into(),
                 })),
             })),
@@ -356,17 +356,26 @@ impl<'a> Session<'a> {
         }
     }
 
-    fn finish_cancelled(&mut self, correlation: u64, unit_id: &str) -> bool {
+    fn finish_cancelled(
+        &mut self,
+        correlation: u64,
+        unit_id: &str,
+        units_reported: u64,
+    ) -> bool {
         // Cooperative cancellation still accounts the interrupted unit.
         if !self.unit_status(
             correlation,
             unit_id,
             pb::UnitOutcome::Failed,
-            "CANCELLED",
+            pb::UnitFailureReason::CancelledByRuntime,
             "cancelled before completion",
         ) {
             return false;
         }
-        self.complete(pb::completion::Status::Cancelled, "cancelled by runtime")
+        self.complete(
+            pb::completion::Status::Cancelled,
+            "cancelled by runtime",
+            units_reported + 1,
+        )
     }
 }

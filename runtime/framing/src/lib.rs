@@ -16,6 +16,8 @@ pub enum FrameError {
     UnexpectedEof { expected: usize },
     #[error("stream ended cleanly at a frame boundary")]
     Eof,
+    #[error("frame payload is not a valid protobuf message: {0}")]
+    MalformedProtobuf(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -26,10 +28,11 @@ pub struct FrameWriter<W: Write> {
 }
 
 impl<W: Write> FrameWriter<W> {
+    /// The wire length prefix is u32; larger limits are clamped to it.
     pub fn new(inner: W, max_frame_bytes: u64) -> Self {
         Self {
             inner,
-            max_frame_bytes,
+            max_frame_bytes: max_frame_bytes.min(u32::MAX as u64),
         }
     }
 
@@ -54,10 +57,11 @@ pub struct FrameReader<R: Read> {
 }
 
 impl<R: Read> FrameReader<R> {
+    /// The wire length prefix is u32; larger limits are clamped to it.
     pub fn new(inner: R, max_frame_bytes: u64) -> Self {
         Self {
             inner,
-            max_frame_bytes,
+            max_frame_bytes: max_frame_bytes.min(u32::MAX as u64),
         }
     }
 

@@ -1,16 +1,18 @@
 //! End-to-end contract tests: the Rust host client drives the reference fake
-//! host through negotiation, describe/plan/execute, cancellation and the
-//! rejection paths demanded by the contract (malformed/oversized frames,
-//! stdout pollution, major mismatch, missing capabilities).
+//! host through negotiation, describe/plan/execute, cancellation, deadline
+//! enforcement and the rejection paths demanded by the contract (malformed /
+//! oversized frames, stdout pollution, major mismatch, missing capabilities,
+//! uncorrelatable responses).
 
 use erf_contracts::backend::v0 as pb;
-use erf_host_client::framing::DEFAULT_MAX_FRAME_BYTES;
+use erf_fake_host::canned_observation;
+use erf_framing::{FrameError, DEFAULT_MAX_FRAME_BYTES};
 use erf_host_client::{ExecEvent, HostConfig, HostError, HostHandle};
+use prost::Message as _;
 use std::process::Command;
 
 fn fake_host_command() -> Command {
-    let exe = env!("CARGO_BIN_EXE_erf-fake-host");
-    Command::new(exe)
+    Command::new(env!("CARGO_BIN_EXE_erf-fake-host"))
 }
 
 fn config_with(required: &[&str]) -> HostConfig {
@@ -25,32 +27,15 @@ fn config_with(required: &[&str]) -> HostConfig {
     }
 }
 
-fn canned_observation() -> pb::BackendObservation {
-    pb::BackendObservation {
-        rule_id: "corp.java.no-system-exit".into(),
-        location: Some(pb::ObservationLocation {
-            kind: Some(pb::observation_location::Kind::SourceSpan(pb::SourceSpan {
-                path: "src/main/java/A.java".into(),
-                blob_sha256: vec![0u8; 32],
-                start_byte: 0,
-                end_byte: 17,
-                line: 1,
-                column: 5,
-            })),
-        }),
-        message: "canned".into(),
-        engine_severity: "error".into(),
-    }
-}
-
 #[test]
 fn negotiate_describe_plan_execute_round_trip() {
-    let (mut host, handshake) = HostHandle::spawn(
+    let (mut host, ack) = HostHandle::spawn(
         &mut fake_host_command(),
         &config_with(&["java.ast", "java.symbol-resolution"]),
     )
     .expect("handshake");
-    assert_eq!(handshake.ack.host_name, "erf-fake-host");
+    assert_eq!(ack.host_name, "erf-fake-host");
+    assert_eq!(ack.protocol_major, erf_host_client::PROTOCOL_MAJOR);
 
     let caps = host.describe().expect("describe");
     assert_eq!(caps.backend_id, "fake-backend");
@@ -96,18 +81,12 @@ fn negotiate_describe_plan_execute_round_trip() {
 
     let completion = host.complete().expect("completion");
     assert_eq!(completion.status, pb::completion::Status::Completed as i32);
+    assert_eq!(completion.units_reported, 2);
 }
 
 #[test]
 fn missing_required_capability_fails_explicitly() {
-    let result = HostHandle::spawn(
-        &mut {
-            let mut c = fake_host_command();
-            c.env("FAKE_SUPPORTED_MAJOR", "0");
-            c
-        },
-        &config_with(&["java.bytecode"]),
-    );
+    let result = HostHandle::spawn(&mut fake_host_command(), &config_with(&["java.bytecode"]));
     match result {
         Err(HostError::Protocol {
             code: pb::protocol_error::Code::UnsupportedCapability,
@@ -153,16 +132,18 @@ fn stdout_pollution_is_a_structured_failure() {
         &config_with(&[]),
     );
     match result {
-        // Pollution bytes "POLLUTION\n" become a giant bogus frame length.
-        Err(HostError::Transport(erf_host_client::framing::FrameError::Oversized { .. })) => {}
-        Err(HostError::Transport(erf_host_client::framing::FrameError::Io(_))) => {}
-        Err(other) => panic!("expected structured transport failure, got: {other:?}"),
+        // "POLLUTION\n" is read as a bogus frame length of ~1.3 GB, far above
+        // the negotiated 16 MB limit: deterministically Oversized.
+        Err(HostError::Transport(FrameError::Oversized { size, .. })) => {
+            assert!(size > DEFAULT_MAX_FRAME_BYTES);
+        }
+        Err(other) => panic!("expected oversized-frame failure, got: {other:?}"),
         Ok(_) => panic!("handshake unexpectedly succeeded"),
     }
 }
 
 #[test]
-fn malformed_frame_to_host_yields_protocol_error() {
+fn malformed_frame_to_host_yields_structured_protocol_error() {
     use std::io::Write;
     use std::process::Stdio;
 
@@ -178,6 +159,18 @@ fn malformed_frame_to_host_yields_protocol_error() {
     stdin.write_all(&garbage).unwrap();
     stdin.flush().unwrap();
     drop(stdin);
+
+    // The host must answer with a structured ProtocolError, not just exit.
+    let mut stdout = child.stdout.take().expect("stdout");
+    let mut reader = erf_framing::FrameReader::new(&mut stdout, DEFAULT_MAX_FRAME_BYTES);
+    let frame = reader.read_frame().expect("error frame from host");
+    let envelope = pb::HostEnvelope::decode(frame.as_slice()).expect("decode error frame");
+    match envelope.payload {
+        Some(pb::host_envelope::Payload::Error(e)) => {
+            assert_eq!(e.code, pb::protocol_error::Code::MalformedFrame as i32);
+        }
+        other => panic!("expected structured ProtocolError, got: {other:?}"),
+    }
     let status = child.wait().expect("wait");
     assert!(!status.success(), "host must fail on malformed frames");
 }
@@ -186,12 +179,11 @@ fn malformed_frame_to_host_yields_protocol_error() {
 fn oversized_frame_is_refused() {
     // Reader limit far below the frame the writer sends.
     let (a, b) = std::os::unix::net::UnixStream::pair().expect("pair");
-    let mut reader =
-        erf_host_client::framing::FrameReader::new(a.try_clone().expect("clone"), 8);
-    let mut writer = erf_host_client::framing::FrameWriter::new(b, 64);
+    let mut reader = erf_framing::FrameReader::new(a.try_clone().expect("clone"), 8);
+    let mut writer = erf_framing::FrameWriter::new(b, 64);
     writer.write_frame(&[0u8; 16]).expect("write fits writer cap");
     match reader.read_frame() {
-        Err(erf_host_client::framing::FrameError::Oversized { size, max }) => {
+        Err(FrameError::Oversized { size, max }) => {
             assert_eq!(size, 16);
             assert_eq!(max, 8);
         }
@@ -200,8 +192,59 @@ fn oversized_frame_is_refused() {
 }
 
 #[test]
+fn uncorrelatable_responses_are_rejected() {
+    let result = HostHandle::spawn(
+        &mut {
+            let mut c = fake_host_command();
+            c.env("FAKE_BAD_CORRELATION", "1");
+            c
+        },
+        &config_with(&[]),
+    );
+    match result {
+        Err(HostError::Uncorrelatable { correlation_id }) => assert_eq!(correlation_id, 999),
+        Err(other) => panic!("expected uncorrelatable rejection, got: {other:?}"),
+        Ok(_) => panic!("handshake unexpectedly succeeded"),
+    }
+}
+
+#[test]
+fn request_deadline_is_enforced() {
+    let (mut host, _ack) = HostHandle::spawn(
+        &mut {
+            let mut c = fake_host_command();
+            // Host stalls 5 s per event; the client deadline is 400 ms.
+            c.env("FAKE_DELAY_MS", "5000");
+            c
+        },
+        &HostConfig {
+            limits: pb::Limits {
+                max_frame_bytes: DEFAULT_MAX_FRAME_BYTES,
+                max_events_per_execute: 1_000,
+                deadline_ms: 400,
+            },
+            ..config_with(&[])
+        },
+    )
+    .expect("handshake with deadline");
+    host.describe().expect("describe within deadline");
+
+    let mut stream = host.execute(vec!["unit-1".into()]).expect("execute");
+    let err = stream
+        .next_event()
+        .expect_err("execute must hit the deadline");
+    assert!(
+        matches!(err, HostError::DeadlineExceeded { deadline_ms: 400 }),
+        "got: {err:?}"
+    );
+    // Dropping the handle kills the stalled host (Drop impl).
+    drop(stream);
+    drop(host);
+}
+
+#[test]
 fn cooperative_cancel_terminates_with_accounting() {
-    let (mut host, _handshake) = HostHandle::spawn(
+    let (mut host, _ack) = HostHandle::spawn(
         &mut {
             let mut c = fake_host_command();
             // Each event delayed so the cancel lands between events.
@@ -243,7 +286,7 @@ fn cooperative_cancel_terminates_with_accounting() {
     // After a cancelled session the process is gone; a new session works.
     let (mut host2, _) = HostHandle::spawn(&mut fake_host_command(), &config_with(&[]))
         .expect("second handshake");
-    let _ = canned_observation();
+    let _ = canned_observation("probe");
     host2.describe().expect("describe after fresh session");
     let completion = host2.complete().expect("clean end");
     assert_eq!(completion.status, pb::completion::Status::Completed as i32);

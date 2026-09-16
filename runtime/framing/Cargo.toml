@@ -1,0 +1,8 @@
+[package]
+name = "erf-framing"
+version = "0.1.0"
+edition = "2021"
+description = "Length-delimited frame transport for ERF cross-process contracts (ADR-0030). Reused by the Backend Host client, the Workspace Resolver client and reference hosts."
+
+[dependencies]
+thiserror = "2"

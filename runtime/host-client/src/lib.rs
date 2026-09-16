@@ -1,17 +1,21 @@
 //! Rust client for the ERF Backend Host Contract v0 (`erf.backend.v0`).
 //!
 //! Owns the host process lifecycle, the framed stdio protocol, request
-//! correlation and cooperative cancellation. The runtime never parses
-//! backend-private output: anything outside the contract is a structured
-//! failure feeding Completeness (spec §11.1).
+//! correlation, per-request deadlines and cooperative cancellation. The
+//! runtime never parses backend-private output: anything outside the contract
+//! is a structured failure feeding Completeness (spec §11.1).
+//!
+//! Structure: a reader thread owns the child's stdout and forwards decoded
+//! envelopes over an mpsc channel; session calls `recv` on it, applying the
+//! negotiated per-request deadline. Dropping the handle kills a still-running
+//! host, so a deadline abort cannot leak processes.
 
-pub mod framing;
-
-use crate::framing::{FrameError, FrameReader, FrameWriter};
 use erf_contracts::backend::v0 as pb;
+use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
-use std::process::{Child, ChildStdin, ChildStdout};
-use std::process::{Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::time::Duration;
 
 pub const PROTOCOL_MAJOR: u32 = 0;
 pub const PROTOCOL_MINOR: u32 = 1;
@@ -29,7 +33,7 @@ impl Default for HostConfig {
             required_capabilities: Vec::new(),
             optional_capabilities: Vec::new(),
             limits: pb::Limits {
-                max_frame_bytes: framing::DEFAULT_MAX_FRAME_BYTES,
+                max_frame_bytes: erf_framing::DEFAULT_MAX_FRAME_BYTES,
                 max_events_per_execute: 100_000,
                 deadline_ms: 0,
             },
@@ -48,6 +52,8 @@ pub enum HostError {
         code: pb::protocol_error::Code,
         detail: String,
     },
+    #[error("request deadline of {deadline_ms} ms exceeded")]
+    DeadlineExceeded { deadline_ms: u64 },
     #[error("host exited without a Completion frame (exit status: {status})")]
     Hangup { status: String },
     #[error("host answered HelloAck with protocol major {acked}, requested {requested}")]
@@ -56,59 +62,85 @@ pub enum HostError {
     MissingCapabilities { missing: Vec<String> },
     #[error("host sent a frame for unknown correlation id {correlation_id}")]
     Uncorrelatable { correlation_id: u64 },
-    #[error("io failure: {0}")]
-    Io(#[from] std::io::Error),
     #[error("host exceeded the negotiated {max_events} events-per-execute limit")]
     EventFlood { max_events: u64 },
     #[error("host violated the protocol: {0}")]
     Violation(String),
-}
-
-/// Capability facts reported by the host, plus identity. Returned once at
-/// handshake; capabilities do not change within a session.
-#[derive(Debug, Clone)]
-pub struct Handshake {
-    pub ack: pb::HelloAck,
-}
-
-impl Handshake {
-    pub fn capabilities(&self) -> &pb::CapabilityDescriptor {
-        self.ack
-            .capabilities
-            .as_ref()
-            .expect("HelloAck carries capabilities")
-    }
+    #[error("io failure: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 pub struct HostHandle {
     child: Child,
-    // Taken (dropped) on half-close; dropped stdin signals session end.
+    // Taken (dropped) on half-close; dropping stdin signals session end.
     writer: Option<FrameWriter<ChildStdin>>,
-    reader: FrameReader<ChildStdout>,
+    rx: Receiver<Result<pb::HostEnvelope, FrameError>>,
     next_correlation: u64,
     limits: pb::Limits,
+}
+
+impl Drop for HostHandle {
+    fn drop(&mut self) {
+        // A session aborted mid-flight (deadline, violation) must not leak the
+        // host process.
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Reads frames on a dedicated thread, forwarding decoded envelopes. Any
+/// transport or decode error terminates the stream after being forwarded once.
+fn spawn_reader(
+    stdout: ChildStdout,
+    max_frame_bytes: u64,
+) -> Receiver<Result<pb::HostEnvelope, FrameError>> {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let mut reader = FrameReader::new(stdout, max_frame_bytes);
+        loop {
+            let outcome = reader
+                .read_frame()
+                .and_then(|bytes| {
+                    pb::HostEnvelope::decode(bytes.as_slice())
+                        .map_err(|e| FrameError::MalformedProtobuf(e.to_string()))
+                });
+            let terminal = matches!(&outcome, Err(FrameError::Eof))
+                || matches!(&outcome, Err(FrameError::MalformedProtobuf(_)));
+            if tx.send(outcome).is_err() {
+                break;
+            }
+            if terminal {
+                break;
+            }
+        }
+    });
+    rx
 }
 
 impl HostHandle {
     /// Spawns the host process and performs the Hello/HelloAck handshake,
     /// enforcing major-version match, required capabilities and limit sanity.
-    pub fn spawn(command: &mut Command, config: &HostConfig) -> Result<(Self, Handshake), HostError> {
+    pub fn spawn(
+        command: &mut Command,
+        config: &HostConfig,
+    ) -> Result<(Self, pb::HelloAck), HostError> {
         command.stdin(Stdio::piped()).stdout(Stdio::piped());
         let mut child = command.spawn().map_err(HostError::Spawn)?;
-        let stdout = child.stdout.take().expect("stdout piped");
-        let stdin = child.stdin.take().expect("stdin piped");
+        let stdout: ChildStdout = child.stdout.take().expect("stdout piped");
+        let stdin: ChildStdin = child.stdin.take().expect("stdin piped");
+        let rx = spawn_reader(stdout, config.limits.max_frame_bytes);
         let mut handle = Self {
-            reader: FrameReader::new(stdout, config.limits.max_frame_bytes),
+            child,
             writer: Some(FrameWriter::new(stdin, config.limits.max_frame_bytes)),
+            rx,
             next_correlation: 1,
             limits: config.limits.clone(),
-            child,
         };
         let ack = handle.handshake(config)?;
         Ok((handle, ack))
     }
 
-    fn handshake(&mut self, config: &HostConfig) -> Result<Handshake, HostError> {
+    fn handshake(&mut self, config: &HostConfig) -> Result<pb::HelloAck, HostError> {
         let correlation = self.next_correlation();
         let hello = pb::HostEnvelope {
             correlation_id: correlation,
@@ -121,7 +153,8 @@ impl HostHandle {
             })),
         };
         self.write_frame(&hello)?;
-        let ack_frame = self.read_frame()?;
+        let ack_frame = self.next_envelope()?;
+        self.check_correlation(&ack_frame, correlation)?;
         match ack_frame.payload {
             Some(pb::host_envelope::Payload::HelloAck(ack)) => {
                 if ack.protocol_major != PROTOCOL_MAJOR {
@@ -150,7 +183,7 @@ impl HostHandle {
                         )));
                     }
                 }
-                Ok(Handshake { ack })
+                Ok(ack)
             }
             Some(pb::host_envelope::Payload::Error(e)) => Err(protocol_error(e)),
             Some(other) => Err(HostError::Violation(format!(
@@ -197,7 +230,8 @@ impl HostHandle {
     }
 
     /// Starts an execute and returns the event stream. Every requested unit
-    /// must be accounted by a UnitStatus before ExecuteComplete.
+    /// must be accounted by a UnitStatus (the per-unit completeness fact)
+    /// before ExecuteComplete.
     pub fn execute(&mut self, unit_ids: Vec<String>) -> Result<ExecuteStream<'_>, HostError> {
         let correlation = self.next_correlation();
         let envelope = pb::HostEnvelope {
@@ -228,7 +262,7 @@ impl HostHandle {
             payload: Some(payload),
         };
         self.write_frame(&envelope)?;
-        let frame = self.read_frame()?;
+        let frame = self.next_envelope()?;
         self.check_correlation(&frame, correlation)?;
         then(frame.payload)
     }
@@ -255,10 +289,30 @@ impl HostHandle {
         Ok(())
     }
 
-    fn read_frame(&mut self) -> Result<pb::HostEnvelope, HostError> {
-        let payload = self.reader.read_frame()?;
-        pb::HostEnvelope::decode(payload.as_slice())
-            .map_err(|e| HostError::Violation(format!("malformed protobuf frame: {e}")))
+    /// Next envelope from the reader thread, applying the negotiated deadline
+    /// (limits.deadline_ms; 0 = wait indefinitely).
+    fn next_envelope(&mut self) -> Result<pb::HostEnvelope, HostError> {
+        let outcome = if self.limits.deadline_ms > 0 {
+            match self
+                .rx
+                .recv_timeout(Duration::from_millis(self.limits.deadline_ms))
+            {
+                Ok(v) => v,
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(HostError::DeadlineExceeded {
+                        deadline_ms: self.limits.deadline_ms,
+                    });
+                }
+                Err(RecvTimeoutError::Disconnected) => return Err(HostError::Transport(FrameError::Eof)),
+            }
+        } else {
+            self.rx.recv().map_err(|_| HostError::Transport(FrameError::Eof))?
+        };
+        match outcome {
+            Ok(envelope) => Ok(envelope),
+            Err(FrameError::Eof) => Err(HostError::Transport(FrameError::Eof)),
+            Err(other) => Err(HostError::Transport(other)),
+        }
     }
 
     fn next_correlation(&mut self) -> u64 {
@@ -271,22 +325,17 @@ impl HostHandle {
     /// process to exit. A non-zero exit after COMPLETED is a Hangup.
     pub fn complete(mut self) -> Result<pb::Completion, HostError> {
         let _ = self.writer.take(); // dropping closes the pipe: session end signal
-        self.complete_inner()
-    }
-
-    fn complete_inner(&mut self) -> Result<pb::Completion, HostError> {
         loop {
-            let frame = self.read_frame()?;
+            let frame = self.next_envelope()?;
             match frame.payload {
                 Some(pb::host_envelope::Payload::Completion(c)) => {
-                    let status = c.clone();
                     let exit = self.child.wait()?;
                     if c.status == pb::completion::Status::Completed as i32 && !exit.success() {
                         return Err(HostError::Hangup {
                             status: exit.to_string(),
                         });
                     }
-                    return Ok(status);
+                    return Ok(c);
                 }
                 Some(pb::host_envelope::Payload::Error(e)) => return Err(protocol_error(e)),
                 Some(other) => {
@@ -317,6 +366,7 @@ pub struct ExecuteStream<'a> {
     finished: bool,
 }
 
+#[derive(Debug)]
 pub enum ExecEvent {
     Observation(pb::BackendObservation),
     UnitStatus(pb::UnitStatus),
@@ -328,13 +378,14 @@ impl<'a> ExecuteStream<'a> {
         self.correlation
     }
 
-    /// Next event, or None once ExecuteComplete has been yielded.
+    /// Next event, or None once ExecuteComplete (or a post-cancel Completion)
+    /// has been observed.
     pub fn next_event(&mut self) -> Result<Option<ExecEvent>, HostError> {
         if self.finished {
             return Ok(None);
         }
         loop {
-            let frame = self.handle.read_frame()?;
+            let frame = self.handle.next_envelope()?;
             if frame.correlation_id != self.correlation {
                 return Err(HostError::Uncorrelatable {
                     correlation_id: frame.correlation_id,
@@ -401,10 +452,10 @@ impl<'a> ExecuteStream<'a> {
     }
 
     /// Drains the stream to the terminal Completion (used after cancel).
+    /// Host-initiated terminal frames use correlation id 0.
     pub fn completion(self) -> Result<pb::Completion, HostError> {
         loop {
-            let frame = self.handle.read_frame()?;
-            // Host-initiated terminal frames use correlation id 0.
+            let frame = self.handle.next_envelope()?;
             let terminal = matches!(
                 frame.payload,
                 Some(pb::host_envelope::Payload::Completion(_))
