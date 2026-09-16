@@ -46,10 +46,12 @@ fn negotiate_describe_plan_execute_round_trip() {
             pb::AnalysisUnit {
                 unit_id: "unit-1".into(),
                 language: "java".into(),
+                files: vec![],
             },
             pb::AnalysisUnit {
                 unit_id: "unit-2".into(),
                 language: "java".into(),
+                files: vec![],
             },
         ])
         .expect("plan");
@@ -259,14 +261,17 @@ fn cooperative_cancel_terminates_with_accounting() {
             pb::AnalysisUnit {
                 unit_id: "unit-1".into(),
                 language: "java".into(),
+                files: vec![],
             },
             pb::AnalysisUnit {
                 unit_id: "unit-2".into(),
                 language: "java".into(),
+                files: vec![],
             },
             pb::AnalysisUnit {
                 unit_id: "unit-3".into(),
                 language: "java".into(),
+                files: vec![],
             },
         ])
         .expect("plan");

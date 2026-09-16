@@ -300,9 +300,4 @@ final class JavaBackendHost {
             System.err.println("{\"level\":\"error\",\"msg\":\"write failed\"}");
         }
     }
-
-    /** Hook kept for the deadline support of the conformance suite slice. */
-    List<String> plannedUnitIds() {
-        return List.copyOf(plannedUnits.keySet());
-    }
 }

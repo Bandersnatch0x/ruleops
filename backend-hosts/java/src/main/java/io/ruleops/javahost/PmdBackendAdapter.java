@@ -108,7 +108,7 @@ final class PmdBackendAdapter {
         Path absolute = Path.of(absolutePath).toAbsolutePath().normalize();
         String relative = repoRoot.relativize(absolute).toString().replace('\\', '/');
         SourceSpans.Span span = SourceSpans.forViolation(
-                absolute, relative, violation.getBeginLine(), violation.getBeginColumn());
+                absolute, violation.getBeginLine(), violation.getBeginColumn());
         return BackendObservation.newBuilder()
                 .setRuleId(violation.getRule().getName())
                 .setLocation(ObservationLocation.newBuilder()

@@ -3,7 +3,6 @@ package io.ruleops.javahost;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
@@ -24,14 +23,16 @@ final class SourceSpans {
 
     record Span(byte[] blobSha256, long startByte, long endByte, int line, int column) {}
 
-    static Span forViolation(Path absoluteFile, String relativePath, int line, int column)
+    static Span forViolation(Path absoluteFile, int line, int column)
             throws IOException {
         byte[] digest = digestOf(absoluteFile);
         long[] lineOffsets = lineIndex(absoluteFile);
         int safeLine = Math.max(1, line);
         if (safeLine > lineOffsets.length - 1) {
-            // Out-of-range coordinates: emit an empty span at EOF; the runtime
-            // rejects coordinates it cannot verify.
+            // Out-of-range coordinates: the byte span degrades to an empty
+            // verifiable span at EOF, while the RAW line/column are preserved
+            // so the runtime can reject the observation by re-deriving the
+            // line count from the blob.
             long end = lineOffsets[lineOffsets.length - 1];
             return new Span(digest, end, end, line, column);
         }
@@ -93,18 +94,5 @@ final class SourceSpans {
             LINE_INDEX_CACHE.put(file.toString(), offsets);
         }
         return offsets;
-    }
-
-    /** Debug helper used in tests. */
-    static String hex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
-
-    static byte[] utf8(String s) {
-        return s.getBytes(StandardCharsets.UTF_8);
     }
 }

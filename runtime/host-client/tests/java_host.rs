@@ -132,6 +132,7 @@ fn java_host_negotiates_describes_and_executes_pmd() {
     let completion = host.complete().expect("completion");
     assert_eq!(completion.status, pb::completion::Status::Completed as i32);
     assert_eq!(completion.units_reported, 1);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -188,4 +189,5 @@ fn java_host_cooperative_cancel_accounts_units() {
     // Completeness: both units accounted (u1 cancelled mid-flight or executed,
     // u2 cancelled before completion).
     assert!(completion.units_reported >= 2, "units: {}", completion.units_reported);
+    let _ = std::fs::remove_dir_all(&dir);
 }
