@@ -9,8 +9,12 @@ Enterprise Rule Factory(ERF)——企业级 RuleOps / 代码规范工程与治�
 
 ### Issue tracker
 
-Issues 在 GitHub Issues 跟踪,用 `gh` CLI 操作。See `docs/agents/issue-tracker.md`.
+Issues 在 GitHub Issues 跟踪，用 `gh` CLI 操作。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+使用默认 triage 标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-单上下文:根 `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
+单上下文：根 `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
