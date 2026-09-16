@@ -1,0 +1,97 @@
+package io.ruleops.factory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.ruleops.authoring.AuthoringParser;
+import io.ruleops.authoring.model.RuleIntent;
+import io.ruleops.authoring.model.RuleIr;
+import io.ruleops.factory.candidate.CandidateCompileException;
+import io.ruleops.factory.candidate.CandidateCompiler;
+import io.ruleops.factory.symbol.SymbolRuleTemplate;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * Candidate compilation: the spec's no-system-exit intent must compile
+ * deterministically into a Candidate bundle; intents outside the template's
+ * applicability must fail explicitly.
+ */
+class CandidateCompilerTest {
+
+    private static String goldenIntent() throws IOException {
+        return Files.readString(Path.of("..", "..", "specs/rule-intent/corp.java.no-system-exit.yaml"));
+    }
+
+    private static RuleIntent parse(String yaml) throws Exception {
+        return ((AuthoringParser.IntentAsset) AuthoringParser.parse(yaml)).document();
+    }
+
+    @Test
+    void templateCompilesStaticMethodCallToSymbolRule() throws Exception {
+        RuleIr ir = new SymbolRuleTemplate().compile(parse(goldenIntent()));
+        assertEquals(io.ruleops.authoring.model.RuleIrKind.SYMBOL_RULE, ir.kind());
+        assertEquals("java.lang.System", ir.match().symbol().owner());
+        assertEquals("exit", ir.match().symbol().name());
+        assertEquals(java.util.List.of("int"), ir.match().symbol().parameters());
+        assertEquals("unknown", ir.onUnresolved());
+    }
+
+    @Test
+    void templateRejectsVirtualInvocationExplicitly() throws Exception {
+        String yaml = goldenIntent().replace("invocation: static", "invocation: virtual");
+        SymbolRuleTemplate.TemplateCompileException e = assertThrows(
+                SymbolRuleTemplate.TemplateCompileException.class,
+                () -> new SymbolRuleTemplate().compile(parse(yaml)));
+        assertEquals("INVOCATION_UNSUPPORTED", e.error().code());
+    }
+
+    @Test
+    void templateRejectsUnsatisfiedCapabilitiesExplicitly() throws Exception {
+        String yaml = goldenIntent().replace(
+                "requiredCapabilities:\n    - java.ast\n    - java.symbol-resolution",
+                "requiredCapabilities:\n    - java.bytecode");
+        SymbolRuleTemplate.TemplateCompileException e = assertThrows(
+                SymbolRuleTemplate.TemplateCompileException.class,
+                () -> new SymbolRuleTemplate().compile(parse(yaml)));
+        assertEquals("CAPABILITY_GAP", e.error().code());
+        assertTrue(e.error().message().contains("java.bytecode"));
+    }
+
+    @Test
+    void candidateBundleIsCompleteAndContentAddressed(@TempDir Path out) throws Exception {
+        Path dir = new CandidateCompiler().compile(parse(goldenIntent()), out);
+        assertTrue(Files.exists(dir.resolve("ruleset.xml")));
+        assertTrue(Files.exists(dir.resolve("manifest.json")));
+        assertTrue(Files.exists(dir.resolve("fixtures/bad/Bad0.java")));
+        assertTrue(Files.exists(dir.resolve("fixtures/good/Good0.java")));
+        String manifest = Files.readString(dir.resolve("manifest.json"));
+        assertTrue(manifest.contains(dir.getFileName().toString()),
+                "directory name must be the digest");
+    }
+
+    @Test
+    void sameIntentCompilesToIdenticalDigest(@TempDir Path out) throws Exception {
+        RuleIntent intent = parse(goldenIntent());
+        Path first = new CandidateCompiler().compile(intent, out);
+        Path second = new CandidateCompiler().compile(intent, out);
+        assertEquals(first.getFileName().toString(), second.getFileName().toString());
+        assertEquals(
+                Files.readString(first.resolve("ruleset.xml")),
+                Files.readString(second.resolve("ruleset.xml")));
+    }
+
+    @Test
+    void emittedRulesetPinsOwnerNameAndArity(@TempDir Path out) throws Exception {
+        Path dir = new CandidateCompiler().compile(parse(goldenIntent()), out);
+        String xml = Files.readString(dir.resolve("ruleset.xml"));
+        assertTrue(xml.contains("pmd-java:typeIs('java.lang.System')"), () -> xml);
+        assertTrue(xml.contains("@MethodName='exit'"), () -> xml);
+        assertTrue(xml.contains("@ArgumentCount=1"), () -> xml);
+    }
+
+}
