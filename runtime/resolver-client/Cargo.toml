@@ -1,0 +1,11 @@
+[package]
+name = "erf-resolver-client"
+version = "0.1.0"
+edition = "2021"
+description = "Rust client for the ERF Workspace Resolution Contract: process lifecycle, handshake, resolution, deadlines. Separate from the Backend Host client by design (ADR-0050)."
+
+[dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-framing = { path = "../framing" }
+prost = "0.13"
+thiserror = "2"

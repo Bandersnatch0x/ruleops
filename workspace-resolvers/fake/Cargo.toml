@@ -1,0 +1,23 @@
+[package]
+name = "erf-fake-resolver"
+version = "0.1.0"
+edition = "2021"
+description = "Reference fake Workspace Resolver: resolves a repository layout into a content-addressed WorkspaceDescriptor over the ERF Workspace Resolution Contract v0, with deterministic failure-injection knobs."
+
+[dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-framing = { path = "../../runtime/framing" }
+sha2 = "0.10"
+prost = "0.13"
+
+[lib]
+name = "erf_fake_resolver"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-fake-resolver"
+path = "src/main.rs"
+
+[dev-dependencies]
+erf-resolver-client = { path = "../../runtime/resolver-client" }
+erf-framing = { path = "../../runtime/framing" }

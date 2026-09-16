@@ -8,3 +8,10 @@ pub mod backend {
         include!(concat!(env!("OUT_DIR"), "/erf.backend.v0.rs"));
     }
 }
+
+/// Workspace Resolution Contract v0 (`erf.workspace.v0`).
+pub mod workspace {
+    pub mod v0 {
+        include!(concat!(env!("OUT_DIR"), "/erf.workspace.v0.rs"));
+    }
+}

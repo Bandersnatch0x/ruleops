@@ -104,6 +104,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "erf-fake-resolver"
+version = "0.1.0"
+dependencies = [
+ "erf-contracts",
+ "erf-framing",
+ "erf-resolver-client",
+ "prost",
+ "sha2",
+]
+
+[[package]]
 name = "erf-framing"
 version = "0.1.0"
 dependencies = [
@@ -118,6 +129,16 @@ dependencies = [
  "erf-framing",
  "prost",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "erf-resolver-client"
+version = "0.1.0"
+dependencies = [
+ "erf-contracts",
+ "erf-framing",
+ "prost",
  "thiserror",
 ]
 
