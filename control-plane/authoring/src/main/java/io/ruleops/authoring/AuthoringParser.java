@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.ruleops.authoring.model.RuleIntent;
 import io.ruleops.authoring.model.RuleIr;
+import io.ruleops.authoring.model.RuleIrKind;
 import io.ruleops.authoring.model.Standard;
 
 /**
@@ -50,11 +51,13 @@ public final class AuthoringParser {
             return switch (probe.kind) {
                 case "Standard" -> new StandardAsset(STRICT_MAPPER.readValue(yaml, Standard.class));
                 case "RuleIntent" -> new IntentAsset(STRICT_MAPPER.readValue(yaml, RuleIntent.class));
-                case "ExistingRule", "StructuralRule", "SymbolRule", "TypeRule",
-                        "BytecodeRule", "ArchitectureRule", "NativeRule" ->
-                        new IrAsset(STRICT_MAPPER.readValue(yaml, RuleIr.class));
-                default -> throw new AuthoringParseException(
-                        "KIND_UNKNOWN", "$.kind", "unknown kind: " + probe.kind);
+                default -> {
+                    if (RuleIrKind.fromYamlName(probe.kind) != null) {
+                        yield new IrAsset(STRICT_MAPPER.readValue(yaml, RuleIr.class));
+                    }
+                    throw new AuthoringParseException(
+                            "KIND_UNKNOWN", "$.kind", "unknown kind: " + probe.kind);
+                }
             };
         } catch (JacksonException e) {
             throw new AuthoringParseException("SCHEMA_MALFORMED", "$", e.getMessage(), e);

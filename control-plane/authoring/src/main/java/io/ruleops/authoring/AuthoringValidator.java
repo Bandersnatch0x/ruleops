@@ -6,6 +6,7 @@ import io.ruleops.authoring.AuthoringParser.IrAsset;
 import io.ruleops.authoring.AuthoringParser.StandardAsset;
 import io.ruleops.authoring.model.RuleIntent;
 import io.ruleops.authoring.model.RuleIr;
+import io.ruleops.authoring.model.RuleIrKind;
 import io.ruleops.authoring.model.Standard;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -31,8 +32,9 @@ public final class AuthoringValidator {
 
     private static final Set<String> SCENARIO_EXPECTED =
             Set.of("detectable", "needs-clarification", "unsupported");
+    /** Symbol-rule node types; shared by intent semantics targets and IR match nodes. */
+    private static final Set<String> NODE_KINDS = Set.of("method-call");
     private static final Set<String> TARGET_INVOCATION = Set.of("static", "virtual", "any");
-    private static final Set<String> TARGET_KINDS = Set.of("method-call");
     private static final Set<String> UNRESOLVED_BEHAVIOR = Set.of("unknown", "fail", "ignore");
     private static final Set<String> SEVERITY = Set.of("advisory", "blocking");
 
@@ -67,6 +69,23 @@ public final class AuthoringValidator {
                 }
                 case IrAsset ir -> errors.addAll(validateIr(ir.document()));
                 case StandardAsset ignored -> { /* already validated */ }
+            }
+        }
+        return errors;
+    }
+
+    /** Cross-asset checks only: every intent's Standard/scenario/language must resolve. */
+    public static List<ValidationError> validateCrossRefs(List<Asset> assets) {
+        List<ValidationError> errors = new ArrayList<>();
+        Map<String, Standard> standards = new LinkedHashMap<>();
+        for (Asset asset : assets) {
+            if (asset instanceof StandardAsset s) {
+                standards.put(s.document().metadata().id(), s.document());
+            }
+        }
+        for (Asset asset : assets) {
+            if (asset instanceof IntentAsset i) {
+                errors.addAll(crossRef(i.document(), standards));
             }
         }
         return errors;
@@ -107,8 +126,9 @@ public final class AuthoringValidator {
 
     private static List<ValidationError> validateStandard(Standard s) {
         List<ValidationError> errors = new ArrayList<>();
-        checkCommon(errors, s.apiVersion(), s.kind(), "Standard");
-        MetadataChecks.id(errors, "$.metadata.id", s.metadata() == null ? null : s.metadata().id(), STANDARD_ID);
+        checkApiVersion(errors, s.apiVersion());
+        kindMismatch(errors, s.kind(), "Standard");
+        id(errors, "$.metadata.id", s.metadata() == null ? null : s.metadata().id(), STANDARD_ID);
         if (s.metadata() != null) {
             version(errors, "$.metadata.version", s.metadata().version());
             required(errors, "$.metadata.owner", s.metadata().owner());
@@ -134,20 +154,17 @@ public final class AuthoringValidator {
             } else if (!scenarioIds.add(sc.id())) {
                 errors.add(new ValidationError("DUPLICATE", base + ".id", "duplicate scenario id: " + sc.id()));
             }
-            if (sc.expected() == null || !SCENARIO_EXPECTED.contains(sc.expected())) {
-                errors.add(new ValidationError(
-                        "ENUM_INVALID", base + ".expected",
-                        "expected one of " + SCENARIO_EXPECTED + ", got: " + sc.expected()));
-            }
+            checkEnum(errors, base + ".expected", sc.expected(), SCENARIO_EXPECTED);
         }
         return errors;
     }
 
     private static List<ValidationError> validateIntent(RuleIntent r) {
         List<ValidationError> errors = new ArrayList<>();
-        checkCommon(errors, r.apiVersion(), r.kind(), "RuleIntent");
+        checkApiVersion(errors, r.apiVersion());
+        kindMismatch(errors, r.kind(), "RuleIntent");
         if (r.metadata() != null) {
-            MetadataChecks.id(errors, "$.metadata.id", r.metadata().id(), INTENT_ID);
+            id(errors, "$.metadata.id", r.metadata().id(), INTENT_ID);
             version(errors, "$.metadata.version", r.metadata().version());
         }
         RuleIntent.Spec spec = r.spec();
@@ -158,7 +175,7 @@ public final class AuthoringValidator {
         if (spec.standard() == null) {
             required(errors, "$.spec.standard", null);
         } else {
-            MetadataChecks.id(errors, "$.spec.standard.id", spec.standard().id(), STANDARD_ID);
+            id(errors, "$.spec.standard.id", spec.standard().id(), STANDARD_ID);
             version(errors, "$.spec.standard.version", spec.standard().version());
             required(errors, "$.spec.standard.scenario", spec.standard().scenario());
         }
@@ -194,30 +211,20 @@ public final class AuthoringValidator {
             required(errors, "$.spec.semantics.target", null);
         } else {
             RuleIntent.Target t = spec.semantics().target();
-            if (t.kind() == null || !TARGET_KINDS.contains(t.kind())) {
-                errors.add(new ValidationError(
-                        "ENUM_INVALID", "$.spec.semantics.target.kind",
-                        "expected one of " + TARGET_KINDS + ", got: " + t.kind()));
-            }
+            checkEnum(errors, "$.spec.semantics.target.kind", t.kind(), NODE_KINDS);
             required(errors, "$.spec.semantics.target.declaringType", t.declaringType());
             required(errors, "$.spec.semantics.target.method", t.method());
-            if (t.invocation() == null || !TARGET_INVOCATION.contains(t.invocation())) {
-                errors.add(new ValidationError(
-                        "ENUM_INVALID", "$.spec.semantics.target.invocation",
-                        "expected one of " + TARGET_INVOCATION + ", got: " + t.invocation()));
-            }
+            checkEnum(errors, "$.spec.semantics.target.invocation", t.invocation(), TARGET_INVOCATION);
         }
         if (spec.requiredCapabilities() == null || spec.requiredCapabilities().isEmpty()) {
             errors.add(new ValidationError(
                     "REQUIRED_MISSING", "$.spec.requiredCapabilities",
                     "at least one required capability must be declared"));
         }
-        if (spec.unresolved() == null || spec.unresolved().behavior() == null
-                || !UNRESOLVED_BEHAVIOR.contains(spec.unresolved().behavior())) {
-            errors.add(new ValidationError(
-                    "ENUM_INVALID", "$.spec.unresolved.behavior",
-                    "expected one of " + UNRESOLVED_BEHAVIOR + ", got: "
-                            + (spec.unresolved() == null ? null : spec.unresolved().behavior())));
+        if (spec.unresolved() == null) {
+            errors.add(new ValidationError("REQUIRED_MISSING", "$.spec.unresolved", "required"));
+        } else {
+            checkEnum(errors, "$.spec.unresolved.behavior", spec.unresolved().behavior(), UNRESOLVED_BEHAVIOR);
         }
         if (spec.examples() == null) {
             required(errors, "$.spec.examples", null);
@@ -231,29 +238,26 @@ public final class AuthoringValidator {
                         "REQUIRED_MISSING", "$.spec.examples.good", "at least one good example required"));
             }
         }
-        if (spec.severity() == null || spec.severity().defaultLevel() == null
-                || !SEVERITY.contains(spec.severity().defaultLevel())) {
-            errors.add(new ValidationError(
-                    "ENUM_INVALID", "$.spec.severity.default",
-                    "expected one of " + SEVERITY + ", got: "
-                            + (spec.severity() == null ? null : spec.severity().defaultLevel())));
+        if (spec.severity() == null) {
+            errors.add(new ValidationError("REQUIRED_MISSING", "$.spec.severity", "required"));
+        } else {
+            checkEnum(errors, "$.spec.severity.default", spec.severity().defaultLevel(), SEVERITY);
         }
         return errors;
     }
 
     private static List<ValidationError> validateIr(RuleIr ir) {
         List<ValidationError> errors = new ArrayList<>();
-        checkCommon(errors, ir.apiVersion(), ir.kind(), null);
+        checkApiVersion(errors, ir.apiVersion());
+        if (ir.kind() == null) {
+            errors.add(new ValidationError("KIND_MISSING", "$.kind", "IR kind required"));
+        }
         required(errors, "$.language", ir.language());
         if (ir.match() == null) {
             required(errors, "$.match", null);
             return errors;
         }
-        if (ir.match().node() == null || !TARGET_KINDS.contains(ir.match().node())) {
-            errors.add(new ValidationError(
-                    "ENUM_INVALID", "$.match.node",
-                    "expected one of " + TARGET_KINDS + ", got: " + ir.match().node()));
-        }
+        checkEnum(errors, "$.match.node", ir.match().node(), NODE_KINDS);
         if (ir.match().symbol() == null) {
             required(errors, "$.match.symbol", null);
         } else {
@@ -265,11 +269,7 @@ public final class AuthoringValidator {
         } else {
             checkSourceSets(errors, "$.scope.sourceSets", ir.scope().sourceSets(), true);
         }
-        if (ir.onUnresolved() == null || !UNRESOLVED_BEHAVIOR.contains(ir.onUnresolved())) {
-            errors.add(new ValidationError(
-                    "ENUM_INVALID", "$.onUnresolved",
-                    "expected one of " + UNRESOLVED_BEHAVIOR + ", got: " + ir.onUnresolved()));
-        }
+        checkEnum(errors, "$.onUnresolved", ir.onUnresolved(), UNRESOLVED_BEHAVIOR);
         return errors;
     }
 
@@ -290,15 +290,26 @@ public final class AuthoringValidator {
         }
     }
 
-    private static void checkCommon(List<ValidationError> errors, String apiVersion, String kind, String expectedKind) {
+    private static void checkApiVersion(List<ValidationError> errors, String apiVersion) {
         if (!AuthoringParser.API_VERSION.equals(apiVersion)) {
             errors.add(new ValidationError(
                     "API_VERSION_UNSUPPORTED", "$.apiVersion",
                     "expected " + AuthoringParser.API_VERSION + ", got: " + apiVersion));
         }
-        if (expectedKind != null && !expectedKind.equals(kind)) {
+    }
+
+    private static void kindMismatch(List<ValidationError> errors, String kind, String expectedKind) {
+        if (!expectedKind.equals(kind)) {
             errors.add(new ValidationError(
                     "KIND_MISMATCH", "$.kind", "expected " + expectedKind + ", got: " + kind));
+        }
+    }
+
+    private static void checkEnum(
+            List<ValidationError> errors, String path, String value, Set<String> allowed) {
+        if (value == null || !allowed.contains(value)) {
+            errors.add(new ValidationError(
+                    "ENUM_INVALID", path, "expected one of " + allowed + ", got: " + value));
         }
     }
 
@@ -308,17 +319,15 @@ public final class AuthoringValidator {
         }
     }
 
-    private static void version(List<ValidationError> errors, String path, String value) {
-        if (value == null || !SEMVER.matcher(value).matches()) {
-            errors.add(new ValidationError("FORMAT_INVALID", path, "semver required, got: " + value));
+    private static void id(List<ValidationError> errors, String path, String value, Pattern pattern) {
+        if (value == null || !pattern.matcher(value).matches()) {
+            errors.add(new ValidationError("FORMAT_INVALID", path, "invalid id: " + value));
         }
     }
 
-    private static final class MetadataChecks {
-        private static void id(List<ValidationError> errors, String path, String value, Pattern pattern) {
-            if (value == null || !pattern.matcher(value).matches()) {
-                errors.add(new ValidationError("FORMAT_INVALID", path, "invalid id: " + value));
-            }
+    private static void version(List<ValidationError> errors, String path, String value) {
+        if (value == null || !SEMVER.matcher(value).matches()) {
+            errors.add(new ValidationError("FORMAT_INVALID", path, "semver required, got: " + value));
         }
     }
 
