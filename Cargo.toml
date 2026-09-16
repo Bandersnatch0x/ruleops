@@ -4,5 +4,8 @@ members = [
     "runtime/rf-runner",
     "runtime/rf-cli",
     "runtime/gate",
+    "runtime/host-client",
+    "contracts/rust",
+    "backend-hosts/fake",
 ]
 

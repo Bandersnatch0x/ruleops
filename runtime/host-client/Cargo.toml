@@ -1,0 +1,10 @@
+[package]
+name = "erf-host-client"
+version = "0.1.0"
+edition = "2021"
+description = "Rust client for the ERF Backend Host Contract: length-delimited stdio framing, handshake, request correlation, cooperative cancellation."
+
+[dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+prost = "0.13"
+thiserror = "2"
