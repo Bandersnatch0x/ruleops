@@ -1,6 +1,7 @@
 package io.ruleops.verification;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -12,7 +13,7 @@ import java.nio.file.Path;
  */
 public final class VerifyCmd {
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws IOException {
         if (args.length != 2) {
             System.err.println("usage: VerifyCmd CANDIDATE_DIR OUT_DIR");
             System.exit(2);
@@ -26,12 +27,9 @@ public final class VerifyCmd {
         try {
             bundle = new LocalVerification().verify(candidate);
         } catch (Exception e) {
-            if (System.getenv("VERIFY_DEBUG") != null) {
-                e.printStackTrace();
-            }
             System.err.println("ERROR VERIFICATION_ABORTED: " + e.getMessage());
             System.exit(1);
-            return;
+            return; // never reached; keeps `bundle` definitely-unassigned past this point
         }
         Path out = Path.of(args[1]);
         Files.createDirectories(out);

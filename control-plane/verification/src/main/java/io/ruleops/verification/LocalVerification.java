@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import net.sourceforge.pmd.PMDConfiguration;
 import net.sourceforge.pmd.PmdAnalysis;
@@ -37,6 +38,7 @@ public final class LocalVerification {
         String candidateId = candidateDir.getParent() == null
                 ? candidateDir.toString()
                 : candidateDir.getParent().getFileName().toString();
+        // CandidateCompiler names the bundle directory by content digest.
         String candidateDigest = candidateDir.getFileName().toString();
 
         List<Path> javaFiles;
@@ -91,6 +93,11 @@ public final class LocalVerification {
         }
         boolean allPass = results.stream().allMatch(EvidenceBundle.FixtureResult::pass);
 
+        Map<String, String> environment = Map.of(
+                "javaVersion", System.getProperty("java.version"),
+                "osName", System.getProperty("os.name"),
+                "osArch", System.getProperty("os.arch"));
+
         return new EvidenceBundle(
                 "erf-evidence-bundle",
                 EvidenceBundle.TRUST_LEVEL,
@@ -100,6 +107,7 @@ public final class LocalVerification {
                 net.sourceforge.pmd.PMDVersion.VERSION,
                 allPass ? "PASS" : "FAIL",
                 results,
+                environment,
                 allPass
                         ? "all bad fixtures hit, all good fixtures clean"
                         : "fixture expectations violated; see per-fixture results");

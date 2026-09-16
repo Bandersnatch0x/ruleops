@@ -1,5 +1,6 @@
 package io.ruleops.verification;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,6 +20,7 @@ public record EvidenceBundle(
         String engineVersion,
         String verdict,
         List<FixtureResult> fixtures,
+        Map<String, String> environment,
         String notes) {
 
     public static final String TRUST_LEVEL = "LOCAL_UNATTESTED";
@@ -31,7 +33,7 @@ public record EvidenceBundle(
             int actualHits,
             boolean pass) {}
 
-    /** Builds the JSON-ready ordered form of the bundle. */
+    /** Builds the JSON-ready, stably ordered form of the bundle. */
     public Map<String, Object> asJson() {
         var root = new java.util.LinkedHashMap<String, Object>();
         root.put("kind", kind);
@@ -41,13 +43,17 @@ public record EvidenceBundle(
         root.put("engine", engine);
         root.put("engineVersion", engineVersion);
         root.put("verdict", verdict);
+        root.put("environment", new LinkedHashMap<>(environment));
         root.put("fixtures", fixtures.stream()
-                .map(f -> Map.<String, Object>of(
-                        "fixture", f.fixture(),
-                        "expectation", f.expectation(),
-                        "expectedHits", f.expectedHits(),
-                        "actualHits", f.actualHits(),
-                        "pass", f.pass()))
+                .map(f -> {
+                    var json = new java.util.LinkedHashMap<String, Object>();
+                    json.put("fixture", f.fixture());
+                    json.put("expectation", f.expectation());
+                    json.put("expectedHits", f.expectedHits());
+                    json.put("actualHits", f.actualHits());
+                    json.put("pass", f.pass());
+                    return json;
+                })
                 .toList());
         root.put("notes", notes);
         return root;

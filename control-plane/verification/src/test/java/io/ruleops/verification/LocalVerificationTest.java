@@ -54,8 +54,6 @@ class LocalVerificationTest {
         writeCandidate(candidate, "//MethodCall[pmd-java:matchesSig('java.lang.System#exit(int)')]");
 
         EvidenceBundle bundle = new LocalVerification().verify(candidate);
-        System.out.println("BUNDLE: " + new com.fasterxml.jackson.databind.ObjectMapper()
-                .writerWithDefaultPrettyPrinter().writeValueAsString(bundle.asJson()));
         assertEquals("PASS", bundle.verdict());
         assertEquals("LOCAL_UNATTESTED", bundle.trustLevel());
         assertEquals(2, bundle.fixtures().size());
@@ -74,7 +72,7 @@ class LocalVerificationTest {
                 .findFirst()
                 .orElseThrow();
         assertEquals(0, bad.actualHits());
-        assertEquals(false, bad.pass());
+        org.junit.jupiter.api.Assertions.assertFalse(bad.pass());
         assertTrue(bundle.notes().contains("violated"));
     }
 
