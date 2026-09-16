@@ -19,6 +19,8 @@ syntax = "proto3";
 // backend-private payloads to bypass this contract.
 package erf.backend.v0;
 
+option java_multiple_files = true;
+
 // ---------------------------------------------------------------------------
 // Handshake
 // ---------------------------------------------------------------------------
@@ -114,6 +116,10 @@ message AnalysisUnit {
   // Opaque unit identity owned by the runtime ScanPlan (rule x analysis unit).
   string unit_id = 1;
   string language = 2;
+  // Repository-relative files this unit binds to (from the
+  // WorkspaceDescriptor). The host refines execution per file batch; it must
+  // not add, drop or merge units (ADR-0036).
+  repeated string files = 3;
 }
 
 // The runtime asks the host to refine the assigned units deterministically.
@@ -242,7 +248,9 @@ message SymbolRef {
 message BytecodeMember {
   string class_fqn = 1;
   string member = 2;
-  string descriptor = 3;
+  // normalized member descriptor; not named "descriptor" to avoid clashing
+  // with protobuf's own getDescriptor() in generated Java bindings
+  string member_descriptor = 3;
 }
 
 message FileRef {

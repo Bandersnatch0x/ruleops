@@ -29,4 +29,7 @@ echo "== [Java] mvn verify (modular monolith) =="
 echo "== [Rust] cargo test (runtime workspace) =="
 (cd "$REPO_ROOT" && cargo test --quiet)
 
+echo "== [E2E] Java Backend Host driven by the Rust client =="
+"$REPO_ROOT/scripts/java-host-e2e.sh"
+
 echo "check: all sides green"
