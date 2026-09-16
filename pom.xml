@@ -10,7 +10,7 @@
   <packaging>pom</packaging>
 
   <name>Enterprise Rule Factory :: Control Plane Parent</name>
-  <description>Java 21 modular monolith hosting Factory-side RuleOps capabilities (ADR-0011/ADR-0018).</description>
+  <description>Java 21 modular monolith hosting Factory-side RuleOps capabilities (ADR-0018; process-isolated engines per ADR-0027).</description>
 
   <modules>
     <module>control-plane/authoring</module>

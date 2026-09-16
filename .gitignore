@@ -3,7 +3,6 @@
 
 # Maven (Java modular monolith)
 control-plane/*/target/
-control-plane/*/*/target/
 
 # Node
 node_modules/
