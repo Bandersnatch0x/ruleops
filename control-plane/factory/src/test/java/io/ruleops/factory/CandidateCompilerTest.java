@@ -102,4 +102,46 @@ class CandidateCompilerTest {
         assertTrue(xml.contains("rule name=\"ErfCorpJavaNoSystemExit\""), () -> xml);
     }
 
+    @Test
+    void existingRuleBindsPmdIdentityAndParameters(@TempDir Path out) throws Exception {
+        String yaml = goldenIntent()
+                .replace("kind: method-call", "kind: existing-rule")
+                .replace("declaringType: java.lang.System", "declaringType: pmd")
+                .replace("method: exit", "method: UnusedPrivateMethod")
+                .replace("parameters: [int]", "parameters: [priority=3]")
+                .replace("- java.symbol-resolution\n", "");
+        Path dir = new CandidateCompiler().compile(parse(yaml), out);
+        String xml = Files.readString(dir.resolve("ruleset.xml"));
+        assertTrue(xml.contains("ref=\"category/java/UnusedPrivateMethod\""), () -> xml);
+        assertTrue(xml.contains("name=\"priority\" value=\"3\""), () -> xml);
+        assertTrue(Files.readString(dir.resolve("manifest.json")).contains("\"template\" : \"ExistingRule\""));
+    }
+
+    @Test
+    void structuralRuleCompilesOnlyWithinDeclaredBoundary(@TempDir Path out) throws Exception {
+        String yaml = goldenIntent()
+                .replace("kind: method-call", "kind: structural-node")
+                .replace("declaringType: java.lang.System", "declaringType: MethodDeclaration")
+                .replace("method: exit", "method: Name")
+                .replace("parameters: [int]", "parameters: [Forbidden]")
+                .replace("- java.symbol-resolution\n", "");
+        Path dir = new CandidateCompiler().compile(parse(yaml), out);
+        assertTrue(Files.readString(dir.resolve("ruleset.xml"))
+                .contains("//MethodDeclaration[@Name='Forbidden']"));
+        assertTrue(Files.readString(dir.resolve("manifest.json")).contains("\"template\" : \"StructuralRule\""));
+    }
+
+    @Test
+    void structuralRuleRejectsUnboundedNodeShape() throws Exception {
+        String yaml = goldenIntent()
+                .replace("kind: method-call", "kind: structural-node")
+                .replace("declaringType: java.lang.System", "declaringType: LambdaExpression")
+                .replace("method: exit", "method: Name")
+                .replace("parameters: [int]", "parameters: []")
+                .replace("- java.symbol-resolution\n", "");
+        CandidateCompileException error = assertThrows(CandidateCompileException.class,
+                () -> new CandidateCompiler().build(parse(yaml)));
+        assertEquals("STRUCTURE_UNSUPPORTED", error.error().code());
+    }
+
 }

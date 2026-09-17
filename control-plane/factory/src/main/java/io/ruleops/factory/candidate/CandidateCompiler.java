@@ -6,7 +6,10 @@ import io.ruleops.authoring.model.RuleIntent;
 import io.ruleops.authoring.model.RuleIr;
 import io.ruleops.factory.pmd.PmdXPathEmitter;
 import io.ruleops.factory.symbol.SymbolRuleTemplate;
+import io.ruleops.factory.existing.ExistingRuleTemplate;
+import io.ruleops.factory.structural.StructuralRuleTemplate;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -26,8 +29,6 @@ import java.util.TreeMap;
  * are evidence-governed).
  */
 public final class CandidateCompiler {
-
-    private final SymbolRuleTemplate template = new SymbolRuleTemplate();
 
     /** Compiles and writes the candidate bundle under {@code outputRoot}. */
     public Path compile(RuleIntent intent, Path outputRoot) throws CandidateCompileException {
@@ -59,34 +60,54 @@ public final class CandidateCompiler {
         }
         RuleIr ir;
         try {
-            ir = template.compile(intent);
+            String targetKind = intent.spec().semantics().target().kind();
+            ir = switch (targetKind) {
+                case "method-call" -> new SymbolRuleTemplate().compile(intent);
+                case "existing-rule" -> new ExistingRuleTemplate().compile(intent);
+                case "structural-node" -> new StructuralRuleTemplate().compile(intent);
+                default -> throw new CandidateCompileException(new CandidateError("TARGET_KIND_UNSUPPORTED", "no Phase 1 template for: " + targetKind));
+            };
         } catch (SymbolRuleTemplate.TemplateCompileException e) {
             throw new CandidateCompileException(
                     new CandidateError(e.error().code(), e.error().message()));
+        } catch (ExistingRuleTemplate.TemplateCompileException e) {
+            throw new CandidateCompileException(new CandidateError(e.error().code(), e.error().message()));
+        } catch (StructuralRuleTemplate.TemplateCompileException e) {
+            throw new CandidateCompileException(new CandidateError(e.error().code(), e.error().message()));
         }
+        String parameterPattern = ir.kind() == io.ruleops.authoring.model.RuleIrKind.EXISTING_RULE
+                ? "[A-Za-z][A-Za-z0-9_.-]*=[A-Za-z0-9_.:+/-]+"
+                : "[A-Za-z_][A-Za-z0-9_.$\\[\\]]*";
         for (String param : ir.match().symbol().parameters()) {
-            if (!param.matches("[A-Za-z_][A-Za-z0-9_.$\\[\\]]*")) {
+            if (!param.matches(parameterPattern)) {
                 throw new CandidateCompileException(new CandidateError(
                         "TARGET_INVALID", "invalid parameter type: " + param));
             }
         }
 
         String artifactFile = "ruleset.xml";
+        String template = switch (ir.kind()) {
+            case SYMBOL_RULE -> "SymbolRule";
+            case EXISTING_RULE -> "ExistingRule";
+            case STRUCTURAL_RULE -> "StructuralRule";
+            default -> throw new CandidateCompileException(new CandidateError(
+                    "IR_KIND_UNSUPPORTED", "no Phase 1 template for: " + ir.kind()));
+        };
         String severity = intent.spec().severity().defaultLevel();
         int priority = "blocking".equals(severity) ? 1 : 4;
         String ruleName = ruleNameFrom(intent.metadata().id());
         String artifactXml = PmdXPathEmitter.emit(ir, ruleName, priority);
         Map<String, byte[]> fixtures = Candidate.fromExamples(intent);
 
-        String digest = sha256Of(ir, artifactFile, artifactXml, fixtures);
+        String digest = sha256Of(artifactFile, artifactXml.getBytes(StandardCharsets.UTF_8), fixtures);
         byte[] manifest = manifestJson(
-                intent, ir, artifactFile, fixtures, digest, ruleName, priority)
+                intent, ir, artifactFile, fixtures, digest, ruleName, priority, template)
                 .getBytes(StandardCharsets.UTF_8);
 
         return new Candidate(
                 intent.metadata().id(),
                 intent.metadata().version(),
-                "SymbolRule",
+                template,
                 artifactFile,
                 artifactXml.getBytes(StandardCharsets.UTF_8),
                 fixtures,
@@ -101,7 +122,8 @@ public final class CandidateCompiler {
             Map<String, byte[]> fixtures,
             String digest,
             String ruleName,
-            int priority) {
+            int priority,
+            String template) {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("kind", "erf-candidate");
         manifest.put("intent", Map.of(
@@ -110,7 +132,7 @@ public final class CandidateCompiler {
         manifest.put("ir", Map.of(
                 "kind", ir.kind().yamlName(),
                 "language", ir.language()));
-        manifest.put("template", "SymbolRule");
+        manifest.put("template", template);
         manifest.put("ruleName", ruleName);
         manifest.put("enginePriority", priority);
         manifest.put("artifact", artifactFile);
@@ -137,33 +159,31 @@ public final class CandidateCompiler {
         return sb.toString();
     }
 
+    /** Hashes the canonical payload files; manifest.json carries this digest. */
     private static String sha256Of(
-            RuleIr ir, String artifactFile, String artifactXml, Map<String, byte[]> fixtures) {
+            String artifactFile, byte[] artifact, Map<String, byte[]> fixtures) {
         MessageDigest md;
         try {
             md = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
-        try {
-            // The digest covers the complete typed IR, not just its kind.
-            md.update(new ObjectMapper().writer().writeValueAsBytes(ir));
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalStateException("IR serialization failed", e);
-        }
-        md.update((byte) 0);
-        md.update(artifactFile.getBytes(StandardCharsets.UTF_8));
-        md.update((byte) 0);
-        md.update(artifactXml.getBytes(StandardCharsets.UTF_8));
-        md.update((byte) 0);
-        for (Map.Entry<String, byte[]> f : new TreeMap<>(fixtures).entrySet()) {
-            md.update(f.getKey().getBytes(StandardCharsets.UTF_8));
-            md.update(f.getValue());
+        Map<String, byte[]> payload = new TreeMap<>(fixtures);
+        payload.put(artifactFile, artifact);
+        for (Map.Entry<String, byte[]> f : payload.entrySet()) {
+            updatePart(md, f.getKey(), f.getValue());
         }
         StringBuilder hex = new StringBuilder();
         for (byte b : md.digest()) {
             hex.append(String.format("%02x", b));
         }
         return hex.toString();
+    }
+
+    private static void updatePart(MessageDigest digest, String path, byte[] bytes) {
+        digest.update(ByteBuffer.allocate(Long.BYTES).putLong(path.getBytes(StandardCharsets.UTF_8).length).array());
+        digest.update(path.getBytes(StandardCharsets.UTF_8));
+        digest.update(ByteBuffer.allocate(Long.BYTES).putLong(bytes.length).array());
+        digest.update(bytes);
     }
 }

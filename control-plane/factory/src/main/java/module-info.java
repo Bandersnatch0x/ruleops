@@ -11,5 +11,7 @@ module io.ruleops.factory {
   exports io.ruleops.factory.candidate;
   exports io.ruleops.factory.pmd;
   exports io.ruleops.factory.symbol;
+  exports io.ruleops.factory.existing;
+  exports io.ruleops.factory.structural;
   opens io.ruleops.factory.candidate to com.fasterxml.jackson.databind;
 }

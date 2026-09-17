@@ -1,0 +1,8 @@
+@prefix erf: <https://ruleops.io/ontology/core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+erf:Standard a rdfs:Class .
+erf:RuleIntent a rdfs:Class .
+erf:Finding a rdfs:Class .
+erf:hasRuleIntent a rdfs:Property ; rdfs:domain erf:Standard ; rdfs:range erf:RuleIntent .
+erf:hasFinding a rdfs:Property ; rdfs:domain erf:RuleIntent ; rdfs:range erf:Finding .

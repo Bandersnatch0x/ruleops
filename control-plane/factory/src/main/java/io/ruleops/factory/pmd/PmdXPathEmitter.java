@@ -25,10 +25,13 @@ public final class PmdXPathEmitter {
      *     runtime from the RuleIntent, never by the engine
      */
     public static String emit(RuleIr ir, String ruleName, int priority) {
-        if (ir.kind() != RuleIrKind.SYMBOL_RULE) {
-            throw new IllegalArgumentException("emitter handles SymbolRule only, got: " + ir.kind());
-        }
         RuleIr.Symbol symbol = ir.match().symbol();
+        if (ir.kind() == RuleIrKind.EXISTING_RULE) {
+            return emitExisting(symbol, ruleName);
+        }
+        if (ir.kind() != RuleIrKind.SYMBOL_RULE && ir.kind() != RuleIrKind.STRUCTURAL_RULE) {
+            throw new IllegalArgumentException("unsupported Phase 1 IR kind: " + ir.kind());
+        }
         // Inside CDATA no XML escaping applies; the XPath string literals are
         // guarded by doubling single quotes (XPath 3.1 escaping), and the
         // compiler validates owner/name/parameters to FQN-safe shapes so
@@ -42,7 +45,12 @@ public final class PmdXPathEmitter {
         // method name and exact parameter list through type resolution — the
         // SymbolRule semantics (owner + name + parameters).
         String signature = owner + "#" + name + "(" + String.join(",", paramsLiteral) + ")";
-        String xpath = String.format("//MethodCall[pmd-java:matchesSig('%s')]", signature);
+        String xpath = ir.kind() == RuleIrKind.STRUCTURAL_RULE
+                ? structuralXpath(symbol)
+                : String.format("//MethodCall[pmd-java:matchesSig('%s')]", signature);
+        String message = ir.kind() == RuleIrKind.STRUCTURAL_RULE
+                ? "forbidden structural pattern " + symbol.owner() + "." + symbol.name()
+                : "forbidden call to " + symbol.owner() + "." + symbol.name();
         StringBuilder sb = new StringBuilder();
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         sb.append("<ruleset name=\"erf-candidate\"\n");
@@ -56,7 +64,7 @@ public final class PmdXPathEmitter {
         sb.append("  <rule name=\"").append(xmlEscape(ruleName)).append("\"\n");
         sb.append("        language=\"java\"\n");
         sb.append("        message=\"")
-                .append(xmlEscape("forbidden call to " + symbol.owner() + "." + symbol.name()))
+                .append(xmlEscape(message))
                 .append("\"\n");
         sb.append("        class=\"net.sourceforge.pmd.lang.rule.xpath.XPathRule\">\n");
         sb.append("    <description>ERF candidate compiled from SymbolRule IR (template artifact)</description>\n");
@@ -70,6 +78,32 @@ public final class PmdXPathEmitter {
         sb.append("  </rule>\n");
         sb.append("</ruleset>\n");
         return sb.toString();
+    }
+
+    private static String emitExisting(RuleIr.Symbol symbol, String ruleName) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<ruleset name=\"erf-existing-candidate\" xmlns=\"http://pmd.sourceforge.net/ruleset/2.0.0\">\n");
+        sb.append("  <description>ERF ExistingRule candidate bound to PMD identity</description>\n");
+        String ref = symbol.name().startsWith("category/")
+                ? symbol.name()
+                : "category/java/" + symbol.name();
+        sb.append("  <rule ref=\"").append(xmlEscape(ref)).append("\" name=\"")
+                .append(xmlEscape(ruleName)).append("\">\n");
+        for (String parameter : symbol.parameters()) {
+            String[] named = parameter.split("=", 2);
+            sb.append("    <property name=\"").append(xmlEscape(named[0])).append("\" value=\"")
+                    .append(xmlEscape(named[1])).append("\"/>\n");
+        }
+        sb.append("  </rule>\n</ruleset>\n");
+        return sb.toString();
+    }
+
+    private static String structuralXpath(RuleIr.Symbol symbol) {
+        String node = symbol.owner();
+        String attribute = symbol.name();
+        if (symbol.parameters().isEmpty()) return "//" + node + "[@" + attribute + "]";
+        return "//" + node + "[@" + attribute + "='" + xpathLiteral(symbol.parameters().get(0)) + "']";
     }
 
     /**

@@ -33,7 +33,7 @@ public final class AuthoringValidator {
     private static final Set<String> SCENARIO_EXPECTED =
             Set.of("detectable", "needs-clarification", "unsupported");
     /** Symbol-rule node types; shared by intent semantics targets and IR match nodes. */
-    private static final Set<String> NODE_KINDS = Set.of("method-call");
+    private static final Set<String> NODE_KINDS = Set.of("method-call", "existing-rule", "structural-node");
     private static final Set<String> TARGET_INVOCATION = Set.of("static", "virtual", "any");
     private static final Set<String> UNRESOLVED_BEHAVIOR = Set.of("unknown", "fail", "ignore");
     private static final Set<String> SEVERITY = Set.of("advisory", "blocking");

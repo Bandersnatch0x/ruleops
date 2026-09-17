@@ -1,0 +1,6 @@
+@prefix erf: <https://ruleops.io/ontology/core#> .
+@prefix java: <https://ruleops.io/ontology/java#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+java:JavaRuleIntent a rdfs:Class ; rdfs:subClassOf erf:RuleIntent .
+java:javaAstCapability a rdfs:Class .
