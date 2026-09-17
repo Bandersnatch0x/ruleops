@@ -2,6 +2,17 @@
 name = "rf-runner"
 version = "0.1.0"
 edition = "2021"
+autobins = false
 
 [dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-host-client = { path = "../host-client" }
+erf-resolver-client = { path = "../resolver-client" }
+rf-gate = { path = "../gate" }
+prost = "0.13"
+sha2 = "0.10"
+thiserror = "2"
 
+[lib]
+name = "rf_runner"
+path = "src/main.rs"

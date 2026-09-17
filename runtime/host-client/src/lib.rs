@@ -16,6 +16,7 @@ use prost::Message;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::Duration;
+use sha2::{Digest, Sha256};
 
 pub const PROTOCOL_MAJOR: u32 = 0;
 pub const PROTOCOL_MINOR: u32 = 1;
@@ -74,7 +75,7 @@ pub struct HostHandle {
     child: Child,
     // Taken (dropped) on half-close; dropping stdin signals session end.
     writer: Option<FrameWriter<ChildStdin>>,
-    rx: Receiver<Result<pb::HostEnvelope, FrameError>>,
+    rx: Receiver<Result<(Vec<u8>, pb::HostEnvelope), FrameError>>,
     next_correlation: u64,
     limits: pb::Limits,
 }
@@ -93,17 +94,16 @@ impl Drop for HostHandle {
 fn spawn_reader(
     stdout: ChildStdout,
     max_frame_bytes: u64,
-) -> Receiver<Result<pb::HostEnvelope, FrameError>> {
+) -> Receiver<Result<(Vec<u8>, pb::HostEnvelope), FrameError>> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
         let mut reader = FrameReader::new(stdout, max_frame_bytes);
         loop {
-            let outcome = reader
-                .read_frame()
-                .and_then(|bytes| {
-                    pb::HostEnvelope::decode(bytes.as_slice())
-                        .map_err(|e| FrameError::MalformedProtobuf(e.to_string()))
-                });
+            let outcome = reader.read_frame().and_then(|bytes| {
+                let envelope = pb::HostEnvelope::decode(bytes.as_slice())
+                    .map_err(|e| FrameError::MalformedProtobuf(e.to_string()))?;
+                Ok((bytes, envelope))
+            });
             let terminal = matches!(&outcome, Err(FrameError::Eof))
                 || matches!(&outcome, Err(FrameError::MalformedProtobuf(_)));
             if tx.send(outcome).is_err() {
@@ -248,6 +248,7 @@ impl HostHandle {
             correlation,
             events_seen: 0,
             finished: false,
+            transcript: Sha256::new(),
         })
     }
 
@@ -291,7 +292,7 @@ impl HostHandle {
 
     /// Next envelope from the reader thread, applying the negotiated deadline
     /// (limits.deadline_ms; 0 = wait indefinitely).
-    fn next_envelope(&mut self) -> Result<pb::HostEnvelope, HostError> {
+    fn next_frame(&mut self) -> Result<(Vec<u8>, pb::HostEnvelope), HostError> {
         let outcome = if self.limits.deadline_ms > 0 {
             match self
                 .rx
@@ -309,10 +310,14 @@ impl HostHandle {
             self.rx.recv().map_err(|_| HostError::Transport(FrameError::Eof))?
         };
         match outcome {
-            Ok(envelope) => Ok(envelope),
+            Ok(frame) => Ok(frame),
             Err(FrameError::Eof) => Err(HostError::Transport(FrameError::Eof)),
             Err(other) => Err(HostError::Transport(other)),
         }
+    }
+
+    fn next_envelope(&mut self) -> Result<pb::HostEnvelope, HostError> {
+        Ok(self.next_frame()?.1)
     }
 
     fn next_correlation(&mut self) -> u64 {
@@ -364,6 +369,7 @@ pub struct ExecuteStream<'a> {
     correlation: u64,
     events_seen: u64,
     finished: bool,
+    transcript: Sha256,
 }
 
 #[derive(Debug)]
@@ -385,7 +391,11 @@ impl<'a> ExecuteStream<'a> {
             return Ok(None);
         }
         loop {
-            let frame = self.handle.next_envelope()?;
+            let (payload, frame) = self.handle.next_frame()?;
+            let mut delimited = Vec::with_capacity(4 + payload.len());
+            delimited.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+            delimited.extend_from_slice(&payload);
+            self.transcript.update(delimited);
             if frame.correlation_id != self.correlation {
                 return Err(HostError::Uncorrelatable {
                     correlation_id: frame.correlation_id,
@@ -439,6 +449,11 @@ impl<'a> ExecuteStream<'a> {
                 None => return Err(HostError::Violation("empty envelope".into())),
             }
         }
+    }
+
+    /// Digest of the exact length-delimited response frames received for execute.
+    pub fn transcript_digest(&self) -> Vec<u8> {
+        self.transcript.clone().finalize().to_vec()
     }
 
     /// Sends CancelRequest for this execute. Events keep flowing until the
