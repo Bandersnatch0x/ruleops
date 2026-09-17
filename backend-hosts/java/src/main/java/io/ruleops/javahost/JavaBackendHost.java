@@ -75,8 +75,10 @@ final class JavaBackendHost {
             try {
                 inbox.add(HostEnvelope.parseFrom(frame));
             } catch (IOException e) {
+                // Fatal contract violation: report the structured error and
+                // terminate the process (the dispatcher must not wait).
                 fail(ProtocolError.Code.MALFORMED_FRAME, e.getMessage());
-                return;
+                Runtime.getRuntime().exit(1);
             }
         }
     }
@@ -105,7 +107,10 @@ final class JavaBackendHost {
             case DESCRIBE -> describe(correlation);
             case PLAN -> plan(correlation, envelope.getPlan());
             case EXECUTE -> execute(correlation, envelope.getExecute());
-            case CANCEL -> sendCancelAck(correlation, true);
+            case CANCEL -> {
+                System.err.println("[host] cancel request received outside window");
+                sendCancelAck(correlation, true);
+            }
             case ERROR -> {
                 System.err.println("{\"level\":\"error\",\"code\":"
                         + envelope.getError().getCode() + "}");

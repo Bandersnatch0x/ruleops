@@ -8,6 +8,8 @@
 //!   where a client-side deadline can be observed to fire
 //! - `FAKE_SUPPORTED_MAJOR=<n>` — protocol major this fake accepts (default 0)
 //! - `FAKE_BAD_CORRELATION=1`  — answers Hello with a mismatched correlation id
+//! - `FAKE_CRASH_ON_EXECUTE=1` — exits during execute without Completion
+//! - `FAKE_FAIL_UNIT=<id>` — emits a failed UnitStatus for one unit
 //!
 //! Deterministic cancellation: with `FAKE_DELAY_MS` set, the fake sleeps
 //! before each unit's first event and then checks for a pending CancelRequest;
@@ -42,6 +44,8 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
     let bad_correlation = std::env::var("FAKE_BAD_CORRELATION").is_ok();
+    let crash_on_execute = std::env::var("FAKE_CRASH_ON_EXECUTE").is_ok();
+    let fail_unit = std::env::var("FAKE_FAIL_UNIT").ok();
 
     let (tx, rx) = channel::<Inbound>();
     let _reader = std::thread::spawn(move || {
@@ -70,6 +74,8 @@ fn main() {
         supported_major,
         delay_ms,
         bad_correlation,
+        crash_on_execute,
+        fail_unit,
         writer: &mut writer,
         rx: &rx,
         cancelled: false,
@@ -110,6 +116,8 @@ struct Session<'a> {
     supported_major: u32,
     delay_ms: u64,
     bad_correlation: bool,
+    crash_on_execute: bool,
+    fail_unit: Option<String>,
     writer: &'a mut FrameWriter<std::io::StdoutLock<'static>>,
     rx: &'a Receiver<Inbound>,
     cancelled: bool,
@@ -253,9 +261,27 @@ impl<'a> Session<'a> {
     }
 
     fn execute(&mut self, correlation: u64, unit_ids: Vec<String>) -> bool {
+        if self.crash_on_execute {
+            eprintln!("[fake-host] injected crash during execute");
+            exit(17);
+        }
         self.cancelled = false;
         let mut units_reported: u64 = 0;
         for unit_id in &unit_ids {
+            if self.fail_unit.as_deref() == Some(unit_id.as_str()) {
+                if !self.unit_status(
+                    correlation,
+                    unit_id,
+                    pb::UnitOutcome::Failed,
+                    pb::UnitFailureReason::UnitInternalError,
+                    "injected unit failure",
+                ) {
+                    return false;
+                }
+                units_reported += 1;
+                self.units_reported_total += 1;
+                continue;
+            }
             if self.delay_ms > 0 {
                 std::thread::sleep(Duration::from_millis(self.delay_ms));
                 if self.drain_cancel() {

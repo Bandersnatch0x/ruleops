@@ -86,6 +86,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erf-conformance"
+version = "0.1.0"
+dependencies = [
+ "erf-contracts",
+ "erf-framing",
+ "erf-host-client",
+ "prost",
+]
+
+[[package]]
 name = "erf-contracts"
 version = "0.1.0"
 dependencies = [
@@ -381,14 +391,31 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "rf-cli"
 version = "0.1.0"
+dependencies = [
+ "rf-gate",
+ "rf-runner",
+]
 
 [[package]]
 name = "rf-gate"
 version = "0.1.0"
+dependencies = [
+ "erf-contracts",
+ "sha2",
+]
 
 [[package]]
 name = "rf-runner"
 version = "0.1.0"
+dependencies = [
+ "erf-contracts",
+ "erf-host-client",
+ "erf-resolver-client",
+ "prost",
+ "rf-gate",
+ "sha2",
+ "thiserror",
+]
 
 [[package]]
 name = "rustix"

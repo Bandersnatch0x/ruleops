@@ -10,6 +10,30 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[test]
+fn node_fake_resolver_interoperates_with_rust_client() {
+    let dir = std::env::temp_dir().join(format!("erf-node-wr-{}", std::process::id()));
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(repo.join("src/main/java/app")).expect("mkdir");
+    std::fs::write(repo.join("src/main/java/app/A.java"), "class A {}\n").expect("write");
+
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../backend-hosts/node-fake/resolver.js");
+    let mut command = Command::new("node");
+    command.arg(script);
+    let config = config_with(&["ecosystem.static-layout"]);
+    let (mut resolver, ack) =
+        erf_resolver_client::ResolverHandle::spawn(&mut command, &config).expect("node handshake");
+    assert_eq!(ack.resolver_name, "erf-node-fake-resolver");
+    let descriptor = resolver.resolve(repo.to_str().expect("utf8")).expect("node resolve");
+    assert_eq!(descriptor.modules.len(), 1);
+    assert_eq!(descriptor.modules[0].files.len(), 1);
+    assert_eq!(descriptor.resolver_id, "erf-node-fake-resolver");
+    let completion = resolver.complete().expect("node completion");
+    assert_eq!(completion.status, wb::completion::Status::Completed as i32);
+    std::fs::remove_dir_all(dir).expect("cleanup");
+}
+
 fn fake_resolver_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_erf-fake-resolver"))
 }

@@ -6,6 +6,7 @@ members = [
     "runtime/gate",
     "runtime/host-client",
     "runtime/resolver-client",
+    "runtime/conformance",
     "contracts/rust",
     "backend-hosts/fake",
     "workspace-resolvers/fake",

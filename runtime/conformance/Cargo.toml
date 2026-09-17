@@ -1,0 +1,19 @@
+[package]
+name = "erf-conformance"
+version = "0.1.0"
+edition = "2021"
+description = "Versioned, backend-agnostic Contract Conformance Suite skeleton (spec §11.3): a runner driving any Backend Host executable through negotiation, framing robustness, execution accounting and failure-injection checks, bound to a suite version."
+
+[dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-framing = { path = "../framing" }
+erf-host-client = { path = "../host-client" }
+prost = "0.13"
+
+[lib]
+name = "erf_conformance"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-conformance"
+path = "src/main.rs"
