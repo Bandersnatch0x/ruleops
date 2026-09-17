@@ -1,0 +1,36 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-duplicate-literals
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-018
+    version: 1.0.0
+    scenario: avoid-duplicate-literals
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止重复使用相同字符串字面量
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/errorprone.xml/AvoidDuplicateLiterals
+      invocation: any
+      parameters: []
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "String a = \"duplicate\"; String b = \"duplicate\"; String c = \"duplicate\"; String d = \"duplicate\";"
+    good:
+      - "String a = \"one\"; String b = \"two\"; String c = \"three\";"
+  severity:
+    default: advisory

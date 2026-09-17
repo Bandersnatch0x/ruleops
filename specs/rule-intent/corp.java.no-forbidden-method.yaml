@@ -1,0 +1,36 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.no-forbidden-method
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-019
+    version: 1.0.0
+    scenario: no-forbidden-method
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止声明指定名称的方法
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: structural-node
+      declaringType: MethodDeclaration
+      method: Name
+      invocation: any
+      parameters: [forbidden]
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "void forbidden() {}"
+    good:
+      - "void permitted() {}"
+  severity:
+    default: advisory
