@@ -1,0 +1,52 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+
+metadata:
+  id: corp.java.no-system-exit
+  version: 1.0.0
+
+spec:
+  standard:
+    id: SEC-JAVA-017
+    version: 1.0.0
+    scenario: direct-system-exit
+
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+
+  intent:
+    statement: 禁止业务代码直接调用 java.lang.System.exit(int)
+
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+
+  semantics:
+    target:
+      kind: method-call
+      declaringType: java.lang.System
+      method: exit
+      invocation: static
+      parameters: [int]
+
+  requiredCapabilities:
+    - java.ast
+    - java.symbol-resolution
+
+  unresolved:
+    behavior: unknown
+
+  examples:
+    bad:
+      - "System.exit(1);"
+      - "java.lang.System.exit(0);"
+    good:
+      - "shutdownManager.shutdown();"
+    holdout:
+      - "java.lang.System.exit(2);"
+    nearMiss:
+      - "System.getSecurityManager();"
+
+  severity:
+    default: advisory

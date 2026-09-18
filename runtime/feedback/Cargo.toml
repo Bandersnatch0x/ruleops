@@ -1,0 +1,13 @@
+[package]
+name = "erf-feedback"
+version = "0.1.0"
+edition = "2021"
+description = "Digest-only feedback ledger and regression-case handoff"
+
+[dependencies]
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_feedback"
+path = "src/lib.rs"

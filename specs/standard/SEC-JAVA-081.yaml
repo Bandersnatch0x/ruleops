@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-081
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 文件路径必须阻断穿越
+  description: 外部输入形成文件路径时必须限制在授权根目录内
+  languages: [java]
+  scenarios:
+    - id: prevent-path-traversal
+      expected: needs-clarification

@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-multiple-unary-operators
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-031
+    version: 1.0.0
+    scenario: avoid-multiple-unary-operators
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 避免连续使用一元运算符
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/errorprone.xml/AvoidMultipleUnaryOperators
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["int value = - -1;"]
+    good: ["int value = 1;"]
+    holdout: ["boolean value = ! !true;"]
+    nearMiss: ["int value = -1;"]
+  severity:
+    default: advisory

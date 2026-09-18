@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-077
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: TLS 证书校验不得被关闭
+  description: 网络客户端不得关闭证书链验证或接受任意证书
+  languages: [java]
+  scenarios:
+    - id: preserve-tls-validation
+      expected: needs-clarification

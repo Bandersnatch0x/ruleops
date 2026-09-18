@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-114
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 控制圈复杂度
+  description: 方法的分支复杂度必须保持在团队约定范围内并可被拆分审查
+  languages: [java]
+  scenarios:
+    - id: bound-cyclomatic-complexity
+      expected: needs-clarification

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-040
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止从 finally 返回
+  description: finally 块不得以 return 改写 try 或 catch 的控制流结果
+  languages: [java]
+  scenarios:
+    - id: avoid-return-from-finally
+      expected: detectable

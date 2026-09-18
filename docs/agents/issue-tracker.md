@@ -1,45 +1,39 @@
-# Issue tracker: GitHub
+<!-- scaffold-stamp: agent-scaffold/templates/agents/issue-tracker.md@017b06f -->
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+# 票据惯例
 
-## Conventions
+本仓票据路由：GitHub Issues，使用 `gh` CLI。票与解票地图存于远端议题；后端命令明细只住本文档。
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+## 话术 → 动作映射
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+- 「发布到 tracker」「开个票」：`gh issue create --title "..." --body "..."`。
+- 「取相关票」「看看某票」：`gh issue view <number> --comments`。
+- 「记到票上」「留个记录」：`gh issue comment <number> --body "..."`。
+- 「关票」「这票完了」：`gh issue close <number> --comment "..."`。
+- 「有哪些开着的票」：`gh issue list --state open` 并按条件过滤。
 
-## Pull requests as a triage surface
+- 从 `git remote -v` 确认仓库；在仓根执行时 `gh` 自动推断仓库。
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+## 约定
 
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
+- 票只追加不改写：评论是带日期的 Log 条目；关票前先把决议写入 Log。
+- 「须人工」票先向用户提出一个决策问题，拍板后再实施。
+- PR 不作为需求分诊入口；必要时用对应的 PR 查看、评论、标签与关闭命令处理。
 
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
+## 来票分诊（triage）
 
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
+| 分诊角色 | 含义 | 本仓标签 |
+| --- | --- | --- |
+| 待评估 | 新来件，尚未分诊 | `needs-triage` |
+| 待补信息 | 复现或需求信息不足，等回帖 | `needs-info` |
+| 代理可接 | 界定清楚，代理可直接领做 | `ready-for-agent` |
+| 须人工 | 需用户拍板或人工操作 | `ready-for-human` |
+| 不修 | 决议不处理，理由入 Log | `wontfix` |
 
-## When a skill says "publish to the issue tracker"
+## 地图式解票操作
 
-Create a GitHub issue.
-
-## When a skill says "fetch the relevant ticket"
-
-Run `gh issue view <number> --comments`.
-
-## Wayfinding operations
-
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
-
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+- 地图是一张总览票，记录 Notes、Decisions-so-far 与 Fog；子票通过归属边挂在地图下，阻塞边声明先后。
+- 前沿是开放、无未闭阻塞且未认领的子票，按图序取首。
+- 认领是会话对票的首次写入：`gh issue edit <number> --add-assignee @me`。
+- 解决时追加答案 Log、关闭票，再把上下文指针回写地图的 Decisions-so-far。
+- 有原生依赖能力时，用 `gh api` 写入依赖边；否则在子票正文顶部写 `Blocked by: #<n>`。

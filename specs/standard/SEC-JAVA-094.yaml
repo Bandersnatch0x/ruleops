@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-094
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 文件权限必须遵循最小权限
+  description: 创建或导出的文件不得默认授予不必要的组或其他用户权限
+  languages: [java]
+  scenarios:
+    - id: least-file-permissions
+      expected: needs-clarification

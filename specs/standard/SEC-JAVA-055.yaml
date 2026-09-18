@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-055
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免把可变参数存入状态
+  description: 构造或方法参数中的可变对象在进入长期状态前必须完成防御性复制
+  languages: [java]
+  scenarios:
+    - id: avoid-storing-mutable-parameter
+      expected: needs-clarification

@@ -1,0 +1,10 @@
+# Rust
+/target/
+
+# Maven (Java modular monolith)
+control-plane/*/target/
+
+# Node
+node_modules/
+backend-hosts/java/target/
+backend-hosts/java/dependency-reduced-pom.xml

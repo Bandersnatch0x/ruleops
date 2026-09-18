@@ -1,0 +1,10 @@
+[package]
+name = "erf-trust"
+version = "0.1.0"
+edition = "2021"
+description = "Role-scoped verification of signed ERF assets"
+
+[dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+sha2 = "0.10"
+thiserror = "2"

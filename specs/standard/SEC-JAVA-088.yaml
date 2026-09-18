@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-088
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止记录敏感数据
+  description: 日志、异常和诊断信息不得输出令牌、密钥或认证材料
+  languages: [java]
+  scenarios:
+    - id: avoid-sensitive-data-logging
+      expected: needs-clarification

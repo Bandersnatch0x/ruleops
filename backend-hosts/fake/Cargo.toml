@@ -1,0 +1,21 @@
+[package]
+name = "erf-fake-host"
+version = "0.1.0"
+edition = "2021"
+description = "Reference fake Backend Host: executable reference implementation of the ERF Backend Host Contract v0 with canned responses and deterministic failure-injection knobs."
+
+[dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-framing = { path = "../../runtime/framing" }
+prost = "0.13"
+
+[lib]
+name = "erf_fake_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-fake-host"
+path = "src/main.rs"
+
+[dev-dependencies]
+erf-host-client = { path = "../../runtime/host-client" }

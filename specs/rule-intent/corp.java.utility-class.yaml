@@ -1,0 +1,40 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.utility-class
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-021
+    version: 1.0.0
+    scenario: utility-class
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 仅包含静态成员的类应声明为工具类
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/design.xml/UseUtilityClass
+      invocation: any
+      parameters: []
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "class Helpers { static void run() {} }"
+    good:
+      - "final class Helpers { private Helpers() {} static void run() {} }"
+    holdout:
+      - "class MoreHelpers { static void run() {} }"
+    nearMiss:
+      - "class HelpersWithState { int value; static void run() {} }"
+  severity:
+    default: advisory

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-025
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 禁止 legacyHook 扩展点
+  description: 业务类不得新增 legacyHook 扩展点
+  languages: [java]
+  scenarios:
+    - id: no-legacy-hook-method
+      expected: detectable

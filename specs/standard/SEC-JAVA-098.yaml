@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-098
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: HTTP 响应资源必须及时关闭
+  description: HTTP 客户端响应体和连接资源必须在所有分支及时释放
+  languages: [java]
+  scenarios:
+    - id: close-http-resources
+      expected: needs-clarification

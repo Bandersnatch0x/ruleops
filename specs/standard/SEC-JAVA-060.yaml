@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-060
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免浮点数精确相等比较
+  description: 浮点数业务判断应使用容差或明确的数值策略，不得依赖精确相等
+  languages: [java]
+  scenarios:
+    - id: avoid-floating-point-equality
+      expected: needs-clarification

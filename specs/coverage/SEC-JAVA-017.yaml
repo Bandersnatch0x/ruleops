@@ -1,0 +1,18 @@
+apiVersion: rulefactory.io/v1
+kind: CoverageLedger
+standard:
+  id: SEC-JAVA-017
+  version: 1.0.0
+coverage:
+  direct-system-exit:
+    category: EXISTING_RULE
+    status: covered
+    rule: corp.java.no-system-exit
+  reflective-invocation:
+    category: NOT_MACHINE_DETECTABLE
+    status: unsupported
+    rule: null
+  runtime-halt:
+    category: STANDARD_AMBIGUOUS
+    status: blocked
+    rule: null

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-069
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免循环内字符串拼接
+  description: 重复构造文本时应避免在循环中产生不必要的临时字符串
+  languages: [java]
+  scenarios:
+    - id: avoid-string-concat-in-loop
+      expected: detectable

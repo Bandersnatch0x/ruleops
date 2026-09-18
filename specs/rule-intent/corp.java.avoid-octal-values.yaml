@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-octal-values
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-030
+    version: 1.0.0
+    scenario: avoid-octal-values
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止使用八进制整数字面量
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/errorprone.xml/AvoidUsingOctalValues
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["int flags = 012;"]
+    good: ["int flags = 12;"]
+    holdout: ["int flags = 077;"]
+    nearMiss: ["int flags = 0x12;"]
+  severity:
+    default: advisory

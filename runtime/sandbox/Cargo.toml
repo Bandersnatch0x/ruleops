@@ -1,0 +1,9 @@
+[package]
+name = "erf-sandbox"
+version = "0.1.0"
+edition = "2021"
+description = "Fail-closed rootless OCI sandbox command builder"
+
+[dependencies]
+sha2 = "0.10"
+thiserror = "2"

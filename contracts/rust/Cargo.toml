@@ -1,0 +1,11 @@
+[package]
+name = "erf-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Generated Rust types for ERF versioned cross-process contracts (Backend Host, later Workspace Resolution)."
+
+[dependencies]
+prost = "0.13"
+
+[build-dependencies]
+prost-build = "0.13"

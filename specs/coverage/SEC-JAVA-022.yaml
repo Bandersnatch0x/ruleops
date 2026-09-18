@@ -1,0 +1,10 @@
+apiVersion: rulefactory.io/v1
+kind: CoverageLedger
+standard:
+  id: SEC-JAVA-022
+  version: 1.0.0
+coverage:
+  no-debug-method:
+    category: NEW_RULE_REQUIRED
+    status: partial
+    rule: null

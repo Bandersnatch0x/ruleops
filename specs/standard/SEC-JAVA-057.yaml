@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-057
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: compareTo 必须与 equals 一致
+  description: 可排序值的比较关系不得与相等关系产生不可解释的冲突
+  languages: [java]
+  scenarios:
+    - id: compareto-equals-consistency
+      expected: needs-clarification

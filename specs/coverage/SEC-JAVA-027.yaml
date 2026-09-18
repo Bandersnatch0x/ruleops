@@ -1,0 +1,10 @@
+apiVersion: rulefactory.io/v1
+kind: CoverageLedger
+standard:
+  id: SEC-JAVA-027
+  version: 1.0.0
+coverage:
+  avoid-hardcoded-ip:
+    category: EXISTING_RULE
+    status: covered
+    rule: corp.java.avoid-hardcoded-ip

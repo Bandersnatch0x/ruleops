@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-032
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 简化布尔三元表达式
+  description: 布尔值三元表达式应避免不必要的条件分支
+  languages: [java]
+  scenarios:
+    - id: simplify-ternary
+      expected: detectable

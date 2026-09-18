@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-063
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免不安全窄化转换
+  description: 从宽数值类型转换为窄类型前必须显式处理溢出或截断
+  languages: [java]
+  scenarios:
+    - id: avoid-unsafe-narrowing-conversion
+      expected: needs-clarification

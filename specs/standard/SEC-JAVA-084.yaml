@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-084
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: LDAP 查询必须参数化
+  description: LDAP 过滤器和 DN 不得直接拼接未经编码的外部输入
+  languages: [java]
+  scenarios:
+    - id: prevent-ldap-injection
+      expected: needs-clarification

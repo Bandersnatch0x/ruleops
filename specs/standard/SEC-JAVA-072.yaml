@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-072
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免无效正则表达式
+  description: 正则表达式中的无效分组、转义和不可达分支必须在发布前清除
+  languages: [java]
+  scenarios:
+    - id: avoid-invalid-regex
+      expected: detectable

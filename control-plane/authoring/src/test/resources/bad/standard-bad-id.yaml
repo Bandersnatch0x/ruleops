@@ -1,0 +1,15 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+
+metadata:
+  id: java-sec-017
+  version: 1.0.0
+  owner: security-platform
+
+spec:
+  title: t
+  description: d
+  languages: [java]
+  scenarios:
+    - id: s1
+      expected: detectable

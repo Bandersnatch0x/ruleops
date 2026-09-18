@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'EOF'
+usage:
+  rf standard validate FILE...
+  rf rule validate FILE...
+  rf rule generate INTENT.yaml OUTPUT_DIR
+  rf rule test CANDIDATE_DIR OUTPUT_DIR
+  rf coverage analyze OUTPUT_DIR
+  rf pilot report OUTPUT_DIR
+  rf scan --repo-root PATH --host COMMAND (--rule-id ID | --candidate DIR) [OPTIONS]
+
+The current V0.1 CLI delegates to the verified repository entrypoints.
+Release promotion/revocation, gate authority, feedback submission, and
+exception requests are not enabled by this local slice.
+EOF
+}
+
+die_usage() {
+  echo "error: $*" >&2
+  usage >&2
+  exit 2
+}
+
+[ $# -gt 0 ] || { usage >&2; exit 2; }
+if [ "$1" = "--help" ] || [ "$1" = "help" ]; then
+  usage
+  exit 0
+fi
+
+area="$1"
+shift
+case "$area" in
+  standard)
+    [ "${1:-}" = "validate" ] || die_usage "supported standard command is validate"
+    shift
+    [ $# -ge 1 ] || die_usage "standard validate requires FILE..."
+    exec "$repo_root/scripts/authoring-validate.sh" "$@"
+    ;;
+  rule)
+    action="${1:-}"
+    shift || true
+    case "$action" in
+      validate)
+        [ $# -ge 1 ] || die_usage "rule validate requires FILE..."
+        exec "$repo_root/scripts/authoring-validate.sh" "$@"
+        ;;
+      generate)
+        [ $# -eq 2 ] || die_usage "rule generate requires INTENT.yaml OUTPUT_DIR"
+        exec "$repo_root/scripts/candidate-compile.sh" "$@"
+        ;;
+      test)
+        [ $# -eq 2 ] || die_usage "rule test requires CANDIDATE_DIR OUTPUT_DIR"
+        exec "$repo_root/scripts/candidate-verify.sh" "$@"
+        ;;
+      *)
+        die_usage "unsupported rule command: ${action:-<missing>}"
+        ;;
+    esac
+    ;;
+  coverage)
+    [ "${1:-}" = "analyze" ] || die_usage "supported coverage command is analyze"
+    shift
+    [ $# -eq 1 ] || die_usage "coverage analyze requires OUTPUT_DIR"
+    exec "$repo_root/scripts/phase4-coverage-ledger.sh" "$1"
+    ;;
+  pilot)
+    [ "${1:-}" = "report" ] || die_usage "supported pilot command is report"
+    shift
+    [ $# -eq 1 ] || die_usage "pilot report requires OUTPUT_DIR"
+    exec "$repo_root/scripts/phase4-pilot-report.sh" "$1"
+    ;;
+  scan)
+    exec cargo run --quiet -p rf-cli -- scan "$@"
+    ;;
+  release|gate|feedback|exception)
+    die_usage "$area command is not enabled in the local V0.1 slice"
+    ;;
+  *)
+    die_usage "unknown command area: $area"
+    ;;
+esac

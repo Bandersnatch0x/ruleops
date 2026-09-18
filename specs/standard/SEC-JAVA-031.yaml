@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-031
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 避免连续一元运算符
+  description: 业务代码不得使用难以阅读的连续一元运算符
+  languages: [java]
+  scenarios:
+    - id: avoid-multiple-unary-operators
+      expected: detectable

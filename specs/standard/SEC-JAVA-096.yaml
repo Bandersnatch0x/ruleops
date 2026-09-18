@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-096
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 流资源必须及时关闭
+  description: 输入输出流离开作用域前必须通过结构化资源管理可靠关闭
+  languages: [java]
+  scenarios:
+    - id: close-stream-resources
+      expected: detectable

@@ -1,0 +1,26 @@
+[package]
+name = "erf-trusted-ci"
+version = "0.1.0"
+edition = "2021"
+description = "Trusted CI coordinator from real runner scans through TrustedContext to transport-neutral status"
+
+[dependencies]
+erf-bootstrap = { path = "../bootstrap" }
+erf-conformance = { path = "../conformance" }
+erf-packs = { path = "../packs" }
+erf-status = { path = "../status" }
+erf-trust = { path = "../trust" }
+erf-trusted-context = { path = "../trusted-context" }
+erf-unified-result = { path = "../unified-result" }
+rf-gate = { path = "../gate" }
+rf-runner = { path = "../rf-runner" }
+thiserror = "2"
+
+[lib]
+name = "erf_trusted_ci"
+path = "src/lib.rs"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+erf-host-client = { path = "../host-client" }
+sha2 = "0.10"

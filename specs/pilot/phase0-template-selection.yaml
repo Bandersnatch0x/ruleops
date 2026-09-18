@@ -1,0 +1,220 @@
+apiVersion: rulefactory.io/v1
+kind: Phase0TemplateSelectionEvidence
+metadata:
+  id: phase0-java-candidate-template-selection-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+scope:
+  language: java
+  standardsInventory: 100
+  candidateRuleIntents: 20
+  candidateScenarios: 20
+  sourceCoverageLedger: specs/coverage/SEC-JAVA-017..036.yaml
+
+summary:
+  categoryCounts:
+    EXISTING_RULE: 14
+    EXISTING_RULE_NOT_ENABLED: 0
+    EXISTING_RULE_UNSUITABLE: 0
+    NEW_RULE_REQUIRED: 6
+    ENVIRONMENT_GAP: 0
+    BACKEND_CAPABILITY_GAP: 0
+    STANDARD_AMBIGUOUS: 0
+    NOT_MACHINE_DETECTABLE: 0
+  gapSummary:
+    configurationGap: 0
+    environmentGap: 0
+    backendCapabilityGap: 0
+    standardAmbiguous: 0
+    notMachineDetectable: 0
+  templateCounts:
+    ExistingRule: 13
+    StructuralRule: 6
+    SymbolRule: 1
+
+selection:
+  - id: corp.java.no-system-exit
+    standard: SEC-JAVA-017
+    scenario: direct-system-exit
+    category: EXISTING_RULE
+    rule: corp.java.no-system-exit
+    template: SymbolRule
+    sourceCoverage: specs/coverage/SEC-JAVA-017.yaml
+    rationale: method-call target requires the bounded symbol-resolution path
+  - id: corp.java.avoid-duplicate-literals
+    standard: SEC-JAVA-018
+    scenario: avoid-duplicate-literals
+    category: EXISTING_RULE
+    rule: corp.java.avoid-duplicate-literals
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-018.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.no-forbidden-method
+    standard: SEC-JAVA-019
+    scenario: no-forbidden-method
+    category: NEW_RULE_REQUIRED
+    rule: null
+    template: StructuralRule
+    sourceCoverage: specs/coverage/SEC-JAVA-019.yaml
+    rationale: bounded structural-node target needs the v0 structural template
+  - id: corp.java.avoid-object-allocation-in-loop
+    standard: SEC-JAVA-020
+    scenario: avoid-object-allocation-in-loop
+    category: EXISTING_RULE
+    rule: corp.java.avoid-object-allocation-in-loop
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-020.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.utility-class
+    standard: SEC-JAVA-021
+    scenario: utility-class
+    category: EXISTING_RULE
+    rule: corp.java.utility-class
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-021.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.no-debug-method
+    standard: SEC-JAVA-022
+    scenario: no-debug-method
+    category: NEW_RULE_REQUIRED
+    rule: null
+    template: StructuralRule
+    sourceCoverage: specs/coverage/SEC-JAVA-022.yaml
+    rationale: bounded structural-node target needs the v0 structural template
+  - id: corp.java.no-finalize-method
+    standard: SEC-JAVA-023
+    scenario: no-finalize-method
+    category: NEW_RULE_REQUIRED
+    rule: null
+    template: StructuralRule
+    sourceCoverage: specs/coverage/SEC-JAVA-023.yaml
+    rationale: bounded structural-node target needs the v0 structural template
+  - id: corp.java.no-clone-method
+    standard: SEC-JAVA-024
+    scenario: no-clone-method
+    category: NEW_RULE_REQUIRED
+    rule: null
+    template: StructuralRule
+    sourceCoverage: specs/coverage/SEC-JAVA-024.yaml
+    rationale: bounded structural-node target needs the v0 structural template
+  - id: corp.java.no-legacy-hook-method
+    standard: SEC-JAVA-025
+    scenario: no-legacy-hook-method
+    category: NEW_RULE_REQUIRED
+    rule: null
+    template: StructuralRule
+    sourceCoverage: specs/coverage/SEC-JAVA-025.yaml
+    rationale: bounded structural-node target needs the v0 structural template
+  - id: corp.java.no-serialize-method
+    standard: SEC-JAVA-026
+    scenario: no-serialize-method
+    category: NEW_RULE_REQUIRED
+    rule: null
+    template: StructuralRule
+    sourceCoverage: specs/coverage/SEC-JAVA-026.yaml
+    rationale: bounded structural-node target needs the v0 structural template
+  - id: corp.java.avoid-hardcoded-ip
+    standard: SEC-JAVA-027
+    scenario: avoid-hardcoded-ip
+    category: EXISTING_RULE
+    rule: corp.java.avoid-hardcoded-ip
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-027.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-explicit-gc
+    standard: SEC-JAVA-028
+    scenario: avoid-explicit-gc
+    category: EXISTING_RULE
+    rule: corp.java.avoid-explicit-gc
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-028.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-throwing-null-pointer-exception
+    standard: SEC-JAVA-029
+    scenario: avoid-throwing-null-pointer-exception
+    category: EXISTING_RULE
+    rule: corp.java.avoid-throwing-null-pointer-exception
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-029.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-octal-values
+    standard: SEC-JAVA-030
+    scenario: avoid-octal-values
+    category: EXISTING_RULE
+    rule: corp.java.avoid-octal-values
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-030.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-multiple-unary-operators
+    standard: SEC-JAVA-031
+    scenario: avoid-multiple-unary-operators
+    category: EXISTING_RULE
+    rule: corp.java.avoid-multiple-unary-operators
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-031.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.simplify-ternary
+    standard: SEC-JAVA-032
+    scenario: simplify-ternary
+    category: EXISTING_RULE
+    rule: corp.java.simplify-ternary
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-032.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-useless-parentheses
+    standard: SEC-JAVA-033
+    scenario: avoid-useless-parentheses
+    category: EXISTING_RULE
+    rule: corp.java.avoid-useless-parentheses
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-033.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-wrapper-constructor
+    standard: SEC-JAVA-034
+    scenario: avoid-wrapper-constructor
+    category: EXISTING_RULE
+    rule: corp.java.avoid-wrapper-constructor
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-034.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-decimal-bigdecimal-constructor
+    standard: SEC-JAVA-035
+    scenario: avoid-decimal-bigdecimal-constructor
+    category: EXISTING_RULE
+    rule: corp.java.avoid-decimal-bigdecimal-constructor
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-035.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+  - id: corp.java.avoid-idempotent-operation
+    standard: SEC-JAVA-036
+    scenario: avoid-idempotent-operation
+    category: EXISTING_RULE
+    rule: corp.java.avoid-idempotent-operation
+    template: ExistingRule
+    sourceCoverage: specs/coverage/SEC-JAVA-036.yaml
+    rationale: existing PMD identity is preserved as an ExistingRule binding
+
+adjacentGapScenarios:
+  - standard: SEC-JAVA-017
+    scenario: runtime-halt
+    category: STANDARD_AMBIGUOUS
+    status: blocked
+    template: NONE
+    rationale: standard wording requires human clarification before authoring
+  - standard: SEC-JAVA-017
+    scenario: reflective-invocation
+    category: NOT_MACHINE_DETECTABLE
+    status: unsupported
+    template: NONE
+    rationale: the current Java source backend does not claim reflective coverage
+
+selectionDecision:
+  chosenTemplates: [ExistingRule, StructuralRule, SymbolRule]
+  maximumAllowed: 3
+  decision: retain-three-template-boundary
+  rationale: the selected paths exercise PMD identity reuse, bounded AST structure, and symbol-aware method calls without introducing a fourth DSL
+  nonGoals:
+    - configuration gaps are not silently treated as new rules
+    - environment gaps are not resolved by authoring changes
+    - adjacent ambiguous or unsupported scenarios are not promoted

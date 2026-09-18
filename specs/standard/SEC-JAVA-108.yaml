@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-108
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止未使用 import
+  description: 生产代码不得保留无效或未使用的导入声明
+  languages: [java]
+  scenarios:
+    - id: avoid-unused-import
+      expected: detectable

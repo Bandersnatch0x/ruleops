@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-036
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 避免幂等赋值
+  description: 业务代码不得将变量无意义地赋值给自身
+  languages: [java]
+  scenarios:
+    - id: avoid-idempotent-operation
+      expected: detectable

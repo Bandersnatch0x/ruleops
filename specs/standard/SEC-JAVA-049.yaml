@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-049
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免不安全发布
+  description: 共享对象不得在构造完成前通过 this 或可见字段暴露给其他线程
+  languages: [java]
+  scenarios:
+    - id: avoid-unsafe-publication
+      expected: needs-clarification

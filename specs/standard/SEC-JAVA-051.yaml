@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-051
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免公开可变字段
+  description: 公共 API 不得直接暴露可变实例字段供外部修改
+  languages: [java]
+  scenarios:
+    - id: avoid-public-mutable-field
+      expected: detectable

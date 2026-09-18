@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-029
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止直接抛出 NullPointerException
+  description: 业务代码应使用具有语义的异常类型而非直接构造空指针异常
+  languages: [java]
+  scenarios:
+    - id: avoid-throwing-null-pointer-exception
+      expected: detectable

@@ -1,0 +1,24 @@
+[package]
+name = "erf-trusted-context"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-asset trusted execution closure verification"
+
+[dependencies]
+erf-bootstrap = { path = "../bootstrap" }
+erf-conformance = { path = "../conformance" }
+erf-packs = { path = "../packs" }
+erf-trust = { path = "../trust" }
+rf-gate = { path = "../gate" }
+rf-runner = { path = "../rf-runner" }
+thiserror = "2"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+erf-host-client = { path = "../host-client" }
+erf-status = { path = "../status" }
+sha2 = "0.10"
+
+[lib]
+name = "erf_trusted_context"
+path = "src/lib.rs"

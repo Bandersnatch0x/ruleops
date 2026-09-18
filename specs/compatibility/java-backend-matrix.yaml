@@ -1,0 +1,33 @@
+apiVersion: rulefactory.io/v1
+kind: BackendCompatibilityMatrix
+metadata:
+  id: java-backend-v0
+  version: 1.0.0
+trust:
+  level: LOCAL_UNATTESTED
+  authority: SHADOW
+protocol:
+  major: 0
+  minor: 1
+java:
+  sourceLevels: ["11", "17", "21"]
+  backends:
+    - backendId: pmd-java
+      engineVersion: 7.9.0
+      mode: source
+      requiredCapabilities: [java.ast, java.symbol-resolution]
+      state: VERIFIED
+      verificationEntrypoint: scripts/java-host-e2e.sh
+    - backendId: spotbugs-java
+      engineVersion: 4.9.8
+      mode: bytecode
+      requiredCapabilities: [java.bytecode]
+      state: VERIFIED
+      verificationEntrypoint: scripts/java-host-e2e.sh
+  untested:
+    - backendId: pmd-java
+      engineVersion: other
+      reason: no dependency or conformance evidence is present in this repository
+    - backendId: spotbugs-java
+      engineVersion: other
+      reason: no dependency or conformance evidence is present in this repository

@@ -1,0 +1,10 @@
+apiVersion: rulefactory.io/v1
+kind: CoverageLedger
+standard:
+  id: SEC-JAVA-032
+  version: 1.0.0
+coverage:
+  simplify-ternary:
+    category: EXISTING_RULE
+    status: covered
+    rule: corp.java.simplify-ternary

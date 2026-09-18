@@ -1,0 +1,10 @@
+apiVersion: rulefactory.io/v1
+kind: CoverageLedger
+standard:
+  id: SEC-JAVA-036
+  version: 1.0.0
+coverage:
+  avoid-idempotent-operation:
+    category: EXISTING_RULE
+    status: covered
+    rule: corp.java.avoid-idempotent-operation

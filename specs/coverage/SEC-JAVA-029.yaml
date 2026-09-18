@@ -1,0 +1,10 @@
+apiVersion: rulefactory.io/v1
+kind: CoverageLedger
+standard:
+  id: SEC-JAVA-029
+  version: 1.0.0
+coverage:
+  avoid-throwing-null-pointer-exception:
+    category: EXISTING_RULE
+    status: covered
+    rule: corp.java.avoid-throwing-null-pointer-exception

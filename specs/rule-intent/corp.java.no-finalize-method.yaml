@@ -1,0 +1,40 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.no-finalize-method
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-023
+    version: 1.0.0
+    scenario: no-finalize-method
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止声明 finalize 方法
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: structural-node
+      declaringType: MethodDeclaration
+      method: Name
+      invocation: any
+      parameters: [finalize]
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "protected void finalize() throws Throwable {}"
+    good:
+      - "void close() {}"
+    holdout:
+      - "protected void finalize() throws Throwable {}"
+    nearMiss:
+      - "void finalizer() {}"
+  severity:
+    default: advisory

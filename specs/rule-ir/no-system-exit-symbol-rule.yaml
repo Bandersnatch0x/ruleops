@@ -1,0 +1,15 @@
+apiVersion: rulefactory.io/v1
+kind: SymbolRule
+language: java
+
+match:
+  node: method-call
+  symbol:
+    owner: java.lang.System
+    name: exit
+    parameters: [int]
+
+scope:
+  sourceSets: [main]
+
+onUnresolved: unknown

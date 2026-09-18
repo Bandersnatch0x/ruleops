@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-112
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止不可能条件
+  description: 条件判断不得依赖静态上不可能成立的比较或类型分支
+  languages: [java]
+  scenarios:
+    - id: avoid-impossible-condition
+      expected: detectable

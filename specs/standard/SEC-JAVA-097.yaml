@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-097
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 数据库资源必须及时关闭
+  description: 连接、语句和结果集必须通过结构化资源管理可靠关闭
+  languages: [java]
+  scenarios:
+    - id: close-database-resources
+      expected: detectable

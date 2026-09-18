@@ -1,0 +1,24 @@
+[package]
+name = "erf-static-resolver"
+version = "0.1.0"
+edition = "2021"
+description = "SAFE_STATIC Maven and Gradle Workspace Resolver adapters"
+
+[dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-framing = { path = "../../runtime/framing" }
+prost = "0.13"
+sha2 = "0.10"
+thiserror = "1"
+
+[lib]
+name = "erf_static_resolver"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-static-resolver"
+path = "src/main.rs"
+
+[dev-dependencies]
+erf-contracts = { path = "../../contracts/rust" }
+erf-resolver-client = { path = "../../runtime/resolver-client" }

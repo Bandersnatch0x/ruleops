@@ -1,0 +1,108 @@
+apiVersion: rulefactory.io/v1
+kind: PilotMetricsBaseline
+metadata:
+  id: pilot-metrics-baseline-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  status: DEFINITION_ONLY
+  authority: SHADOW
+  language: java
+  standardsInventory: 100
+  candidateRuleIntents: 20
+  shadowRepositories: 3
+  observation:
+    window: HUMAN_INPUT_REQUIRED
+    sample: HUMAN_INPUT_REQUIRED
+    acceptanceThresholds: HUMAN_INPUT_REQUIRED
+  disclosure: DIGEST_ONLY
+  metrics:
+    - id: new-violation-trend
+      record: run
+      field: new_finding_count
+      unit: findings
+      aggregation: per-run-and-window-delta
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: historical-debt-trend
+      record: run
+      field: historical_finding_count
+      unit: findings
+      aggregation: per-run-and-window-delta
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: complete-rate
+      record: run
+      field: complete
+      unit: ratio
+      aggregation: complete-runs-divided-by-run-count
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: inconclusive-rate
+      record: run
+      field: decision
+      unit: ratio
+      aggregation: inconclusive-runs-divided-by-run-count
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: false-positive-regression
+      record: feedback
+      field: regression_outcome
+      unit: classified-feedback
+      aggregation: outcome-count-by-observation-window
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: rollback-count
+      record: governance
+      field: rollback_count
+      unit: events
+      aggregation: latest-governance-snapshot
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: active-exception-count
+      record: governance
+      field: active_exception_count
+      unit: exceptions
+      aggregation: latest-governance-snapshot
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: oldest-active-exception-age
+      record: governance
+      field: oldest_active_exception_age_secs
+      unit: seconds
+      aggregation: latest-governance-snapshot
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: scan-latency
+      record: run
+      field: latency_millis
+      unit: milliseconds
+      aggregation: count-sum-max-and-window-distribution
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: resource-consumption
+      record: run
+      field: peak_memory_bytes
+      unit: bytes
+      aggregation: max-and-window-distribution
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+    - id: false-pass-count
+      record: run
+      field: trust-and-decision
+      unit: events
+      aggregation: independently-injected-invalid-pass-count
+      missingData: INCONCLUSIVE
+      disclosure: DIGEST_ONLY
+
+boundaries:
+  supportedRecordTypes: [run, feedback, governance]
+  unsupportedOutcomeClaims:
+    - author-active-time
+    - precision
+    - recall
+    - live-pilot-outcome
+  missingDataBehavior: no-data-or-invalid-data-is-not-a-pass
+  persistence: local-journal-only
+  externalTransport: none

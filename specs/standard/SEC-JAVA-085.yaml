@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-085
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 日志内容必须防注入
+  description: 外部输入进入日志前必须避免伪造换行、字段或控制序列
+  languages: [java]
+  scenarios:
+    - id: prevent-log-injection
+      expected: needs-clarification

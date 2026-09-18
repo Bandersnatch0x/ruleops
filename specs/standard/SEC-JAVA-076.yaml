@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-076
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止硬编码密钥与凭据
+  description: 源码、配置模板和测试固定值不得包含可复用的真实密钥或凭据
+  languages: [java]
+  scenarios:
+    - id: avoid-hardcoded-secret
+      expected: needs-clarification

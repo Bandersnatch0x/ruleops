@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-048
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免不安全的双重检查锁
+  description: 延迟初始化的并发访问必须满足可见性与安全发布要求
+  languages: [java]
+  scenarios:
+    - id: avoid-unsafe-double-checked-locking
+      expected: detectable

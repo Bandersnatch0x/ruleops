@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-061
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: BigDecimal 比较必须明确尺度语义
+  description: 金额或精度值比较必须明确数值相等与尺度相等的业务含义
+  languages: [java]
+  scenarios:
+    - id: explicit-bigdecimal-comparison
+      expected: needs-clarification

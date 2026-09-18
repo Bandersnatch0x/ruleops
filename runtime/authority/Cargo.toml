@@ -1,0 +1,15 @@
+[package]
+name = "erf-authority"
+version = "0.1.0"
+edition = "2021"
+description = "Transport-neutral protected-branch authority boundary"
+
+[dependencies]
+erf-unified-result = { path = "../unified-result" }
+rf-gate = { path = "../gate" }
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_authority"
+path = "src/lib.rs"

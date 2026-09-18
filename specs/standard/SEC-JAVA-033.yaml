@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-033
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 避免无效括号
+  description: 业务代码不得保留不改变语义的多余括号
+  languages: [java]
+  scenarios:
+    - id: avoid-useless-parentheses
+      expected: detectable

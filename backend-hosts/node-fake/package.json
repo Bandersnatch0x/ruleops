@@ -1,0 +1,6 @@
+{
+  "name": "erf-node-fake-host",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dependency-free Node.js reference implementation of the ERF v0 contracts"
+}

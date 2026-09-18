@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-105
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止隐式 switch 穿透
+  description: switch 分支必须通过明确的 break、return 或注释表达穿透意图
+  languages: [java]
+  scenarios:
+    - id: avoid-switch-fallthrough
+      expected: detectable

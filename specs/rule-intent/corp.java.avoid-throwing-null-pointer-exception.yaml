@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-throwing-null-pointer-exception
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-029
+    version: 1.0.0
+    scenario: avoid-throwing-null-pointer-exception
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止直接抛出 NullPointerException
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/design.xml/AvoidThrowingNullPointerException
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["throw new NullPointerException();"]
+    good: ["throw new IllegalArgumentException();"]
+    holdout: ["throw new NullPointerException(\"missing\");"]
+    nearMiss: ["return;"]
+  severity:
+    default: advisory

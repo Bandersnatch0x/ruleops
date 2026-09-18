@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-082
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止外部输入驱动命令执行
+  description: 操作系统命令参数不得由未经约束的外部输入直接拼接
+  languages: [java]
+  scenarios:
+    - id: prevent-command-injection
+      expected: needs-clarification

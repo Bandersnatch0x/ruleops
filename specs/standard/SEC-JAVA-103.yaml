@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-103
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 可空返回值必须有契约
+  description: 公共 API 的可空返回值必须通过文档或类型约定显式表达
+  languages: [java]
+  scenarios:
+    - id: explicit-null-return-contract
+      expected: needs-clarification

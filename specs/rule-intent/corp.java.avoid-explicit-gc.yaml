@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-explicit-gc
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-028
+    version: 1.0.0
+    scenario: avoid-explicit-gc
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止显式调用垃圾回收 API
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/errorprone.xml/DoNotCallGarbageCollectionExplicitly
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["System.gc();"]
+    good: ["System.currentTimeMillis();"]
+    holdout: ["System.gc();"]
+    nearMiss: ["System.currentTimeMillis();"]
+  severity:
+    default: advisory

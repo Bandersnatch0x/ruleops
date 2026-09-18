@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-053
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免暴露内部集合
+  description: 返回集合时必须避免把内部可变集合直接暴露给调用方
+  languages: [java]
+  scenarios:
+    - id: avoid-exposed-internal-collection
+      expected: detectable

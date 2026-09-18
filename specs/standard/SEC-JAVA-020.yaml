@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-020
+  version: 1.0.0
+  owner: performance-platform
+spec:
+  title: 避免循环内对象创建
+  description: 循环体内不得重复创建可复用对象
+  languages: [java]
+  scenarios:
+    - id: avoid-object-allocation-in-loop
+      expected: detectable

@@ -1,0 +1,40 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.no-clone-method
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-024
+    version: 1.0.0
+    scenario: no-clone-method
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止业务类声明 clone 方法
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: structural-node
+      declaringType: MethodDeclaration
+      method: Name
+      invocation: any
+      parameters: [clone]
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "Object clone() { return this; }"
+    good:
+      - "Object copy() { return this; }"
+    holdout:
+      - "Object clone() { return this; }"
+    nearMiss:
+      - "Object cloneValue() { return this; }"
+  severity:
+    default: advisory

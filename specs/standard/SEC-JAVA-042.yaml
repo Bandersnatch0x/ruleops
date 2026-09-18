@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-042
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止从 finally 抛出无关异常
+  description: finally 清理失败必须保留原始失败上下文，不得无条件覆盖主流程异常
+  languages: [java]
+  scenarios:
+    - id: avoid-throw-from-finally
+      expected: needs-clarification

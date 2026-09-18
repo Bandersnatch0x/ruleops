@@ -1,0 +1,40 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.no-debug-method
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-022
+    version: 1.0.0
+    scenario: no-debug-method
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止生产类声明 debug 方法
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: structural-node
+      declaringType: MethodDeclaration
+      method: Name
+      invocation: any
+      parameters: [debug]
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "void debug() {}"
+    good:
+      - "void trace() {}"
+    holdout:
+      - "void debug() {}"
+    nearMiss:
+      - "void debugger() {}"
+  severity:
+    default: advisory

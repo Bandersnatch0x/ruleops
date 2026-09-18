@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-037
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免空 catch 块
+  description: 业务代码不得静默吞掉异常，catch 块必须记录、转换或重新抛出异常
+  languages: [java]
+  scenarios:
+    - id: avoid-empty-catch
+      expected: detectable

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-075
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 安全敏感随机数必须使用密码学随机源
+  description: 令牌、密钥和安全挑战不得使用可预测的普通随机数生成器
+  languages: [java]
+  scenarios:
+    - id: use-secure-random
+      expected: needs-clarification

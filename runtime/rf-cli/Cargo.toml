@@ -1,0 +1,10 @@
+[package]
+name = "rf-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+erf-host-client = { path = "../host-client" }
+erf-resolver-client = { path = "../resolver-client" }
+rf-runner = { path = "../rf-runner" }
+rf-gate = { path = "../gate" }

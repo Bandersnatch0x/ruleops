@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-079
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止不安全反序列化
+  description: 外部输入不得直接进入未约束类型的 Java 反序列化路径
+  languages: [java]
+  scenarios:
+    - id: avoid-insecure-deserialization
+      expected: needs-clarification

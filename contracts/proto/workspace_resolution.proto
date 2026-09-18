@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+// ERF Workspace Resolution Contract v0 (spec §21, ADR-0050).
+//
+// Independent of the Backend Host schema on purpose: the Runtime owns a
+// separate Workspace Resolver Client, and resolver messages must never
+// masquerade as host describe/plan/observation messages. Transport and
+// envelope semantics (framed stdio, correlation, limits, additive evolution)
+// mirror erf.backend.v0 and reuse the same framing rules (ADR-0030).
+//
+// Resolvers run as process-isolated packs (ADR-0050), resolve project
+// structure facts without executing build scripts, and produce an immutable,
+// content-addressed WorkspaceDescriptor.
+package erf.workspace.v0;
+
+option java_multiple_files = true;
+
+// Runtime -> Resolver. First frame; semantics identical to Backend Hello.
+message Hello {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  repeated string required_capabilities = 3;
+  repeated string optional_capabilities = 4;
+  Limits limits = 5;
+}
+
+// Resolver -> Runtime.
+message HelloAck {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  string resolver_name = 3;
+  string resolver_version = 4;
+  // Capability facts, e.g. "ecosystem.maven"=true. Required capabilities must
+  // appear here or the resolver fails the handshake explicitly.
+  map<string, bool> facts = 5;
+  Limits accepted_limits = 6;
+}
+
+message Limits {
+  uint64 max_frame_bytes = 1;
+  // Field 2 is reserved (was a backend-only limit in erf.backend.v0); kept
+  // unassigned here so the two Limits shapes cannot be confused.
+  uint64 deadline_ms = 3;
+}
+
+// Envelope with request correlation for every frame in both directions.
+message WrEnvelope {
+  uint64 correlation_id = 1;
+  oneof payload {
+    Hello hello = 2;
+    HelloAck hello_ack = 3;
+    ResolveRequest resolve = 4;
+    ResolveResponse resolve_response = 5;
+    CancelRequest cancel = 6;
+    CancelAck cancel_ack = 7;
+    Completion completion = 8;
+    ProtocolError error = 9;
+  }
+}
+
+// The runtime asks the resolver to derive project structure facts for a
+// repository snapshot root. Resolvers never execute project build scripts
+// (SAFE_STATIC) and never guess: undeterminable facts go to unresolved_facts.
+message ResolveRequest {
+  // Repository root the resolver analyzes (v0: absolute path of the snapshot
+  // checkout; the trusted mount contract lands with the sandbox slice).
+  string repo_root = 1;
+}
+
+message ResolveResponse {
+  // not named "descriptor": protobuf's own getDescriptor() clash in Java
+  WorkspaceDescriptor workspace_descriptor = 1;
+}
+
+// Immutable, content-addressed project structure facts. The digest over the
+// canonical descriptor content is computed by the resolver and re-verified by
+// the runtime.
+message WorkspaceDescriptor {
+  WorkspaceResolutionMode mode = 1;
+  string resolver_id = 2;
+  string resolver_version = 3;
+  repeated ModuleDescriptor modules = 4;
+  // Structure facts the resolver could not determine (spec §21: unresolved
+  // facts enter planning/completeness, never local guesses).
+  repeated string unresolved_facts = 5;
+  // sha256 over the prost encoding of this descriptor with this field blank;
+  // the runtime re-verifies it on receipt. A canonicalization step (needed
+  // before signing) lands with the trusted slice.
+  bytes descriptor_sha256 = 6;
+}
+
+// Closed resolution modes (spec §21). There is no implicit fallback.
+enum WorkspaceResolutionMode {
+  WORKSPACE_RESOLUTION_MODE_UNSPECIFIED = 0;
+  SAFE_STATIC = 1;                 // no project scripts executed
+  ATTESTED_BUILD_EXPORT = 2;       // trusted build export; attestation lands in Phase 3
+}
+
+message ModuleDescriptor {
+  string module_id = 1;
+  string language = 2;
+  // Source roots, repo-relative, forward slashes, no trailing slash.
+  repeated string source_roots = 3;
+  // Every analyzed file bound to its exact content digest.
+  repeated FileEntry files = 4;
+}
+
+message FileEntry {
+  string path = 1;         // repository-relative, forward slashes
+  bytes blob_sha256 = 2;   // 32-byte binary digest of the file content
+}
+
+message CancelRequest {}
+
+message CancelAck {
+  bool accepted = 1;
+}
+
+message Completion {
+  enum Status {
+    COMPLETED = 0;
+    CANCELLED = 1;
+    FAILED = 2;
+  }
+  Status status = 1;
+  string reason = 2;
+}
+
+message ProtocolError {
+  enum Code {
+    CODE_UNSPECIFIED = 0;
+    MALFORMED_FRAME = 1;
+    OVERSIZED_FRAME = 2;
+    PROTOCOL_MAJOR_MISMATCH = 3;
+    UNSUPPORTED_CAPABILITY = 4;
+    UNCORRELATABLE = 5;
+    REPO_ROOT_UNREADABLE = 6;   // snapshot root missing or unreadable
+    INTERNAL = 7;
+  }
+  Code code = 1;
+  string detail = 2;
+}

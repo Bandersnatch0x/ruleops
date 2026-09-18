@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-024
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 禁止 clone 方法
+  description: 业务类不得声明 clone 方法
+  languages: [java]
+  scenarios:
+    - id: no-clone-method
+      expected: detectable

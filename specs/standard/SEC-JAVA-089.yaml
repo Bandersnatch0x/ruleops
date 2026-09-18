@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-089
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止记录个人信息
+  description: 日志默认不得记录未经必要性和脱敏处理的个人信息
+  languages: [java]
+  scenarios:
+    - id: avoid-pii-logging
+      expected: needs-clarification

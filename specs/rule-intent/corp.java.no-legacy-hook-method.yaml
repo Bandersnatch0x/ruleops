@@ -1,0 +1,41 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.no-legacy-hook-method
+  version: 1.0.0
+
+spec:
+  standard:
+    id: SEC-JAVA-025
+    version: 1.0.0
+    scenario: no-legacy-hook-method
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止新增 legacyHook 扩展点
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: structural-node
+      declaringType: MethodDeclaration
+      method: Name
+      invocation: any
+      parameters: [legacyHook]
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "void legacyHook() {}"
+    good:
+      - "void currentHook() {}"
+    holdout:
+      - "void legacyHook() {}"
+    nearMiss:
+      - "void legacyHookV2() {}"
+  severity:
+    default: advisory

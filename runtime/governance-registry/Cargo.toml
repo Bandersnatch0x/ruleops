@@ -1,0 +1,17 @@
+[package]
+name = "erf-governance-registry"
+version = "0.1.0"
+edition = "2021"
+description = "Transport-neutral signed PolicyProfile and ExceptionGrant lifecycle core"
+
+[dependencies]
+erf-trust = { path = "../trust" }
+rf-gate = { path = "../gate" }
+thiserror = "2"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+
+[lib]
+name = "erf_governance_registry"
+path = "src/lib.rs"

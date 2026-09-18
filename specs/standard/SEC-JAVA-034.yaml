@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-034
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 避免直接实例化包装类型
+  description: 业务代码应使用值工厂或自动装箱而非直接构造包装类型
+  languages: [java]
+  scenarios:
+    - id: avoid-wrapper-constructor
+      expected: detectable

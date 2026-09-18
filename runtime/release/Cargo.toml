@@ -1,0 +1,17 @@
+[package]
+name = "erf-release"
+version = "0.1.0"
+edition = "2021"
+description = "Signed, immutable and content-addressed RuleRelease verification"
+
+[dependencies]
+erf-trust = { path = "../trust" }
+sha2 = "0.10"
+thiserror = "2"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+
+[lib]
+name = "erf_release"
+path = "src/lib.rs"

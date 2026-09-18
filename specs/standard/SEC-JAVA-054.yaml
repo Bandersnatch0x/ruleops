@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-054
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免返回可变对象
+  description: 领域对象不得无约束地返回内部可变对象引用
+  languages: [java]
+  scenarios:
+    - id: avoid-mutable-return
+      expected: needs-clarification
