@@ -15,6 +15,13 @@ for command in \
   'rf rule test' \
   'rf coverage analyze' \
   'rf pilot report' \
+  'rf pilot delivery-check' \
+  'rf pilot baseline' \
+  'rf pilot observe' \
+  'rf pilot feedback' \
+  'rf pilot governance' \
+  'rf pilot window-report' \
+  'rf center check' \
   'rf scan'; do
   rg -Fq "$command" "$out_dir/help.txt" || { echo "missing CLI help entry: $command" >&2; exit 1; }
 done
@@ -103,7 +110,8 @@ cat > "$out_dir/cli-surface.md" <<EOF
 - Acceptance command: scripts/cli-surface-check.sh $out_dir
 - Dispatcher: ./rf
 - Authoring: standard/rule validate, rule generate, rule test
-- Analysis/report: coverage analyze, pilot report
+- Analysis/report: coverage analyze, pilot report, pilot window-report
+- Observation: pilot baseline, observe, feedback, governance
 - Runtime: scan delegates to rf-cli
 - Unsupported authority surfaces: release/gate/feedback/exception fail with exit 2
 

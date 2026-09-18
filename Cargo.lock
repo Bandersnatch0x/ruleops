@@ -280,6 +280,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "erf-pilot-observer"
+version = "0.1.0"
+dependencies = [
+ "erf-feedback",
+ "erf-pilot-metrics",
+ "erf-unified-result",
+ "rf-gate",
+ "rf-runner",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "erf-release"
 version = "0.1.0"
 dependencies = [
@@ -307,6 +320,16 @@ dependencies = [
  "erf-contracts",
  "erf-framing",
  "prost",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-rule-bundle"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "erf-trust",
  "sha2",
  "thiserror 2.0.20",
 ]

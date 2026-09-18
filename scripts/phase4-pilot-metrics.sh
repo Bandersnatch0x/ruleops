@@ -7,7 +7,7 @@ mkdir -p "$out_dir"
 cd "$repo_root"
 
 cargo test -q -p erf-pilot-metrics > "$out_dir/pilot-metrics-tests.log"
-grep -q 'test result: ok\. 8 passed; 0 failed' "$out_dir/pilot-metrics-tests.log"
+grep -q 'test result: ok\. 9 passed; 0 failed' "$out_dir/pilot-metrics-tests.log"
 ! rg -n 'Command::new|reqwest|ureq|std::net|std::process' runtime/pilot-metrics/src
 
 cat > "$out_dir/phase4-pilot-metrics.md" <<EOF
@@ -15,7 +15,7 @@ cat > "$out_dir/phase4-pilot-metrics.md" <<EOF
 
 - Acceptance command: scripts/phase4-pilot-metrics.sh $out_dir
 - Implementation: runtime/pilot-metrics
-- Focused tests: PASS (8/8)
+- Focused tests: PASS (9/9)
 - Persistence/transport: external adapters remain out of scope
 
 | Check | Evidence | Result |

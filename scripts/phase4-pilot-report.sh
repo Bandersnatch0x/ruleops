@@ -66,9 +66,9 @@ cat > "$out_dir/phase4-pilot-report.md" <<EOF
   identities are exercised; this is count-based qualification evidence.
 - Rule qualification: twenty governed Java RuleIntent paths pass authoring,
   fixture, EvidenceBundle, and deterministic recompilation checks.
-- Pilot Success Contract: pending human approval; this report does not treat
-  required thresholds, sample strata, observation window, or adjudicator as
-  supplied.
+- Pilot Success Contract: APPROVED for the registered 2026-10-01 through
+  2026-10-31 window; this report does not treat pre-window rehearsals as live
+  outcome measurements.
 - Production enforcement: disabled. Local and test evidence remain distinct
   from a protected-branch authority decision.
 
@@ -92,12 +92,12 @@ This generated snapshot does not claim product-level measurements for:
 - rollback and exception age/count over a live pilot window;
 - scan latency and resource consumption.
 
-Those require an independently selected live pilot and a pre-registered
-measurement window; count-based qualification evidence must not be presented
-as those outcomes.
+Those require observations inside the registered live window and the required
+human quality adjudication; count-based qualification or pre-window rehearsal
+evidence must not be presented as those outcomes.
 
-The next pilot expansion must add the live measurement window and an explicit
-approval before changing the authority boundary.
+The observation runner remains Shadow-only; an explicit future authority
+decision is still required before any protected-branch change.
 EOF
 
 echo "pilot-report=PASS evidence=$out_dir/phase4-pilot-report.md"

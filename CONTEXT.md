@@ -212,6 +212,14 @@ _Avoid_: Debt Baseline, Comparison Baseline
 基于 Policy、Finding、Completeness、Baseline、Exception 与可信上下文生成的 `PASS`、`FAIL` 或 `INCONCLUSIVE` 决策。
 _Avoid_: Scan Result, PASS_WITH_DEGRADED_COVERAGE
 
+**ObservationMode**:
+标识一次 Pilot Measurement 来自已登记外部仓库的只读 Shadow 执行，还是来自本地提交序列的机制模拟；两种模式的结果不可互相充当产品结论。
+_Avoid_: Authority, RepositorySnapshot, Test Fixture
+
+**PilotMeasurement**:
+从已验证 UnifiedResult 派生的 digest-only 运行、反馈或治理记录，用于在预登记 Observation Window 内计算 Pilot Metrics。
+_Avoid_: Full Finding Report, CI Log, Product Outcome
+
 **GateAttestation**:
 由可信执行身份签署、绑定 Gate 全部输入、语义结果、完整性与三态决策的可验证证明。
 _Avoid_: CLI Exit Code, GateDecision, CI Log

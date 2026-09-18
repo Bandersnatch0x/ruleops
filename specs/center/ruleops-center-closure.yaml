@@ -1,0 +1,83 @@
+apiVersion: rulefactory.io/v1
+kind: RuleOpsCenterClosure
+metadata:
+  id: ruleops-center-java-mvp-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  status: ENGINEERING_MVP
+  deliveryMode: GIT_CLI_CI
+  authority: SHADOW
+  productionEnforcement: disabled
+  centers:
+    - id: standards-center
+      output: Standard-and-Scenario-inventory
+      implementation: specs/standard+specs/coverage
+      acceptance: scripts/standard-inventory-check.sh
+    - id: rule-factory
+      input: Standard-and-Scenario-inventory
+      output: RuleIntent-RuleIR-Candidate
+      implementation: control-plane/authoring+control-plane/factory
+      acceptance: scripts/phase4-shadow-pilot.sh
+    - id: verification-lab
+      input: Candidate
+      output: EvidenceBundle
+      implementation: control-plane/verification
+      acceptance: scripts/candidate-verify.sh
+    - id: rule-registry
+      input: Verified-RuleRelease
+      output: Immutable-Release-Identity
+      implementation: runtime/release+runtime/release-registry
+      acceptance: scripts/phase4-release-registry.sh
+    - id: policy-center
+      input: RuleRelease-and-ExceptionGrant
+      output: Resolved-Policy-Profile
+      implementation: runtime/governance-registry+runtime/gate
+      acceptance: scripts/phase4-governance-registry.sh
+    - id: execution-plane
+      input: Signed-Rule-Bundle
+      output: Findings-and-Completeness
+      implementation: runtime/rule-bundle+runtime/rf-runner+runtime/unified-result
+      acceptance: scripts/ruleops-center-check.sh
+      executionStatus: COMPOSITION_VERIFIED_LOCAL_SHADOW
+    - id: feedback-loop
+      input: Finding-or-Gate-Decision
+      output: Feedback-Exception-Regression
+      implementation: runtime/feedback+runtime/governance-registry
+      acceptance: scripts/phase4-pilot-metrics.sh
+  signedRuleBundle:
+    implementation: runtime/rule-bundle
+    inputs:
+      - RuleRelease
+      - PolicyProfile
+      - ExecutionLock
+      - OntologyContractPack
+    signingRole: rule-bundle-signing
+    verification: exact-input-digest-and-compatibility-binding
+    executionStatus: COMPOSITION_VERIFIED_LOCAL_SHADOW
+  repositories:
+    manifest: specs/pilot/live-java-repositories.yaml
+    count: 3
+    mode: LIVE_SHADOW
+    writes: denied
+  outputs:
+    findings: digest-only-by-default
+    coverage: specs/coverage
+    feedback: runtime/feedback
+    exceptions: runtime/governance-registry
+  outcome:
+    engineeringClosure: PASS
+    liveProductOutcome: PENDING_FORMAL_WINDOW
+    protectedBranchAuthority: denied
+
+edges:
+  - standards-center -> rule-factory
+  - rule-factory -> verification-lab
+  - verification-lab -> rule-registry
+  - rule-registry -> policy-center
+  - policy-center -> signed-rule-bundle
+  - signed-rule-bundle -> repository-execution
+  - repository-execution -> findings-coverage
+  - findings-coverage -> feedback-exception
+  - feedback-exception -> standards-center

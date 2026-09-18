@@ -12,6 +12,13 @@ usage:
   rf rule test CANDIDATE_DIR OUTPUT_DIR
   rf coverage analyze OUTPUT_DIR
   rf pilot report OUTPUT_DIR
+  rf pilot delivery-check OUTPUT_DIR
+  rf pilot baseline OBSERVER_OPTIONS...
+  rf pilot observe OBSERVER_OPTIONS...
+  rf pilot feedback OBSERVER_OPTIONS...
+  rf pilot governance OBSERVER_OPTIONS...
+  rf pilot window-report OBSERVER_OPTIONS...
+  rf center check OUTPUT_DIR
   rf scan --repo-root PATH --host COMMAND (--rule-id ID | --candidate DIR) [OPTIONS]
 
 The current V0.1 CLI delegates to the verified repository entrypoints.
@@ -69,10 +76,42 @@ case "$area" in
     exec "$repo_root/scripts/phase4-coverage-ledger.sh" "$1"
     ;;
   pilot)
-    [ "${1:-}" = "report" ] || die_usage "supported pilot command is report"
+    action="${1:-}"
+    shift || true
+    case "$action" in
+      report)
+        [ $# -eq 1 ] || die_usage "pilot report requires OUTPUT_DIR"
+        exec "$repo_root/scripts/phase4-pilot-report.sh" "$1"
+        ;;
+      delivery-check)
+        [ $# -eq 1 ] || die_usage "pilot delivery-check requires OUTPUT_DIR"
+        exec "$repo_root/scripts/pilot-delivery-check.sh" "$1"
+        ;;
+      baseline)
+        exec cargo run --quiet -p erf-pilot-observer -- baseline "$@"
+        ;;
+      observe)
+        exec cargo run --quiet -p erf-pilot-observer -- run "$@"
+        ;;
+      feedback)
+        exec cargo run --quiet -p erf-pilot-observer -- feedback "$@"
+        ;;
+      governance)
+        exec cargo run --quiet -p erf-pilot-observer -- governance "$@"
+        ;;
+      window-report)
+        exec cargo run --quiet -p erf-pilot-observer -- report "$@"
+        ;;
+      *)
+        die_usage "unsupported pilot command: ${action:-<missing>}"
+        ;;
+    esac
+    ;;
+  center)
+    [ "${1:-}" = "check" ] || die_usage "supported center command is check"
     shift
-    [ $# -eq 1 ] || die_usage "pilot report requires OUTPUT_DIR"
-    exec "$repo_root/scripts/phase4-pilot-report.sh" "$1"
+    [ $# -eq 1 ] || die_usage "center check requires OUTPUT_DIR"
+    exec "$repo_root/scripts/ruleops-center-check.sh" "$1"
     ;;
   scan)
     exec cargo run --quiet -p rf-cli -- scan "$@"

@@ -45,6 +45,13 @@ Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 ./rf rule test CANDIDATE_DIR OUTPUT_DIR
 ./rf coverage analyze OUTPUT_DIR
 ./rf pilot report OUTPUT_DIR
+./rf pilot delivery-check OUTPUT_DIR
+./rf pilot baseline OBSERVER_OPTIONS...
+./rf pilot observe OBSERVER_OPTIONS...
+./rf pilot feedback OBSERVER_OPTIONS...
+./rf pilot governance OBSERVER_OPTIONS...
+./rf pilot window-report OBSERVER_OPTIONS...
+./rf center check OUTPUT_DIR
 ./rf scan --repo-root PATH --host COMMAND (--rule-id ID | --candidate DIR)
 ```
 
@@ -53,3 +60,38 @@ INCONCLUSIVE/执行不完整，`2` 表示输入或契约错误，`4` 表示 trus
 
 release promote/revoke、gate authority、feedback 与 exception 命令会显式
 拒绝；它们需要后续的人工作业或外部权限，不由本地 V0.1 dispatcher 伪造。
+
+`rf pilot observe` 只产生 `SHADOW` digest-only 观测，不写入 SCM；
+`local-simulation` 和 `live-shadow` 两种模式的 journal 身份不可混淆。
+
+可复跑观测演练：
+
+```text
+scripts/pilot-local-simulation.sh .scratch/pilot-local-simulation-<run>
+scripts/pilot-live-observation.sh .scratch/pilot-live-shadow-<run>
+```
+
+前者只在本地 clone 上追加合成提交，后者按登记清单只读获取公共仓库；两者
+都输出 digest-only journal 和窗口报告，缺少正式窗口基线或人工审定时报告保持
+`INCONCLUSIVE`。
+
+Shadow MVP 交付预检与最终门禁：
+
+```text
+./rf pilot delivery-check .scratch/pilot-delivery-check
+bash scripts/check.sh
+```
+
+交付清单见 `specs/pilot/pilot-release-manifest.yaml` 与
+`docs/pilot/release-candidate.md`。当前版本可进入登记的 Shadow 观察窗口，
+但不授予生产强制执行或受保护分支权力。
+
+完整中心闭环验收：
+
+```text
+./rf center check .scratch/ruleops-center-check
+```
+
+它验证 Standards → Factory → Verification → Registry → Policy → Signed Rule
+Bundle → 三个 Shadow 仓库 → Findings/Coverage → Feedback/Exception 的工程
+seam。闭环通过表示工程 MVP 完整，不等于生产强制执行已经启用。

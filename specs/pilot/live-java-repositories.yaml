@@ -1,0 +1,108 @@
+apiVersion: rulefactory.io/v1
+kind: LivePilotRepositoryManifest
+metadata:
+  id: phase4-java-live-pilot-repositories-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  status: SELECTED
+  language: java
+  build: maven
+  sourceSet: main
+  count: 3
+  authority: SHADOW
+  platform: linux/amd64
+  selection:
+    selectedAt: 2026-09-18
+    method: public-github-small-maven-projects
+    distinctOwners: true
+    criteria:
+      public: true
+      fork: false
+      archived: false
+      licenseRequired: true
+      rootPomRequired: true
+      maximumGithubSizeKb: 500
+      maximumTrackedFiles: 100
+      maximumJavaFiles: 50
+      buildVerification: mvn -B -ntp test on JDK 21
+    acquisition: shallow clone of the pinned public commit
+    analysis: local read-only ERF scan after acquisition
+    scmCredentials: none
+    repositoryWrites: denied
+    sourceUpload: denied
+    protectedBranchAuthority: denied
+  verification:
+    ruleIntent: corp.java.avoid-duplicate-literals
+    scanRepeats: 2
+    expectedCompleteness: complete
+    expectedAuthority: SHADOW
+    evidenceRoot: .scratch/github-java-repositories-20260918
+
+repositories:
+  - id: live-java-repository-1
+    repository: davidmoten/word-wrap
+    url: https://github.com/davidmoten/word-wrap
+    defaultBranch: master
+    commit: 53fbb8aec1b2c6f6f6150b7405aec94dcabdb364
+    commitDate: 2026-09-15
+    githubSizeKb: 42
+    starsAtSelection: 42
+    license: Apache-2.0
+    trackedFiles: 22
+    javaFiles: 11
+    javaSourceLevel: 8
+    passingMavenTests: 93
+    findingCount: 7
+    gateDecision: FAIL
+    scanEvidence:
+      - .scratch/github-java-repositories-20260918/scans/word-wrap/duplicate.log
+      - .scratch/github-java-repositories-20260918/scans/word-wrap/duplicate-run-2.log
+    reason: smallest selected utility and lowest source-count stratum
+
+  - id: live-java-repository-2
+    repository: gitbucket/markedj
+    url: https://github.com/gitbucket/markedj
+    defaultBranch: master
+    commit: 4a158d00562be394462ba1f6d088d1a1e485efa7
+    commitDate: 2026-09-17
+    githubSizeKb: 173
+    starsAtSelection: 91
+    license: Apache-2.0
+    trackedFiles: 86
+    javaFiles: 41
+    javaSourceLevel: 8
+    passingMavenTests: 40
+    findingCount: 4
+    gateDecision: FAIL
+    scanEvidence:
+      - .scratch/github-java-repositories-20260918/scans/markedj/duplicate.log
+      - .scratch/github-java-repositories-20260918/scans/markedj/duplicate-run-2.log
+    reason: small parser library with a distinct owner and recent security fix
+
+  - id: live-java-repository-3
+    repository: jacekkow/keycloak-protocol-cas
+    url: https://github.com/jacekkow/keycloak-protocol-cas
+    defaultBranch: master
+    commit: 5d5b68094fbbd611b3d2215ce256c7f83fedbd5
+    commitDate: 2026-09-17
+    githubSizeKb: 358
+    starsAtSelection: 132
+    license: Apache-2.0
+    trackedFiles: 64
+    javaFiles: 46
+    javaSourceLevel: 17
+    passingMavenTests: 19
+    findingCount: 4
+    gateDecision: FAIL
+    scanEvidence:
+      - .scratch/github-java-repositories-20260918/scans/keycloak-protocol-cas/duplicate-run-1.log
+      - .scratch/github-java-repositories-20260918/scans/keycloak-protocol-cas/duplicate-run-2.log
+    reason: small Java 17 integration plugin adds source-level and domain diversity
+
+boundaries:
+  localFixtureManifest: specs/pilot/representative-java-repositories.yaml
+  pilotAuthority: SHADOW
+  scmStatusPublication: not available
+  liveOutcomeMeasurement: not yet collected
