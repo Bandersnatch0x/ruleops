@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-decimal-bigdecimal-constructor
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-035
+    version: 1.0.0
+    scenario: avoid-decimal-bigdecimal-constructor
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止从浮点数直接构造 BigDecimal
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/errorprone.xml/AvoidDecimalLiteralsInBigDecimalConstructor
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["new java.math.BigDecimal(1.1);"]
+    good: ["new java.math.BigDecimal(\"1.1\");"]
+    holdout: ["new java.math.BigDecimal(2.2);"]
+    nearMiss: ["new java.math.BigDecimal(1);"]
+  severity:
+    default: advisory

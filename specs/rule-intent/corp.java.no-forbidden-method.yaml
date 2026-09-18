@@ -32,5 +32,9 @@ spec:
       - "void forbidden() {}"
     good:
       - "void permitted() {}"
+    holdout:
+      - "void forbidden() {}"
+    nearMiss:
+      - "void forbiddenToo() {}"
   severity:
     default: advisory

@@ -5,4 +5,8 @@ edition = "2021"
 
 [dependencies]
 erf-contracts = { path = "../../contracts/rust" }
+erf-trust = { path = "../trust" }
 sha2 = "0.10"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }

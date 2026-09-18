@@ -136,6 +136,73 @@ fn java_host_negotiates_describes_and_executes_pmd() {
 }
 
 #[test]
+fn java_host_negotiates_and_executes_spotbugs_bytecode() {
+    let Some(mut command) = java_host_command() else {
+        eprintln!("skipping: ERF_JAVA_HOST_JAR not set");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("erf-sb-jh-{}", std::process::id()));
+    let repo = dir.join("repo");
+    let source = repo.join("src/main/java/Bad.java");
+    let classes = repo.join("target/classes");
+    std::fs::create_dir_all(source.parent().unwrap()).expect("mkdir source");
+    std::fs::create_dir_all(&classes).expect("mkdir classes");
+    std::fs::write(&source, "public class Bad { void run() { System.exit(1); } }\n")
+        .expect("write source");
+    let status = Command::new("javac")
+        .args(["-g", "-d"])
+        .arg(&classes)
+        .arg(&source)
+        .status()
+        .expect("javac available");
+    assert!(status.success(), "javac failed: {status}");
+    command.env("ERF_REPO_ROOT", &repo).env("ERF_BACKEND", "spotbugs");
+
+    let (mut host, ack) = HostHandle::spawn(&mut command, &config_with(&["java.bytecode"]))
+        .expect("handshake with SpotBugs host");
+    let capabilities = ack.capabilities.expect("capabilities");
+    assert_eq!(capabilities.backend_id, "spotbugs-java");
+    assert_eq!(capabilities.rule_kinds, vec!["BytecodeRule".to_string()]);
+    assert_eq!(capabilities.facts.get("java.bytecode"), Some(&true));
+
+    host.plan(vec![pb::AnalysisUnit {
+        unit_id: "spotbugs.dm-exit::Bad.class".into(),
+        language: "java".into(),
+        files: vec!["target/classes/Bad.class".into()],
+    }])
+    .expect("plan");
+    let mut stream = host
+        .execute(vec!["spotbugs.dm-exit::Bad.class".into()])
+        .expect("execute");
+    let mut observations = 0;
+    loop {
+        match stream.next_event().expect("event") {
+            Some(ExecEvent::Observation(observation)) => {
+                assert_eq!(observation.rule_id, "spotbugs.dm-exit");
+                match observation.location.expect("location").kind {
+                    Some(pb::observation_location::Kind::BytecodeMember(member)) => {
+                        assert_eq!(member.class_fqn, "Bad");
+                    }
+                    other => panic!("expected BYTECODE_MEMBER, got {other:?}"),
+                }
+                observations += 1;
+            }
+            Some(ExecEvent::UnitStatus(status)) => {
+                assert_eq!(status.outcome, pb::UnitOutcome::Executed as i32);
+            }
+            Some(ExecEvent::Complete(complete)) => {
+                assert_eq!(complete.units_reported, 1);
+                break;
+            }
+            None => panic!("stream ended before ExecuteComplete"),
+        }
+    }
+    assert_eq!(observations, 1);
+    assert_eq!(host.complete().expect("completion").status, pb::completion::Status::Completed as i32);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn java_host_refuses_major_mismatch() {
     let Some(mut command) = java_host_command() else {
         eprintln!("skipping: ERF_JAVA_HOST_JAR not set");

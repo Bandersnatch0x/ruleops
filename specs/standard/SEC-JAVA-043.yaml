@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-043
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止直接打印堆栈
+  description: 业务代码不得直接把异常堆栈打印到标准输出或标准错误
+  languages: [java]
+  scenarios:
+    - id: avoid-print-stack-trace
+      expected: detectable

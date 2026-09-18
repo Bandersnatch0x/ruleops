@@ -1,0 +1,52 @@
+apiVersion: rulefactory.io/v1
+kind: RepresentativeRepositoryManifest
+metadata:
+  id: phase4-java-shadow-repositories-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  language: java
+  build: maven
+  sourceSet: main
+  count: 3
+  authority: SHADOW
+  platform: linux/amd64
+  selection:
+    method: deterministic-local-fixture
+    independence: distinct repository and commit identities in one controlled run
+    productionRepository: false
+  boundaries:
+    acquisition: local-reproducible-fixture
+    scmCredentials: none
+    network: denied
+    repositoryWrites: denied
+    sourceUpload: denied
+
+repositories:
+  - id: shadow-repository-1
+    repository: org/ruleops-shadow-1
+    commit: phase4-shadow-commit-1
+    fixturePath: repositories/repo-1
+    primaryScenario: direct-system-exit
+    ruleIntent: corp.java.no-system-exit
+    reason: first independent local identity exercises the Java PMD handoff
+  - id: shadow-repository-2
+    repository: org/ruleops-shadow-2
+    commit: phase4-shadow-commit-2
+    fixturePath: repositories/repo-2
+    primaryScenario: direct-system-exit
+    ruleIntent: corp.java.no-system-exit
+    reason: second independent local identity exercises repeatable handoff isolation
+  - id: shadow-repository-3
+    repository: org/ruleops-shadow-3
+    commit: phase4-shadow-commit-3
+    fixturePath: repositories/repo-3
+    primaryScenario: direct-system-exit
+    ruleIntent: corp.java.no-system-exit
+    reason: third independent local identity exercises the minimum Shadow set
+
+qualification:
+  handoff: Runner -> TrustedContext -> Status Publisher -> UnifiedResult
+  failureInjection: host crash remains INCONCLUSIVE -> ActionRequired
+  limitation: local fixture qualification is not external production-repository evidence

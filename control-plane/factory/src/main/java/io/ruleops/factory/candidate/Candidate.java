@@ -36,8 +36,8 @@ public record Candidate(
 
     /**
      * Inputs assembled from the intent's examples: each snippet becomes a
-     * wrapped, parseable Java fixture class (bad examples must produce
-     * findings, good examples must not).
+     * wrapped, parseable Java fixture class. Bad and holdout examples must
+     * produce findings; good and near-miss examples must not.
      */
     static Map<String, byte[]> fromExamples(RuleIntent intent) {
         Map<String, byte[]> files = new LinkedHashMap<>();
@@ -49,6 +49,16 @@ public record Candidate(
         }
         for (int i = 0; i < good.size(); i++) {
             files.put("fixtures/good/Good" + i + ".java", wrapSnippet("Good" + i, good.get(i), structural));
+        }
+        List<String> holdout = intent.spec().examples().holdout() == null
+                ? List.of() : intent.spec().examples().holdout();
+        for (int i = 0; i < holdout.size(); i++) {
+            files.put("fixtures/holdout/Holdout" + i + ".java", wrapSnippet("Holdout" + i, holdout.get(i), structural));
+        }
+        List<String> nearMiss = intent.spec().examples().nearMiss() == null
+                ? List.of() : intent.spec().examples().nearMiss();
+        for (int i = 0; i < nearMiss.size(); i++) {
+            files.put("fixtures/near-miss/NearMiss" + i + ".java", wrapSnippet("NearMiss" + i, nearMiss.get(i), structural));
         }
         return files;
     }

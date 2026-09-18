@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-073
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止弱哈希用于安全用途
+  description: 密码、签名或完整性校验不得使用不满足当前安全要求的弱哈希算法
+  languages: [java]
+  scenarios:
+    - id: avoid-weak-hash
+      expected: needs-clarification

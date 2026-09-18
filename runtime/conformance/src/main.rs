@@ -42,7 +42,7 @@ fn main() {
         ..Default::default()
     };
     eprintln!("running suite against {} ...", config.host_program);
-    let report = erf_conformance::run_suite(&config);
+    let report = erf_conformance::run_acceptance(&config);
 
     eprintln!("suite version {}", report.suite_version);
     let mut failures = 0;

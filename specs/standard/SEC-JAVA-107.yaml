@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-107
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止通配符 import
+  description: 生产代码不得使用无法表达依赖边界的通配符导入
+  languages: [java]
+  scenarios:
+    - id: avoid-wildcard-import
+      expected: detectable

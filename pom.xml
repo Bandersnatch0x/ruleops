@@ -14,6 +14,7 @@
 
   <modules>
     <module>control-plane/authoring</module>
+    <module>control-plane/coverage</module>
     <module>control-plane/factory</module>
     <module>control-plane/verification</module>
     <module>control-plane/ontology</module>

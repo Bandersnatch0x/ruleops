@@ -1,0 +1,40 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.no-serialize-method
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-026
+    version: 1.0.0
+    scenario: no-serialize-method
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止业务类声明 serialize 方法
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: structural-node
+      declaringType: MethodDeclaration
+      method: Name
+      invocation: any
+      parameters: [serialize]
+  requiredCapabilities:
+    - java.ast
+  unresolved:
+    behavior: unknown
+  examples:
+    bad:
+      - "byte[] serialize() { return new byte[0]; }"
+    good:
+      - "byte[] encode() { return new byte[0]; }"
+    holdout:
+      - "byte[] serialize() { return new byte[0]; }"
+    nearMiss:
+      - "byte[] serializer() { return new byte[0]; }"
+  severity:
+    default: advisory

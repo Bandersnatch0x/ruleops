@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-067
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止以 Optional 作为字段类型
+  description: Optional 不得作为实体或可变状态字段的替代 nullness 模型
+  languages: [java]
+  scenarios:
+    - id: avoid-optional-field
+      expected: needs-clarification

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-058
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 字符串比较必须按值
+  description: Java 字符串内容比较不得使用引用相等运算符
+  languages: [java]
+  scenarios:
+    - id: avoid-string-reference-equality
+      expected: detectable

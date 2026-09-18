@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-021
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 工具类应明确声明
+  description: 仅包含静态成员的类应遵循工具类结构约束
+  languages: [java]
+  scenarios:
+    - id: utility-class
+      expected: detectable

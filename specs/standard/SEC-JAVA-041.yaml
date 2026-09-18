@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-041
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免空 finally 块
+  description: finally 块不得为空或仅保留无语义的占位代码
+  languages: [java]
+  scenarios:
+    - id: avoid-empty-finally
+      expected: detectable

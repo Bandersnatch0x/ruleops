@@ -10,14 +10,6 @@ use prost::Message;
 use std::process::exit;
 use std::sync::mpsc::{RecvError, channel};
 
-fn send(writer: &mut FrameWriter<std::io::StdoutLock<'static>>, envelope: &wb::WrEnvelope) -> bool {
-    if let Err(e) = writer.write_frame(&envelope.encode_to_vec()) {
-        eprintln!("{{\"level\":\"error\",\"msg\":\"write failed: {e}\"}}");
-        return false;
-    }
-    true
-}
-
 fn main() {
     let supported_major: u32 = std::env::var("FAKE_SUPPORTED_MAJOR")
         .ok()

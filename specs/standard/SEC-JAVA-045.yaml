@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-045
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 覆写方法必须声明 Override
+  description: 覆写父类或接口方法必须使用 Override 标注以固定意图
+  languages: [java]
+  scenarios:
+    - id: require-override-annotation
+      expected: detectable

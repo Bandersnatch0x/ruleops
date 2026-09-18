@@ -10,6 +10,9 @@ module io.ruleops.authoring {
   requires com.fasterxml.jackson.dataformat.yaml;
   exports io.ruleops.authoring;
   exports io.ruleops.authoring.model;
+  exports io.ruleops.authoring.orchestration;
+  exports io.ruleops.authoring.retrieval;
+  exports io.ruleops.authoring.suggestion;
   // YAML binding needs reflective access to the record canonical constructors.
   opens io.ruleops.authoring to com.fasterxml.jackson.databind;
   opens io.ruleops.authoring.model to com.fasterxml.jackson.databind;

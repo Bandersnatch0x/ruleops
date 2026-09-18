@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-078
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 主机名校验必须保留
+  description: TLS 客户端不得通过自定义校验器无条件接受任意主机名
+  languages: [java]
+  scenarios:
+    - id: preserve-hostname-verification
+      expected: needs-clarification

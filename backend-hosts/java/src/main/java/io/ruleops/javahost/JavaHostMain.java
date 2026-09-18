@@ -13,7 +13,8 @@ import java.nio.file.Path;
 public final class JavaHostMain {
 
     public static void main(String[] args) throws Exception {
-        Path repoRoot = Path.of(System.getenv().getOrDefault("ERF_REPO_ROOT", "."));
+        Path repoRoot = Path.of(System.getenv().getOrDefault("ERF_REPO_ROOT", "."))
+                .toAbsolutePath().normalize();
         String rulesetEnv = System.getenv("ERF_RULESET");
         int supportedMajor = Integer.parseInt(
                 System.getenv().getOrDefault("ERF_SUPPORTED_MAJOR", "0"));
@@ -23,11 +24,18 @@ public final class JavaHostMain {
                 System.getenv().getOrDefault("ERF_DELAY_MS", "0"));
 
         Framing framing = new Framing(System.in, System.out, maxFrameBytes);
-        PmdBackendAdapter adapter;
-        if (rulesetEnv != null && Files.isRegularFile(Path.of(rulesetEnv))) {
-            adapter = PmdBackendAdapter.load(repoRoot, Path.of(rulesetEnv));
+        String backend = System.getenv().getOrDefault("ERF_BACKEND", "pmd");
+        BackendAdapter adapter;
+        if (backend.equals("spotbugs")) {
+            adapter = SpotBugsBackendAdapter.load(repoRoot);
+        } else if (backend.equals("pmd")) {
+            if (rulesetEnv != null && Files.isRegularFile(Path.of(rulesetEnv))) {
+                adapter = PmdBackendAdapter.load(repoRoot, Path.of(rulesetEnv));
+            } else {
+                adapter = PmdBackendAdapter.empty();
+            }
         } else {
-            adapter = PmdBackendAdapter.empty();
+            throw new IllegalArgumentException("unsupported ERF_BACKEND: " + backend);
         }
         JavaBackendHost host = new JavaBackendHost(framing, supportedMajor, adapter, delayMs);
 

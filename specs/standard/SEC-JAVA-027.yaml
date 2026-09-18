@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-027
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止硬编码 IP 地址
+  description: 业务代码不得将环境 IP 地址直接写入源码
+  languages: [java]
+  scenarios:
+    - id: avoid-hardcoded-ip
+      expected: detectable

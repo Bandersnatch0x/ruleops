@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-110
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止无语义魔法数字
+  description: 重复或关键数值必须以命名常量或配置契约表达语义
+  languages: [java]
+  scenarios:
+    - id: avoid-magic-number
+      expected: needs-clarification

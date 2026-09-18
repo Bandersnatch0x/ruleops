@@ -1,0 +1,18 @@
+[package]
+name = "erf-release-registry"
+version = "0.1.0"
+edition = "2021"
+description = "Transport-neutral immutable RuleRelease lifecycle registry core"
+
+[dependencies]
+erf-release = { path = "../release" }
+erf-trust = { path = "../trust" }
+thiserror = "2"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+sha2 = "0.10"
+
+[lib]
+name = "erf_release_registry"
+path = "src/lib.rs"

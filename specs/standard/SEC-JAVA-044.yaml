@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-044
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免使用已废弃 API
+  description: 业务代码不得依赖已标记为废弃的 Java API，除非有明确迁移豁免
+  languages: [java]
+  scenarios:
+    - id: avoid-deprecated-api
+      expected: detectable

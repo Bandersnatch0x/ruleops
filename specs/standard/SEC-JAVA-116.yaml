@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-116
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 限制方法长度
+  description: 单个方法不得积累超出团队可审查范围的职责和代码长度
+  languages: [java]
+  scenarios:
+    - id: bound-method-length
+      expected: needs-clarification

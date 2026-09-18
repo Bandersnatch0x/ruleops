@@ -1,0 +1,165 @@
+apiVersion: rulefactory.io/v1
+kind: ThreatModel
+metadata:
+  id: erf-v0-threat-model
+  version: 1.0.0
+  owner: platform-engineering
+scope:
+  platform: linux/amd64
+  authority: LOCAL_UNATTESTED_SHADOW
+  sourceLocality: repository-and-ci-local
+threats:
+  - id: prompt-injection
+    category: authoring
+    assetBoundary: AuthoringSuggestion
+    control: retrieved text is data only; source snapshot, config identity, ACL and provenance are mandatory
+    verification:
+      - AuthoringRetrievalTest
+      - AuthoringOrchestratorTest
+    status: CONTROLLED
+    residualRisk: human review is still required before any accepted suggestion becomes a new Candidate
+  - id: malicious-generated-java
+    category: authoring-execution
+    assetBoundary: Candidate
+    control: closed RuleIntent schema, typed templates, independent verification and isolated execution boundary
+    verification:
+      - BadFixtureTest
+      - LocalVerificationTest
+      - phase2-sandbox-contract.sh
+    status: CONTROLLED
+    residualRisk: candidate execution remains a local test path and is not a production trust assertion
+  - id: malicious-build-script
+    category: workspace-resolution
+    assetBoundary: WorkspaceDescriptor
+    control: SAFE_STATIC Maven/Gradle adapters read metadata and conventional roots without evaluating project build scripts
+    verification:
+      - erf-static-resolver unit tests
+      - workspace-resolvers/static/tests/protocol.rs
+    status: CONTROLLED
+    residualRisk: build facts not determined statically remain unresolved and cannot be silently guessed
+  - id: dependency-poisoning
+    category: supply-chain
+    assetBoundary: BackendCompatibilityMatrix
+    control: exact PMD/SpotBugs versions, source-level declarations and compatibility entrypoints are cross-checked
+    verification:
+      - check-java-compatibility.sh
+      - java-ci-inventory-check.sh
+    status: CONTROLLED
+    residualRisk: external artifact provenance and mirror policy remain deployment responsibilities
+  - id: artifact-tampering
+    category: supply-chain
+    assetBoundary: signed asset and OCI pack
+    control: role-scoped signature verification, content digests and immutable pack identity fail closed
+    verification:
+      - erf-trust tests
+      - erf-packs tests
+      - erf-release tests
+    status: CONTROLLED
+    residualRisk: production key custody and HSM operation are outside this local repository
+  - id: forged-scan-result
+    category: execution-integrity
+    assetBoundary: GateAttestation and UnifiedResult
+    control: attestation subject, critical input digests, trust context and completeness are independently verified
+    verification:
+      - erf-trusted-context tests
+      - erf-status tests
+      - phase3-trusted-ci.sh
+    status: CONTROLLED
+    residualRisk: no external SCM publisher or protected branch is enabled in this checkout
+  - id: policy-tampering
+    category: governance
+    assetBoundary: PolicyProfile and ExceptionGrant
+    control: separate role-scoped signatures, exact scope selectors, expiry and immutable registry transitions
+    verification:
+      - erf-governance-registry tests
+      - phase4-governance-registry.sh
+    status: CONTROLLED
+    residualRisk: policy-owner approval remains an organizational control
+  - id: baseline-manipulation
+    category: governance
+    assetBoundary: BaselineState and ExceptionDecision
+    control: baseline and exception decisions are computed independently and retained in the result
+    verification:
+      - erf-gate tests
+      - erf-unified-result tests
+      - independent conformance suite
+    status: CONTROLLED
+    residualRisk: baseline labels for a live pilot require human-approved measurement inputs
+  - id: path-traversal-symlink
+    category: filesystem
+    assetBoundary: repository, bundle and bytecode paths
+    control: repository-relative normalization, parent traversal rejection and symlink rejection
+    verification:
+      - erf-static-resolver tests
+      - SpotBugsBackendAdapterTest
+      - erf-sandbox tests
+    status: CONTROLLED
+    residualRisk: future archive or platform adapters must pass equivalent path tests
+  - id: zip-bomb
+    category: resource-exhaustion
+    assetBoundary: archive ingestion
+    control: V0.1 does not ingest untrusted archives; bounded framed inputs and sandbox quotas apply to supported assets
+    verification:
+      - threat-model boundary check
+      - erf-framing tests
+      - erf-sandbox tests
+    status: BOUNDARY_ONLY
+    residualRisk: archive extraction must be designed and tested before any archive input is enabled
+  - id: report-injection
+    category: output-integrity
+    assetBoundary: BackendObservation and evidence output
+    control: typed Protobuf observations, strict location validation and digest-only default attestation disclosure
+    verification:
+      - independent conformance suite
+      - erf-gate tests
+      - phase4-exit-boundary.sh
+    status: CONTROLLED
+    residualRisk: controlled full Finding reports require a separate privacy and storage policy
+  - id: resource-exhaustion
+    category: availability
+    assetBoundary: framing, runner and backend process
+    control: frame limits, deadlines, cancellation, bounded staging and sandbox CPU/memory/process quotas
+    verification:
+      - erf-conformance tests
+      - erf-runner tests
+      - erf-sandbox tests
+    status: CONTROLLED
+    residualRisk: provider/kernel enforcement still needs production platform certification
+  - id: network-egress
+    category: isolation
+    assetBoundary: Backend Host and Resolver process
+    control: sandbox command uses network none, dropped capabilities and no ordinary-process fallback
+    verification:
+      - erf-sandbox tests
+      - phase2-sandbox-contract.sh
+    status: CONTROLLED
+    residualRisk: this evidence uses a local fake provider and is not Docker/kernel attestation
+  - id: secret-exfiltration
+    category: isolation
+    assetBoundary: source, credentials and measurement data
+    control: network deny by default, no credentials or source upload, and digest-only journal/status disclosure
+    verification:
+      - erf-sandbox tests
+      - java-ci-inventory-check.sh
+      - pilot-metrics-baseline-check.sh
+    status: CONTROLLED
+    residualRisk: production provider attestation and external secret-management controls remain deployment responsibilities
+  - id: cache-poisoning
+    category: supply-chain
+    assetBoundary: content-addressed packs, releases and trust cache
+    control: exact content digests, immutable registry identity, freshness and rollback checks, and tags never serve as authority
+    verification:
+      - erf-packs tests
+      - erf-release-registry tests
+      - erf-trust-state tests
+    status: CONTROLLED
+    residualRisk: external mirror/cache provenance and eviction policy remain deployment responsibilities
+  - id: immutable-release
+    category: governance
+    assetBoundary: RuleRelease registry lifecycle
+    control: content-addressed release identity, monotonic audited transitions, revoke and rollback fail closed
+    verification:
+      - erf-release-registry tests
+      - phase4-release-registry.sh
+    status: CONTROLLED
+    residualRisk: live release publication and organizational approval are not enabled by the local slice

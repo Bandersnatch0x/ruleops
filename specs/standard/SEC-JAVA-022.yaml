@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-022
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 禁止生产 debug 方法
+  description: 生产类不得声明 debug 方法作为临时入口
+  languages: [java]
+  scenarios:
+    - id: no-debug-method
+      expected: detectable

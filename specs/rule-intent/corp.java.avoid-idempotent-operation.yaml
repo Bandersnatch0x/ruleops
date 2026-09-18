@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-idempotent-operation
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-036
+    version: 1.0.0
+    scenario: avoid-idempotent-operation
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 避免将变量无意义地赋值给自身
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/errorprone.xml/IdempotentOperations
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["int value = 1; value = value;"]
+    good: ["int value = 1; value += 1;"]
+    holdout: ["boolean value = true; value = value;"]
+    nearMiss: ["int value = 1; int copy = value;"]
+  severity:
+    default: advisory

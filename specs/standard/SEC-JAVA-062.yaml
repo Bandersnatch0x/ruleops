@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-062
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 防止整数溢出
+  description: 算术运算必须在转换或计算前确认整数范围不会静默溢出
+  languages: [java]
+  scenarios:
+    - id: avoid-integer-overflow
+      expected: needs-clarification

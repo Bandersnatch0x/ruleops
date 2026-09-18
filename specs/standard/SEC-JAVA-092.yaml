@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-092
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 压缩包解压必须阻断 Zip Slip
+  description: 解压条目的规范化路径必须保持在目标目录内
+  languages: [java]
+  scenarios:
+    - id: prevent-zip-slip
+      expected: needs-clarification

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-046
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止锁定包装类型
+  description: 同步锁不得使用可缓存或可替换的包装对象实例
+  languages: [java]
+  scenarios:
+    - id: avoid-synchronized-on-box
+      expected: detectable

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-099
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 不得依赖隐式资源释放
+  description: 资源释放不得仅依赖 finalize、GC 或不可控的生命周期回调
+  languages: [java]
+  scenarios:
+    - id: avoid-implicit-resource-release
+      expected: detectable

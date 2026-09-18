@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-093
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 临时文件创建必须防竞态
+  description: 临时文件和目录必须使用原子、安全的创建 API 而非可预测名称
+  languages: [java]
+  scenarios:
+    - id: safe-temporary-file
+      expected: needs-clarification

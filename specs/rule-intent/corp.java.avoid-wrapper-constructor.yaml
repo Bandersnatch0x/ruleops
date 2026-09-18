@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-wrapper-constructor
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-034
+    version: 1.0.0
+    scenario: avoid-wrapper-constructor
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 避免直接构造包装类型
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/bestpractices.xml/PrimitiveWrapperInstantiation
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["Integer value = new Integer(1);"]
+    good: ["Integer value = Integer.valueOf(1);"]
+    holdout: ["Long value = new Long(1L);"]
+    nearMiss: ["Integer value = 1;"]
+  severity:
+    default: advisory

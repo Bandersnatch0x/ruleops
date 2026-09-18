@@ -1,0 +1,16 @@
+[package]
+name = "erf-pilot-metrics"
+version = "0.1.0"
+edition = "2021"
+description = "Digest-only deterministic pilot measurement ledger"
+
+[dependencies]
+erf-feedback = { path = "../feedback" }
+erf-unified-result = { path = "../unified-result" }
+rf-gate = { path = "../gate" }
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_pilot_metrics"
+path = "src/lib.rs"

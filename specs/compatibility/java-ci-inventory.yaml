@@ -1,0 +1,60 @@
+apiVersion: rulefactory.io/v1
+kind: JavaCiConfigurationInventory
+metadata:
+  id: java-ci-configuration-v0
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  host:
+    pom: backend-hosts/java/pom.xml
+    artifactId: erf-java-host
+    mainClass: io.ruleops.javahost.JavaHostMain
+    compilerRelease: 21
+    sourceLevels: ["11", "17", "21"]
+  backends:
+    - backendId: pmd-java
+      engineVersion: 7.9.0
+      mode: source
+      requiredCapabilities: [java.ast, java.symbol-resolution]
+      state: VERIFIED
+      entrypoint: scripts/java-host-e2e.sh
+    - backendId: spotbugs-java
+      engineVersion: 4.9.8
+      mode: bytecode
+      requiredCapabilities: [java.bytecode]
+      state: VERIFIED
+      entrypoint: scripts/java-host-e2e.sh
+  executableChecks:
+    - id: repository-gate
+      command: bash scripts/check.sh
+      state: EXECUTABLE
+    - id: java-host-e2e
+      command: scripts/java-host-e2e.sh
+      state: EXECUTABLE
+    - id: java-local-shadow
+      command: scripts/phase2-java-shadow.sh
+      state: EXECUTABLE
+    - id: compatibility-matrix
+      command: scripts/check-java-compatibility.sh
+      state: EXECUTABLE
+    - id: trusted-shadow-pilot
+      command: scripts/phase4-pilot-report.sh
+      state: EXECUTABLE
+    - id: rf-cli-surface
+      command: ./rf --help
+      state: EXECUTABLE
+  ci:
+    repositoryConfig: absent
+    executableSurface: local-script-gate
+    externalStatusPublisher: absent
+  trustBoundary:
+    platform: linux/amd64
+    authority: SHADOW
+    scmCredentials: absent
+    sourceUpload: absent
+    networkAdapter: absent
+  untested:
+    - other PMD or SpotBugs engine versions
+    - non-linux or non-amd64 trusted execution
+    - external CI provider status integration
+    - SCM repository write or credential integration

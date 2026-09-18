@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-064
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 不得忽略返回值
+  description: 具有失败语义的 API 返回值必须被检查、传播或明确记录
+  languages: [java]
+  scenarios:
+    - id: check-important-return-value
+      expected: needs-clarification

@@ -44,13 +44,13 @@ final class JavaBackendHost {
     private final LinkedBlockingQueue<HostEnvelope> inbox =
             new LinkedBlockingQueue<>();
     private final int supportedMajor;
-    private final PmdBackendAdapter adapter;
+    private final BackendAdapter adapter;
     private final Map<String, AnalysisUnit> plannedUnits =
             new HashMap<>();
     private final long delayMs;
     private long unitsReportedTotal;
 
-    JavaBackendHost(Framing framing, int supportedMajor, PmdBackendAdapter adapter, long delayMs) {
+    JavaBackendHost(Framing framing, int supportedMajor, BackendAdapter adapter, long delayMs) {
         this.framing = framing;
         this.supportedMajor = supportedMajor;
         this.adapter = adapter;
@@ -152,10 +152,9 @@ final class JavaBackendHost {
     private CapabilityDescriptor capabilities() {
         return CapabilityDescriptor.newBuilder()
                 .addLanguages("java")
-                .putFacts("java.ast", true)
-                .putFacts("java.symbol-resolution", true)
-                .addRuleKinds("SymbolRule")
-                .setBackendId("pmd-java")
+                .putAllFacts(adapter.capabilityFacts())
+                .addAllRuleKinds(adapter.ruleKinds())
+                .setBackendId(adapter.backendId())
                 .setBackendVersion(adapter.engineVersion())
                 .build();
     }

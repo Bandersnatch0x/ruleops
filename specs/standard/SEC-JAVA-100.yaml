@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-100
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 线程池生命周期必须受管理
+  description: 创建的线程池不得脱离拥有者生命周期而永久运行
+  languages: [java]
+  scenarios:
+    - id: manage-thread-pool-lifecycle
+      expected: needs-clarification

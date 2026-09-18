@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-useless-parentheses
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-033
+    version: 1.0.0
+    scenario: avoid-useless-parentheses
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 避免不改变语义的括号
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/codestyle.xml/UselessParentheses
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["int value = (1 + 2);"]
+    good: ["int value = 1 + 2;"]
+    holdout: ["int value = ((1));"]
+    nearMiss: ["int value = (1 + 2) * 3;"]
+  severity:
+    default: advisory

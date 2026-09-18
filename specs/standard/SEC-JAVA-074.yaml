@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-074
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止弱加密算法
+  description: 安全敏感数据不得使用已不满足策略要求的弱加密算法
+  languages: [java]
+  scenarios:
+    - id: avoid-weak-cipher
+      expected: needs-clarification

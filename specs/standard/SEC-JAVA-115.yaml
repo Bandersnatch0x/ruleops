@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-115
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 限制控制流嵌套深度
+  description: 方法不得通过过深的条件和循环嵌套隐藏业务路径
+  languages: [java]
+  scenarios:
+    - id: bound-nesting-depth
+      expected: needs-clarification

@@ -34,6 +34,21 @@ fn node_fake_resolver_interoperates_with_rust_client() {
     std::fs::remove_dir_all(dir).expect("cleanup");
 }
 
+#[test]
+fn node_fake_resolver_negotiates_maven_and_gradle_static_capabilities() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../backend-hosts/node-fake/resolver.js");
+    let mut command = Command::new("node");
+    command.arg(script);
+    let required = ["ecosystem.maven.safe-static", "ecosystem.gradle.safe-static"];
+    let (resolver, ack) = ResolverHandle::spawn(&mut command, &config_with(&required))
+        .expect("node build adapter handshake");
+    assert_eq!(ack.facts.get("ecosystem.maven.safe-static"), Some(&true));
+    assert_eq!(ack.facts.get("ecosystem.gradle.safe-static"), Some(&true));
+    let completion = resolver.complete().expect("completion");
+    assert_eq!(completion.status, wb::completion::Status::Completed as i32);
+}
+
 fn fake_resolver_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_erf-fake-resolver"))
 }
@@ -183,4 +198,20 @@ fn missing_capability_fails_explicitly() {
         Err(other) => panic!("expected explicit capability failure, got: {other:?}"),
         Ok(_) => panic!("handshake unexpectedly succeeded"),
     }
+}
+
+#[test]
+fn maven_and_gradle_build_metadata_is_detected_without_execution() {
+    let dir = std::env::temp_dir().join(format!("erf-build-adapter-{}", std::process::id()));
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(repo.join("app/src/main/java/app")).expect("mkdir");
+    std::fs::write(repo.join("pom.xml"), "<project/>").expect("pom");
+    std::fs::write(repo.join("settings.gradle"), "rootProject.name='sample'").expect("gradle");
+    std::fs::write(repo.join("app/src/main/java/app/App.java"), "class App {}\n").expect("java");
+    let descriptor = erf_fake_resolver::resolve(&repo).expect("resolve");
+    assert!(descriptor.unresolved_facts.iter().any(|fact| fact == "build-system:maven"));
+    assert!(descriptor.unresolved_facts.iter().any(|fact| fact == "build-system:gradle"));
+    assert!(descriptor.unresolved_facts.iter().any(|fact| fact.contains("dependency-classpath")));
+    assert_eq!(descriptor.modules.len(), 1);
+    let _ = std::fs::remove_dir_all(dir);
 }

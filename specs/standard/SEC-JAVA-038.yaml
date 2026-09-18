@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-038
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免捕获过宽异常类型
+  description: 业务代码应捕获可处理的具体异常类型，不得以 Exception 或 Throwable 掩盖故障边界
+  languages: [java]
+  scenarios:
+    - id: avoid-broad-catch
+      expected: detectable

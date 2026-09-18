@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-102
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 集合返回契约必须明确
+  description: 方法应明确返回空集合、不可变集合或 null 的契约，不得含糊混用
+  languages: [java]
+  scenarios:
+    - id: explicit-collection-return-contract
+      expected: needs-clarification

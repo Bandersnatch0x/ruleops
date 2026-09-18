@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-030
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 禁止八进制整数字面量
+  description: 业务代码不得使用易误读的八进制整数字面量
+  languages: [java]
+  scenarios:
+    - id: avoid-octal-values
+      expected: detectable

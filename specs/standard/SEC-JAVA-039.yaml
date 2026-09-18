@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-039
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止吞掉异常
+  description: 业务代码不得在转换或清理过程中丢失原始异常及其因果链
+  languages: [java]
+  scenarios:
+    - id: avoid-swallowed-exception
+      expected: detectable

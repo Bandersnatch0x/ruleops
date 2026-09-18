@@ -26,7 +26,7 @@ import net.sourceforge.pmd.reporting.RuleViolation;
  * BackendObservations. Policy severity, Gate and Baseline decisions are
  * never made here.
  */
-final class PmdBackendAdapter {
+final class PmdBackendAdapter implements BackendAdapter {
 
     private final Path repoRoot;
     private final RuleSet ruleset;
@@ -50,8 +50,24 @@ final class PmdBackendAdapter {
         return new PmdBackendAdapter(null, null, null);
     }
 
-    String engineVersion() {
+    @Override
+    public String engineVersion() {
         return net.sourceforge.pmd.PMDVersion.VERSION;
+    }
+
+    @Override
+    public String backendId() {
+        return "pmd-java";
+    }
+
+    @Override
+    public java.util.Map<String, Boolean> capabilityFacts() {
+        return java.util.Map.of("java.ast", true, "java.symbol-resolution", true);
+    }
+
+    @Override
+    public java.util.List<String> ruleKinds() {
+        return java.util.List.of("SymbolRule");
     }
 
     /** Deterministic per-unit batch refinement; the denominator is frozen. */
@@ -71,7 +87,7 @@ final class PmdBackendAdapter {
      * typed, policy-neutral BackendObservation (engine severity stays
      * diagnostic; the runtime owns policy).
      */
-    List<BackendObservation> observe(AnalysisUnit unit) throws IOException {
+    public List<BackendObservation> observe(AnalysisUnit unit) throws IOException {
         if (ruleset == null) {
             throw new IOException("host launched without ERF_RULESET; cannot execute units");
         }

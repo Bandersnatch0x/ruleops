@@ -43,6 +43,10 @@ spec:
       - "java.lang.System.exit(0);"
     good:
       - "shutdownManager.shutdown();"
+    holdout:
+      - "java.lang.System.exit(2);"
+    nearMiss:
+      - "System.getSecurityManager();"
 
   severity:
     default: advisory

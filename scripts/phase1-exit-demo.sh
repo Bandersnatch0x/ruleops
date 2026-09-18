@@ -53,7 +53,7 @@ scripts/candidate-verify.sh "$candidate_dir" "$OUT_DIR/factory-evidence"
 echo "== factory: three templates -> independent EvidenceBundles =="
 for intent in \
   specs/rule-intent/corp.java.no-system-exit.yaml \
-  specs/rule-intent/corp.java.avoid-print-stack-trace.yaml \
+  specs/rule-intent/corp.java.avoid-duplicate-literals.yaml \
   specs/rule-intent/corp.java.no-forbidden-method.yaml; do
   template_id="$(basename "$intent" .yaml)"
   template_compile="$(scripts/candidate-compile.sh "$intent" "$WORK_DIR/templates")"

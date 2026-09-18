@@ -1,0 +1,13 @@
+[package]
+name = "erf-trust-state"
+version = "0.1.0"
+edition = "2021"
+description = "Bounded atomic persistence for offline ERF trust checkpoint state"
+
+[dependencies]
+erf-trust = { path = "../trust" }
+thiserror = "2"
+
+[lib]
+name = "erf_trust_state"
+path = "src/lib.rs"

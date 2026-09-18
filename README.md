@@ -21,6 +21,8 @@ Enterprise Rule Factory (ERF) — 把企业代码规范转化为可验证、可�
 可复现性:Java 插件/JUnit 版本锁定于根 `pom.xml`,`project.build.outputTimestamp`
 为固定值;同一 commit 两次 `mvn clean verify` 应产出 byte-identical jar
 (`find control-plane -name "*.jar" \| sort \| xargs sha256sum` 前后对比)。
+仓库门禁通过 `scripts/reproducible-java-build-check.sh` 自动执行这两次构建并
+比较 JAR 路径、SHA-256 与字节内容，证据写入 `.scratch/`。
 Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 
 ## Layout
@@ -31,3 +33,23 @@ Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 - `runtime/` — Rust Runtime(`rf-cli`、`rf-runner`、`gate`)
 - `contracts/proto/` — 版本化跨进程契约(Backend Host / Workspace Resolution)
 - `specs/` — 治理资产规范文件
+
+## CLI
+
+当前 checkout 的 V0.1 薄 CLI 为 `./rf`：
+
+```text
+./rf standard validate FILE...
+./rf rule validate FILE...
+./rf rule generate INTENT.yaml OUTPUT_DIR
+./rf rule test CANDIDATE_DIR OUTPUT_DIR
+./rf coverage analyze OUTPUT_DIR
+./rf pilot report OUTPUT_DIR
+./rf scan --repo-root PATH --host COMMAND (--rule-id ID | --candidate DIR)
+```
+
+`rf scan` 返回 `0` 表示执行完整（Gate 可为 PASS 或 FAIL），`3` 表示
+INCONCLUSIVE/执行不完整，`2` 表示输入或契约错误，`4` 表示 trust failure。
+
+release promote/revoke、gate authority、feedback 与 exception 命令会显式
+拒绝；它们需要后续的人工作业或外部权限，不由本地 V0.1 dispatcher 伪造。

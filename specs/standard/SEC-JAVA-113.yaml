@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-113
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免恒真恒假分支
+  description: 生产逻辑不得保留与运行时输入无关的恒真或恒假条件
+  languages: [java]
+  scenarios:
+    - id: avoid-constant-condition
+      expected: detectable

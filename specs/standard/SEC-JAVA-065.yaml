@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-065
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 不得忽略异常结果
+  description: 可能失败的操作不得通过空回调或无条件成功路径隐藏结果
+  languages: [java]
+  scenarios:
+    - id: check-operation-failure
+      expected: needs-clarification

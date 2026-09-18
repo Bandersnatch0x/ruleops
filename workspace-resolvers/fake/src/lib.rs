@@ -14,7 +14,11 @@ use std::collections::HashMap;
 
 /// Capability facts of the reference resolver.
 pub fn facts() -> HashMap<String, bool> {
-    HashMap::from([("ecosystem.static-layout".to_string(), true)])
+    HashMap::from([
+        ("ecosystem.static-layout".to_string(), true),
+        ("ecosystem.maven.safe-static".to_string(), true),
+        ("ecosystem.gradle.safe-static".to_string(), true),
+    ])
 }
 
 /// Resolves the layout under `repo_root` into a descriptor.
@@ -27,6 +31,18 @@ pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDesc
     }
     let mut modules: Vec<wb::ModuleDescriptor> = Vec::new();
     let mut unresolved: Vec<String> = Vec::new();
+
+    // Build-system identification is deliberately metadata-only. The adapter
+    // records what it saw but never evaluates a Maven/Gradle build or invents
+    // a dependency graph from incomplete static information.
+    let has_maven = ["pom.xml", "settings.xml"]
+        .iter()
+        .any(|name| repo_root.join(name).is_file());
+    let has_gradle = ["settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts"]
+        .iter()
+        .any(|name| repo_root.join(name).is_file());
+    if has_maven { unresolved.push("build-system:maven".to_string()); }
+    if has_gradle { unresolved.push("build-system:gradle".to_string()); }
 
     // v0 static convention: one module per direct child directory that
     // carries a `src/main` source root; a root-level `src` is the single

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-087
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 重定向目标必须受信
+  description: HTTP 重定向目标必须限制在允许的站点或路径集合
+  languages: [java]
+  scenarios:
+    - id: prevent-open-redirect
+      expected: needs-clarification

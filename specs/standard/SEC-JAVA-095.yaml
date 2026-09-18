@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-095
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 符号链接处理必须显式
+  description: 涉及文件遍历或写入时不得在未决策的情况下跟随符号链接
+  languages: [java]
+  scenarios:
+    - id: explicit-symlink-policy
+      expected: needs-clarification

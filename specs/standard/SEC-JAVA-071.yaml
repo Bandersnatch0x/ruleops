@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-071
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免灾难性正则回溯
+  description: 外部输入驱动的正则表达式不得包含可导致灾难性回溯的结构
+  languages: [java]
+  scenarios:
+    - id: avoid-catastrophic-regex
+      expected: needs-clarification

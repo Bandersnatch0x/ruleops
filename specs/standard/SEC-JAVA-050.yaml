@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-050
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免可变静态状态
+  description: 业务代码不得以无保护的静态可变状态承载请求或租户数据
+  languages: [java]
+  scenarios:
+    - id: avoid-mutable-static-state
+      expected: needs-clarification

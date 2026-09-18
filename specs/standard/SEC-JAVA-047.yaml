@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-047
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 禁止锁定字符串常量
+  description: 同步锁不得使用字符串常量或字符串驻留对象
+  languages: [java]
+  scenarios:
+    - id: avoid-synchronization-on-string
+      expected: detectable

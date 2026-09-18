@@ -1,0 +1,44 @@
+apiVersion: rulefactory.io/v1
+kind: PilotSuccessContract
+metadata:
+  id: pilot-success-contract-v0
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  status: APPROVED
+  authority: SHADOW
+  scope:
+    language: java
+    standardsInventory: 100
+    candidateRuleIntents: 20
+    shadowRepositories: 3
+  measures:
+    efficiency:
+      metric: author-active-time
+      baseline: "同三仓库、同冻结规则集的预试运行 author-active-time 中位数"
+      threshold: "author-active-time 中位数不高于基线的 80%"
+    quality:
+      metrics: [precision, recall, false-positive-regression]
+      comparison: "对同一提交进行基线结果与 Shadow 结果的配对人工复核"
+      tolerance: "precision >= 0.95；recall >= 0.90；false-positive-regression <= 5%"
+    security:
+      metric: false-pass-count
+      threshold: 0
+      failureBehavior: any-injection-or-incomplete-run-is-not-pass
+    operations:
+      metrics: [complete-rate, inconclusive-rate, scan-latency, resource-consumption]
+      threshold: "complete-rate >= 0.99；inconclusive-rate <= 0.01；p95 延迟 <= 基线 2 倍；峰值内存 <= 基线 1.5 倍"
+    outcomes:
+      metrics: [new-violation-trend, historical-debt-trend]
+      threshold: "new-violation-trend <= 0，historical-debt-trend <= 0"
+  sample:
+    selection: "提前登记 3 个 Java 仓库，观察期内不得替换，仅采集默认分支提交"
+    strata: "按仓库规模、Java source level、基线问题密度分层"
+    comparisonMethod: "同仓库前后配对比较，使用冻结 RuleBundle，并报告绝对及相对变化"
+  observationWindow:
+    start: "2026-10-01"
+    end: "2026-10-31"
+  adjudication:
+    decisionOwner: "platform-engineering 治理负责人"
+    acceptanceMethod: "治理负责人复核 digest-only 证据、合同指标和总门禁结果"
+    approvalReference: "GitHub issue #79，2026-09-18 批准记录"

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-028
+  version: 1.0.0
+  owner: platform-engineering
+spec:
+  title: 禁止显式触发垃圾回收
+  description: 业务代码不得显式请求 JVM 垃圾回收
+  languages: [java]
+  scenarios:
+    - id: avoid-explicit-gc
+      expected: detectable

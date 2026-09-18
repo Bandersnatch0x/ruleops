@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-109
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 可见性应遵循最小权限
+  description: 类型、字段和方法不得暴露超过调用方所需的可见性
+  languages: [java]
+  scenarios:
+    - id: minimize-api-visibility
+      expected: needs-clarification

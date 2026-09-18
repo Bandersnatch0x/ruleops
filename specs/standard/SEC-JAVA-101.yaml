@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-101
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: Executor 必须正常关闭
+  description: 应用停止或组件销毁时必须关闭其 Executor 并处理未完成任务
+  languages: [java]
+  scenarios:
+    - id: shutdown-executor
+      expected: needs-clarification

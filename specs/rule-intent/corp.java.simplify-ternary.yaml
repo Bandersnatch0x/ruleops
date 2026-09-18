@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.simplify-ternary
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-032
+    version: 1.0.0
+    scenario: simplify-ternary
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 简化不必要的布尔三元表达式
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/design.xml/SimplifiedTernary
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["boolean value = true ? true : false;"]
+    good: ["boolean value = true;"]
+    holdout: ["boolean value = false ? false : true;"]
+    nearMiss: ["boolean value = Boolean.TRUE;"]
+  severity:
+    default: advisory

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-056
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: equals 与 hashCode 必须成对
+  description: 重写 equals 时必须提供一致的 hashCode 实现
+  languages: [java]
+  scenarios:
+    - id: equals-hashcode-contract
+      expected: detectable

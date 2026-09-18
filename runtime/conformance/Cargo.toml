@@ -7,8 +7,15 @@ description = "Versioned, backend-agnostic Contract Conformance Suite skeleton (
 [dependencies]
 erf-contracts = { path = "../../contracts/rust" }
 erf-framing = { path = "../framing" }
+rf-gate = { path = "../gate" }
 erf-host-client = { path = "../host-client" }
+erf-trust = { path = "../trust" }
 prost = "0.13"
+sha2 = "0.10"
+thiserror = "2"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
 
 [lib]
 name = "erf_conformance"

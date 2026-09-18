@@ -32,5 +32,9 @@ spec:
       - "String a = \"duplicate\"; String b = \"duplicate\"; String c = \"duplicate\"; String d = \"duplicate\";"
     good:
       - "String a = \"one\"; String b = \"two\"; String c = \"three\";"
+    holdout:
+      - "String a = \"duplicate\"; String b = \"duplicate\"; String c = \"duplicate\"; String d = \"duplicate\";"
+    nearMiss:
+      - "String a = \"duplicate\"; String b = \"duplicate\";"
   severity:
     default: advisory

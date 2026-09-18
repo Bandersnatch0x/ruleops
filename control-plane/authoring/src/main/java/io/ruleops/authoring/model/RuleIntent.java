@@ -51,7 +51,17 @@ public record RuleIntent(
     public record Unresolved(String behavior) {}
 
     /** Example snippets used later as verification fixtures; data, never executed. */
-    public record Examples(List<String> bad, List<String> good) {}
+    public record Examples(
+            List<String> bad,
+            List<String> good,
+            List<String> holdout,
+            List<String> nearMiss) {
+
+        /** Source-compatible constructor for pre-Phase-2 two-list callers. */
+        public Examples(List<String> bad, List<String> good) {
+            this(bad, good, List.of(), List.of());
+        }
+    }
 
     /** Default gate severity; YAML key is `default` (a Java reserved word). */
     public record Severity(@JsonProperty("default") String defaultLevel) {}

@@ -1,0 +1,35 @@
+apiVersion: rulefactory.io/v1
+kind: RuleIntent
+metadata:
+  id: corp.java.avoid-hardcoded-ip
+  version: 1.0.0
+spec:
+  standard:
+    id: SEC-JAVA-027
+    version: 1.0.0
+    scenario: avoid-hardcoded-ip
+  language:
+    id: java
+    sourceLevels: ["11", "17", "21"]
+  intent:
+    statement: 禁止在源码中硬编码 IP 地址
+  scope:
+    includeSourceSets: [main]
+    excludeSourceSets: [test]
+  semantics:
+    target:
+      kind: existing-rule
+      declaringType: pmd
+      method: category/java/bestpractices.xml/AvoidUsingHardCodedIP
+      invocation: any
+      parameters: []
+  requiredCapabilities: [java.ast]
+  unresolved:
+    behavior: unknown
+  examples:
+    bad: ["String host = \"192.168.1.1\";"]
+    good: ["String host = \"service.internal\";"]
+    holdout: ["String host = \"10.0.0.5\";"]
+    nearMiss: ["String host = \"192.168.1\";"]
+  severity:
+    default: advisory

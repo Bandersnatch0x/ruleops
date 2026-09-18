@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-083
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 数据库查询必须参数化
+  description: SQL 查询不得通过字符串拼接把外部输入直接写入语句
+  languages: [java]
+  scenarios:
+    - id: prevent-sql-injection
+      expected: needs-clarification

@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-080
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: XML 解析必须阻断外部实体
+  description: 处理不可信 XML 时必须禁用外部实体和外部 DTD 解析
+  languages: [java]
+  scenarios:
+    - id: block-xml-external-entities
+      expected: needs-clarification

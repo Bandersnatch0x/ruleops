@@ -28,10 +28,23 @@ public record EvidenceBundle(
     /** Per-fixture expectation outcome. */
     public record FixtureResult(
             String fixture,
+            String category,
             String expectation,
             int expectedHits,
             int actualHits,
-            boolean pass) {}
+            boolean pass) {
+
+        /** Source-compatible constructor for pre-Phase-2 evidence callers. */
+        public FixtureResult(String fixture, String expectation, int expectedHits,
+                int actualHits, boolean pass) {
+            this(fixture, categoryOf(fixture), expectation, expectedHits, actualHits, pass);
+        }
+
+        private static String categoryOf(String fixture) {
+            int slash = fixture.indexOf('/');
+            return slash > 0 ? fixture.substring(0, slash) : "unknown";
+        }
+    }
 
     /** Builds the JSON-ready, stably ordered form of the bundle. */
     public Map<String, Object> asJson() {
@@ -48,6 +61,7 @@ public record EvidenceBundle(
                 .map(f -> {
                     var json = new java.util.LinkedHashMap<String, Object>();
                     json.put("fixture", f.fixture());
+                    json.put("category", f.category());
                     json.put("expectation", f.expectation());
                     json.put("expectedHits", f.expectedHits());
                     json.put("actualHits", f.actualHits());

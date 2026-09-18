@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-066
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: Optional 使用前必须检查
+  description: Optional 值不得在缺少存在性分支时直接调用 get
+  languages: [java]
+  scenarios:
+    - id: avoid-unchecked-optional-get
+      expected: detectable

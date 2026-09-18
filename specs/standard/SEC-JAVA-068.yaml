@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-068
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 避免 Optional 参数
+  description: 公共方法参数应表达明确的输入契约，不得以 Optional 隐藏调用约束
+  languages: [java]
+  scenarios:
+    - id: avoid-optional-parameter
+      expected: needs-clarification

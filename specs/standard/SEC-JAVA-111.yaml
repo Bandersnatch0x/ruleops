@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-111
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 条件判断不得重复矛盾
+  description: 同一控制流中的条件不得重复判断或形成互相矛盾的分支
+  languages: [java]
+  scenarios:
+    - id: avoid-duplicate-condition
+      expected: detectable

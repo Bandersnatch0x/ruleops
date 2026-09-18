@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-104
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: switch 必须处理默认分支
+  description: 枚举或外部输入驱动的 switch 必须明确未知值处理策略
+  languages: [java]
+  scenarios:
+    - id: handle-switch-default
+      expected: needs-clarification

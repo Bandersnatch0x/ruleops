@@ -237,6 +237,8 @@ public final class AuthoringValidator {
                 errors.add(new ValidationError(
                         "REQUIRED_MISSING", "$.spec.examples.good", "at least one good example required"));
             }
+            validateOptionalExamples(errors, "$.spec.examples.holdout", spec.examples().holdout());
+            validateOptionalExamples(errors, "$.spec.examples.nearMiss", spec.examples().nearMiss());
         }
         if (spec.severity() == null) {
             errors.add(new ValidationError("REQUIRED_MISSING", "$.spec.severity", "required"));
@@ -244,6 +246,16 @@ public final class AuthoringValidator {
             checkEnum(errors, "$.spec.severity.default", spec.severity().defaultLevel(), SEVERITY);
         }
         return errors;
+    }
+
+    private static void validateOptionalExamples(
+            List<ValidationError> errors, String path, List<String> examples) {
+        if (examples == null) return;
+        for (int i = 0; i < examples.size(); i++) {
+            if (examples.get(i) == null || examples.get(i).isBlank()) {
+                errors.add(new ValidationError("FORMAT_INVALID", path + "[" + i + "]", "fixture snippet must not be blank"));
+            }
+        }
     }
 
     private static List<ValidationError> validateIr(RuleIr ir) {

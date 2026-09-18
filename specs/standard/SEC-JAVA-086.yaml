@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-086
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 服务端请求目标必须受限
+  description: 服务端发起的请求不得由未经校验的外部 URL 任意控制
+  languages: [java]
+  scenarios:
+    - id: prevent-server-side-request-forgery
+      expected: needs-clarification

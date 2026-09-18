@@ -1,0 +1,13 @@
+apiVersion: rulefactory.io/v1
+kind: Standard
+metadata:
+  id: SEC-JAVA-090
+  version: 1.0.0
+  owner: security-platform
+spec:
+  title: 反射目标必须受约束
+  description: 类名、方法名和成员名不得由未经校验的外部输入直接决定
+  languages: [java]
+  scenarios:
+    - id: constrain-reflection-target
+      expected: needs-clarification

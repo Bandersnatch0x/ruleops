@@ -10,7 +10,9 @@ if [ -f "$HOME/.local/opt/erf-env.sh" ]; then
   . "$HOME/.local/opt/erf-env.sh"
 fi
 
-(cd "$REPO_ROOT/backend-hosts/java" && mvn -q clean package -DskipTests)
+(cd "$REPO_ROOT/backend-hosts/java" && mvn -q clean verify)
+"$REPO_ROOT/scripts/check-java-compatibility.sh"
 export ERF_JAVA_HOST_JAR="$REPO_ROOT/backend-hosts/java/target/erf-java-host-0.1.0-shaded.jar"
+"$REPO_ROOT/scripts/phase2-java-shadow.sh"
 export CARGO_NET_RETRY=10
 (cd "$REPO_ROOT" && cargo test -p erf-host-client --test java_host)
