@@ -5,6 +5,7 @@ edition = "2021"
 description = "Read-only Shadow observation runner and digest-only window report"
 
 [dependencies]
+erf-incremental-baseline = { path = "../incremental-baseline" }
 erf-feedback = { path = "../feedback" }
 erf-pilot-metrics = { path = "../pilot-metrics" }
 erf-unified-result = { path = "../unified-result" }

@@ -1,4 +1,5 @@
 use erf_feedback::FeedbackClass;
+use erf_incremental_baseline::{digest_summary, Stage, StageTimer};
 use erf_pilot_metrics::{ObservationMode, PilotMetricsLedger, RegressionOutcome};
 use erf_unified_result::{AuditEventKind, AuditTrail, ResultInputs, UnifiedResult};
 use rf_gate::{Baseline, BaselineKind, Completeness, GateDecision, GatePolicy, GatePreview};
@@ -7,11 +8,14 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use std::env;
-use std::fs;
-use std::io::Write;
+use std::fs::{self, OpenOptions};
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const JOURNAL_LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CommandKind {
@@ -25,6 +29,7 @@ enum CommandKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     LocalSimulation,
+    SyntheticShadow,
     LiveShadow,
 }
 
@@ -36,14 +41,16 @@ impl Mode {
     fn parse(value: &str) -> Result<Self, String> {
         match value {
             "local-simulation" => Ok(Self::LocalSimulation),
+            "synthetic-shadow" => Ok(Self::SyntheticShadow),
             "live-shadow" => Ok(Self::LiveShadow),
-            _ => Err(format!("invalid --mode: {value} (expected local-simulation or live-shadow)")),
+            _ => Err(format!("invalid --mode: {value} (expected local-simulation, synthetic-shadow or live-shadow)")),
         }
     }
 
     fn metric_mode(self) -> ObservationMode {
         match self {
             Self::LocalSimulation => ObservationMode::LocalSimulation,
+            Self::SyntheticShadow => ObservationMode::SyntheticShadow,
             Self::LiveShadow => ObservationMode::LiveShadow,
         }
     }
@@ -51,6 +58,7 @@ impl Mode {
     fn as_str(self) -> &'static str {
         match self {
             Self::LocalSimulation => "LOCAL_SIMULATION",
+            Self::SyntheticShadow => "SYNTHETIC_SHADOW",
             Self::LiveShadow => "LIVE_SHADOW",
         }
     }
@@ -86,6 +94,7 @@ struct ReportOptions {
     journal: PathBuf,
     output: PathBuf,
     mode: Option<Mode>,
+    registered_sample: Option<PathBuf>,
     window_start: u64,
     window_end: u64,
     expected_repositories: usize,
@@ -128,12 +137,13 @@ fn run_main() -> Result<(), String> {
 
 fn print_usage() {
     println!(
-        "usage:\n  erf-pilot-observer baseline --repository ID --commit SHA --repo-root PATH --candidate DIR --host CMD --resolver CMD --output FILE [--host-arg ARG] [--resolver-arg ARG]\n  erf-pilot-observer run --repository ID --commit SHA --repo-root PATH --candidate DIR --host CMD --resolver CMD --journal FILE --mode local-simulation|live-shadow [options]\n  erf-pilot-observer feedback --journal FILE --measurement-id ID --classification valid|documentation|scope|false-positive --regression pending|clean|finding [options]\n  erf-pilot-observer governance --journal FILE --measurement-id ID --rollback-count N --active-exception-count N --oldest-exception-age-secs N [options]\n  erf-pilot-observer report --journal FILE --output FILE --window-start EPOCH --window-end EPOCH --expected-repositories N [--mode local-simulation|live-shadow] [--latency-baseline-millis N] [--memory-baseline-bytes N]"
+        "usage:\n  erf-pilot-observer baseline --repository ID --commit SHA --repo-root PATH --candidate DIR --host CMD --resolver CMD --output FILE [--host-arg ARG] [--resolver-arg ARG]\n  erf-pilot-observer run --repository ID --commit SHA --repo-root PATH --candidate DIR --host CMD --resolver CMD --journal FILE --mode local-simulation|synthetic-shadow|live-shadow [options]\n  erf-pilot-observer feedback --journal FILE --measurement-id ID --classification valid|documentation|scope|false-positive --regression pending|clean|finding [options]\n  erf-pilot-observer governance --journal FILE --measurement-id ID --rollback-count N --active-exception-count N --oldest-exception-age-secs N [options]\n  erf-pilot-observer report --journal FILE --output FILE --window-start EPOCH --window-end EPOCH --expected-repositories N --mode local-simulation|synthetic-shadow|live-shadow [--registered-sample FILE] [--latency-baseline-millis N] [--memory-baseline-bytes N]"
     );
 }
 
 fn parse_scan_options(args: Vec<String>, requires_journal: bool) -> Result<ScanOptions, String> {
     let mut options = ScanOptions { mode: Mode::LiveShadow, actor: "pilot-observer".into(), reason: "observation run".into(), ..ScanOptions::default() };
+    let mut mode_supplied = false;
     let mut index = 0;
     while index < args.len() {
         let flag = &args[index];
@@ -153,7 +163,7 @@ fn parse_scan_options(args: Vec<String>, requires_journal: bool) -> Result<ScanO
             "--baseline" => options.baseline = Some(PathBuf::from(take()?)),
             "--exception-fingerprint" => { options.exceptions.insert(take()?); }
             "--blocking-rule-id" => { options.blocking_rules.insert(take()?); }
-            "--mode" => options.mode = Mode::parse(&take()?)?,
+            "--mode" => { options.mode = Mode::parse(&take()?)?; mode_supplied = true; }
             "--policy-digest" => options.policy_digest = Some(take()?),
             "--execution-lock-digest" => options.execution_lock_digest = Some(take()?),
             "--runner-release-digest" => options.runner_release_digest = Some(take()?),
@@ -179,6 +189,7 @@ fn parse_scan_options(args: Vec<String>, requires_journal: bool) -> Result<ScanO
         if value.trim().is_empty() { return Err(format!("missing {name}")); }
     }
     if requires_journal && options.journal.is_none() { return Err("run requires --journal".into()); }
+    if requires_journal && !mode_supplied { return Err("run requires --mode".into()); }
     if options.output.is_none() && !requires_journal { return Err("baseline requires --output".into()); }
     Ok(options)
 }
@@ -254,6 +265,7 @@ fn parse_report_options(args: Vec<String>) -> Result<ReportOptions, String> {
             "--journal" => options.journal = PathBuf::from(value),
             "--output" => options.output = PathBuf::from(value),
             "--mode" => options.mode = Some(Mode::parse(&value)?),
+            "--registered-sample" => options.registered_sample = Some(PathBuf::from(value)),
             "--window-start" => options.window_start = parse_u64(&value, flag)?,
             "--window-end" => options.window_end = parse_u64(&value, flag)?,
             "--expected-repositories" => options.expected_repositories = parse_u64(&value, flag)? as usize,
@@ -264,6 +276,10 @@ fn parse_report_options(args: Vec<String>) -> Result<ReportOptions, String> {
     }
     if options.journal.as_os_str().is_empty() { return Err("report requires --journal".into()); }
     if options.output.as_os_str().is_empty() { return Err("report requires --output".into()); }
+    let mode = options.mode.ok_or("report requires --mode")?;
+    if matches!(mode, Mode::LiveShadow | Mode::SyntheticShadow) && options.registered_sample.is_none() {
+        return Err(format!("{} report requires --registered-sample", mode.as_str()));
+    }
     if options.window_start >= options.window_end { return Err("window start must be before window end".into()); }
     if options.expected_repositories == 0 { return Err("expected repositories must be positive".into()); }
     Ok(options)
@@ -271,14 +287,15 @@ fn parse_report_options(args: Vec<String>) -> Result<ReportOptions, String> {
 
 fn run_baseline(options: ScanOptions) -> Result<(), String> {
     let started = Instant::now();
-    let scan = execute_scan(&options).map_err(|error| format!("cannot establish baseline: {error}"))?;
-    let preview = preview_for(&scan, &options, None);
+    let mut scan = execute_scan(&options).map_err(|error| format!("cannot establish baseline: {error}"))?;
+    let preview = preview_for(&mut scan, &options, None);
     if !preview.completeness.complete { return Err("baseline scan was incomplete".into()); }
     let mut lines = vec![
         "format=erf-pilot-baseline-v0".to_string(),
         format!("repository={}", options.repository),
         format!("commit={}", options.commit),
         format!("rule_id={}", scan.rule_id),
+        format!("rule_bundle_digest={}", candidate_digest(Path::new(&options.candidate))?),
     ];
     for finding in &preview.findings {
         lines.push(format!("fingerprint={}", finding.fingerprint));
@@ -298,8 +315,8 @@ fn run_observation(options: ScanOptions) -> Result<(), String> {
     let elapsed = elapsed_millis(started);
     let peak_memory = read_rss_bytes().max(1);
     let (scan, preview, failure) = match scan_result {
-        Ok(scan) => {
-            let preview = preview_for(&scan, &options, baseline.as_ref());
+        Ok(mut scan) => {
+            let preview = preview_for(&mut scan, &options, baseline.as_ref());
             (Some(scan), preview, None)
         }
         Err(error) => {
@@ -309,29 +326,31 @@ fn run_observation(options: ScanOptions) -> Result<(), String> {
         }
     };
     let result = local_result(&options, scan.as_ref(), &preview, failure.as_deref());
-    let mut ledger = if journal.is_file() {
-        PilotMetricsLedger::from_journal(&fs::read(&journal).map_err(|error| format!("cannot read journal: {error}"))?)
-            .map_err(|error| format!("cannot restore journal: {error}"))?
-    } else {
-        PilotMetricsLedger::new()
-    };
     let measurement_id = options.measurement_id.clone().unwrap_or_else(|| format!("{}:{}:{}", options.mode.as_str(), options.repository, options.commit));
-    let operation = ledger.last_operation_sequence() + 1;
-    let outcome = ledger.record_result_with_mode(
-        &measurement_id,
-        options.mode.metric_mode(),
-        &result,
-        elapsed,
-        peak_memory,
-        options.observed_at.unwrap_or_else(now_epoch),
-        &options.actor,
-        &options.reason,
-        operation,
-    ).map_err(|error| format!("cannot record observation: {error}"))?;
-    atomic_write(&journal, &ledger.export_journal().map_err(|error| format!("cannot export journal: {error}"))?)?;
-    println!("observation={} mode={} repository={} commit={} measurement_id={} decision={:?} complete={} new_findings={} historical_findings={} elapsed_ms={} peak_memory_bytes={} journal={}",
-        match outcome { erf_pilot_metrics::MetricOutcome::Admitted(_) => "ADMITTED", erf_pilot_metrics::MetricOutcome::Idempotent(_) => "IDEMPOTENT" },
-        options.mode.as_str(), options.repository, options.commit, measurement_id, result.decision, result.completeness.complete,
+    let admission = with_journal_lock(&journal, || {
+        let mut ledger = restore_ledger(&journal)?;
+        let operation = ledger.last_operation_sequence() + 1;
+        let outcome = ledger.record_result_with_mode(
+            &measurement_id,
+            options.mode.metric_mode(),
+            &result,
+            elapsed,
+            peak_memory,
+            options.observed_at.unwrap_or_else(now_epoch),
+            &options.actor,
+            &options.reason,
+            operation,
+        ).map_err(|error| format!("cannot record observation: {error}"))?;
+        atomic_write(&journal, &ledger.export_journal().map_err(|error| format!("cannot export journal: {error}"))?)?;
+        Ok(match outcome {
+            erf_pilot_metrics::MetricOutcome::Admitted(_) => "ADMITTED",
+            erf_pilot_metrics::MetricOutcome::Idempotent(_) => "IDEMPOTENT",
+        })
+    })?;
+    println!("observation={} mode={} repository={} commit={} measurement_id={} run_identity_digest={} rule_bundle_digest={} decision={:?} complete={} new_findings={} historical_findings={} elapsed_ms={} peak_memory_bytes={} journal={}",
+        admission,
+        options.mode.as_str(), options.repository, options.commit, measurement_id, hex_digest(&digest_bytes(&measurement_id)),
+        result.inputs.rule_bundle_digest, result.decision, result.completeness.complete,
         result.new_finding_count, result.historical_finding_count, elapsed, peak_memory, journal.display());
     if result.decision == GateDecision::Inconclusive || !result.completeness.complete {
         eprintln!("observation recorded as INCONCLUSIVE");
@@ -342,35 +361,49 @@ fn run_observation(options: ScanOptions) -> Result<(), String> {
 
 fn record_feedback(options: (PathBuf, String, FeedbackClass, RegressionOutcome, String, String, u64)) -> Result<(), String> {
     let (journal, measurement_id, classification, regression, actor, reason, observed_at) = options;
-    let mut ledger = restore_ledger(&journal)?;
-    let operation = ledger.last_operation_sequence() + 1;
-    ledger.record_feedback(&measurement_id, classification, regression, observed_at, &actor, &reason, operation)
-        .map_err(|error| format!("cannot record feedback: {error}"))?;
-    atomic_write(&journal, &ledger.export_journal().map_err(|error| format!("cannot export journal: {error}"))?)?;
+    with_journal_lock(&journal, || {
+        let mut ledger = restore_ledger(&journal)?;
+        let operation = ledger.last_operation_sequence() + 1;
+        ledger.record_feedback(&measurement_id, classification, regression, observed_at, &actor, &reason, operation)
+            .map_err(|error| format!("cannot record feedback: {error}"))?;
+        atomic_write(&journal, &ledger.export_journal().map_err(|error| format!("cannot export journal: {error}"))?)
+    })?;
     println!("feedback=ADMITTED measurement_id={} journal={}", measurement_id, journal.display());
     Ok(())
 }
 
 fn record_governance(options: (PathBuf, String, u64, u64, u64, String, String, u64)) -> Result<(), String> {
     let (journal, measurement_id, rollback, exceptions, oldest, actor, reason, observed_at) = options;
-    let mut ledger = restore_ledger(&journal)?;
-    let operation = ledger.last_operation_sequence() + 1;
-    ledger.record_governance(&measurement_id, rollback, exceptions, oldest, observed_at, &actor, &reason, operation)
-        .map_err(|error| format!("cannot record governance: {error}"))?;
-    atomic_write(&journal, &ledger.export_journal().map_err(|error| format!("cannot export journal: {error}"))?)?;
+    with_journal_lock(&journal, || {
+        let mut ledger = restore_ledger(&journal)?;
+        let operation = ledger.last_operation_sequence() + 1;
+        ledger.record_governance(&measurement_id, rollback, exceptions, oldest, observed_at, &actor, &reason, operation)
+            .map_err(|error| format!("cannot record governance: {error}"))?;
+        atomic_write(&journal, &ledger.export_journal().map_err(|error| format!("cannot export journal: {error}"))?)
+    })?;
     println!("governance=ADMITTED measurement_id={} journal={}", measurement_id, journal.display());
     Ok(())
 }
 
 fn write_report(options: ReportOptions) -> Result<(), String> {
-    let ledger = restore_ledger(&options.journal)?;
+    let ledger = with_journal_lock(&options.journal, || restore_ledger(&options.journal))?;
+    let mode = options.mode.ok_or("report requires --mode")?;
     let runs = ledger.run_trend().iter().filter(|run| {
         run.observed_at_epoch_secs >= options.window_start
             && run.observed_at_epoch_secs <= options.window_end
-            && options.mode.map(|mode| run.mode == mode.metric_mode()).unwrap_or(true)
+            && run.mode == mode.metric_mode()
     }).collect::<Vec<_>>();
-    let mode = options.mode.map(Mode::as_str).unwrap_or("UNSPECIFIED");
+    if runs.is_empty() {
+        return Err(format!("no observations for {} in the requested window", mode.as_str()));
+    }
+    let registered = options.registered_sample.as_deref().map(|path| read_registered_sample(path, mode)).transpose()?;
     let repository_count = runs.iter().map(|run| run.repository_digest).collect::<BTreeSet<_>>().len();
+    if repository_count != options.expected_repositories {
+        return Err(format!("{} repository identities observed, expected {}", repository_count, options.expected_repositories));
+    }
+    if let Some(sample) = registered.as_ref() {
+        validate_registered_identities(&runs, sample, mode, options.expected_repositories)?;
+    }
     let complete_count = runs.iter().filter(|run| run.complete).count();
     let inconclusive_count = runs.iter().filter(|run| run.decision == GateDecision::Inconclusive).count();
     let pass_count = runs.iter().filter(|run| run.decision == GateDecision::Pass).count();
@@ -398,21 +431,45 @@ fn write_report(options: ReportOptions) -> Result<(), String> {
         Some(baseline) if baseline > 0 => check("peak memory <= baseline x1.5", max_memory > 0 && max_memory <= baseline.saturating_mul(3) / 2),
         _ => ("peak memory <= baseline x1.5", "INCONCLUSIVE"),
     });
-    checks.push(("precision/recall/false-positive regression", if ledger.feedback_measurements().is_empty() { "INCONCLUSIVE" } else { "INCONCLUSIVE" }));
-    let overall = if checks.iter().any(|(_, status)| *status == "FAIL") { "FAIL" } else if checks.iter().any(|(_, status)| *status == "INCONCLUSIVE") { "INCONCLUSIVE" } else { "PASS" };
+    let regression_feedback = ledger.feedback_measurements().iter()
+        .filter(|feedback| feedback.regression_outcome != RegressionOutcome::NotApplicable)
+        .collect::<Vec<_>>();
+    let regression_status = if regression_feedback.is_empty() {
+        "INCONCLUSIVE"
+    } else if regression_feedback.iter().any(|feedback| feedback.regression_outcome == RegressionOutcome::FindingDetected) {
+        "FAIL"
+    } else if regression_feedback.iter().any(|feedback| feedback.regression_outcome == RegressionOutcome::Pending) {
+        "INCONCLUSIVE"
+    } else {
+        "PASS"
+    };
+    checks.push(("precision/recall/false-positive regression", regression_status));
+    let engineering_overall = if checks.iter().any(|(_, status)| *status == "FAIL") { "FAIL" } else if checks.iter().any(|(_, status)| *status == "INCONCLUSIVE") { "INCONCLUSIVE" } else { "PASS" };
+    let engineering_qualification = if complete_count == runs.len() && false_pass_count == 0 { "PASS" } else { "FAIL" };
+    let product_outcome = if mode == Mode::LiveShadow { engineering_overall } else { "INCONCLUSIVE" };
     let mut report = String::new();
     report.push_str("# Pilot Observation Window Report\n\n");
     report.push_str(&format!("- Window: `{}` through `{}` (inclusive)\n", options.window_start, options.window_end));
-    report.push_str(&format!("- Mode: `{mode}`\n- Overall: `{overall}`\n- Authority: `SHADOW` only\n- Runs: `{}`\n- Repositories observed: `{repository_count}`\n- PASS/FAIL/INCONCLUSIVE: `{pass_count}/{fail_count}/{inconclusive_count}`\n- Complete rate: `{}`\n- Inconclusive rate: `{}`\n- p95 latency millis: `{}`\n- Peak memory bytes: `{max_memory}`\n- New finding trend delta: `{new_trend}`\n- Historical finding trend delta: `{historical_trend}`\n\n", runs.len(), format_ratio(complete_rate), format_ratio(inconclusive_rate), p95_latency.map(|value| value.to_string()).unwrap_or_else(|| "INCONCLUSIVE".into())));
+    report.push_str(&format!("- ObservationMode: `{}`\n- Engineering qualification: `{engineering_qualification}`\n- Engineering gate: `{engineering_overall}`\n- Product outcome: `{product_outcome}`\n- Overall: `{product_outcome}`\n- Product eligibility: `{}`\n- Authority: `SHADOW` only\n- Runs: `{}`\n- Repositories observed: `{repository_count}`\n- PASS/FAIL/INCONCLUSIVE: `{pass_count}/{fail_count}/{inconclusive_count}`\n- Complete rate: `{}`\n- Inconclusive rate: `{}`\n- p95 latency millis: `{}`\n- Peak memory bytes: `{max_memory}`\n- New finding trend delta: `{new_trend}`\n- Historical finding trend delta: `{historical_trend}`\n\n", mode.as_str(), if mode == Mode::LiveShadow { "LIVE_SHADOW" } else { "ENGINEERING_ONLY" }, runs.len(), format_ratio(complete_rate), format_ratio(inconclusive_rate), p95_latency.map(|value| value.to_string()).unwrap_or_else(|| "INCONCLUSIVE".into())));
+    report.push_str("## Observation identities\n\n");
+    report.push_str("| ObservationMode | Run identity | Run identity digest | Repository identity | Commit identity | Rule-bundle digest |\n| --- | --- | --- | --- | --- | --- |\n");
+    for run in &runs {
+        report.push_str(&format!("| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n", run.mode.as_str(), run.measurement_id, hex_digest(&run.run_identity_digest), hex_digest(&run.repository_digest), hex_digest(&run.commit_digest), hex_digest(&run.rule_bundle_digest)));
+    }
+    report.push('\n');
     report.push_str("| Check | Result |\n| --- | --- |\n");
     for (name, status) in checks { report.push_str(&format!("| {name} | {status} |\n")); }
-    report.push_str("\nThis report contains digest-only aggregates. It does not publish SCM status, upload source or full Findings, or authorize protected-branch enforcement. Missing or unmeasured data remains INCONCLUSIVE.\n");
+    report.push_str("\nThe report is mode-scoped. LOCAL_SIMULATION and SYNTHETIC_SHADOW are engineering qualification evidence only and are forced to Product outcome INCONCLUSIVE; they cannot enter LIVE_SHADOW product aggregation. Every row binds ObservationMode, run identity, repository identity, commit identity and rule-bundle digest. This report contains digest-only aggregates. It does not publish SCM status, upload source or full Findings, or authorize protected-branch enforcement. Missing or unmeasured data remains INCONCLUSIVE.\n");
     atomic_write(&options.output, report)?;
-    println!("window-report={} evidence={}", overall, options.output.display());
-    match overall {
-        "PASS" => Ok(()),
+    println!("window-report={} engineering={} mode={} evidence={}", product_outcome, engineering_overall, mode.as_str(), options.output.display());
+    match engineering_overall {
+        "PASS" if product_outcome == "PASS" => Ok(()),
         "INCONCLUSIVE" => {
             eprintln!("observation window is INCONCLUSIVE");
+            std::process::exit(3);
+        }
+        "PASS" => {
+            eprintln!("engineering qualification passed; product outcome remains INCONCLUSIVE for {}", mode.as_str());
             std::process::exit(3);
         }
         _ => {
@@ -422,27 +479,127 @@ fn write_report(options: ReportOptions) -> Result<(), String> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RegisteredSample {
+    identities: BTreeSet<([u8; 32], [u8; 32])>,
+    rule_bundle_digest: [u8; 32],
+}
+
+fn read_registered_sample(path: &Path, expected_mode: Mode) -> Result<RegisteredSample, String> {
+    let text = fs::read_to_string(path).map_err(|error| format!("cannot read registered sample: {error}"))?;
+    let mut lines = text.lines();
+    if lines.next() != Some("format=erf-pilot-sample-v1") {
+        return Err("registered sample format is invalid".into());
+    }
+    let expected_mode_line = format!("mode={}", expected_mode.as_str());
+    if lines.next() != Some(expected_mode_line.as_str()) {
+        return Err(format!("registered sample mode does not match {}", expected_mode.as_str()));
+    }
+    let mut identities = BTreeSet::new();
+    let mut rule_bundle_digest = None;
+    for line in lines {
+        if line.trim().is_empty() { continue; }
+        if let Some(value) = line.strip_prefix("rule-bundle=") {
+            if rule_bundle_digest.is_some() { return Err("registered sample contains duplicate rule-bundle identity".into()); }
+            rule_bundle_digest = Some(parse_fixed_digest(value)?);
+            continue;
+        }
+        let value = line.strip_prefix("sample=").ok_or("registered sample contains an unknown record")?;
+        let (repository, commit) = value.split_once('\t').ok_or("registered sample record must contain repository and commit")?;
+        if repository.trim().is_empty() || commit.trim().is_empty() || repository.chars().any(char::is_control) || commit.chars().any(char::is_control) {
+            return Err("registered sample contains an invalid repository or commit".into());
+        }
+        if !identities.insert((digest_bytes(repository), digest_bytes(commit))) {
+            return Err("registered sample contains a duplicate repository/commit identity".into());
+        }
+    }
+    if identities.is_empty() { return Err("registered sample is empty".into()); }
+    Ok(RegisteredSample { identities, rule_bundle_digest: rule_bundle_digest.ok_or("registered sample is missing rule-bundle identity")? })
+}
+
+fn validate_registered_identities(
+    runs: &[&erf_pilot_metrics::RunMeasurement],
+    registered: &RegisteredSample,
+    mode: Mode,
+    expected_repositories: usize,
+) -> Result<(), String> {
+    if let Some(run) = runs.iter().find(|run| run.mode != mode.metric_mode()) {
+        return Err(format!("{} report received a {} observation", mode.as_str(), run.mode.as_str()));
+    }
+    if let Some(run) = runs.iter().find(|run| run.rule_bundle_digest != registered.rule_bundle_digest) {
+        return Err(format!("{} observation rule-bundle digest does not match the registered bundle: {}", mode.as_str(), hex_digest(&run.rule_bundle_digest)));
+    }
+    let observed = runs.iter().map(|run| (run.repository_digest, run.commit_digest)).collect::<BTreeSet<_>>();
+    let registered_repositories = registered.identities.iter().map(|(repository, _)| *repository).collect::<BTreeSet<_>>();
+    if registered_repositories.len() != expected_repositories {
+        return Err(format!("registered {} sample has {} repository identities, expected {}", mode.as_str(), registered_repositories.len(), expected_repositories));
+    }
+    if let Some(identity) = observed.difference(&registered.identities).next() {
+        return Err(format!("{} observation identity is not registered: repository={} commit={}", mode.as_str(), hex_digest(&identity.0), hex_digest(&identity.1)));
+    }
+    if let Some(identity) = registered.identities.difference(&observed).next() {
+        return Err(format!("{} registered identity was not observed: repository={} commit={}", mode.as_str(), hex_digest(&identity.0), hex_digest(&identity.1)));
+    }
+    Ok(())
+}
+
 fn execute_scan(options: &ScanOptions) -> Result<rf_runner::ScanResult, ScanError> {
     scan(&ScanConfig {
         repo_root: options.repo_root.clone(),
         rule_id: String::new(),
         rule_bundle: Some(options.candidate.clone()),
+        bundle_delivery: None,
         resolver_command: options.resolver.clone(),
         resolver_args: options.resolver_args.clone(),
         host_command: options.host.clone(),
         host_args: options.host_args.clone(),
         host_deadline_ms: 0,
+        resolver_deadline_ms: 0,
         max_staging_bytes: 64 * 1024 * 1024,
         execution_lock: None,
         signed_execution_lock: None,
+        resolver_sandbox_policy: None,
         sandbox_policy: None,
+        workspace_attestation: None,
+        frozen_plan: None,
+        incremental: None,
+        scan_cache_dir: None,
+        fallback_inputs: None,
+        project_scope: None,
     })
 }
 
-fn preview_for(scan: &rf_runner::ScanResult, options: &ScanOptions, baseline: Option<&BTreeSet<String>>) -> GatePreview {
+fn preview_for(scan: &mut rf_runner::ScanResult, options: &ScanOptions, baseline: Option<&BTreeSet<String>>) -> GatePreview {
     let baseline = baseline.map(|fingerprints| Baseline { kind: BaselineKind::Comparison, finding_fingerprints: fingerprints.clone() });
     let policy = (!options.blocking_rules.is_empty()).then_some(GatePolicy { blocking_rule_ids: options.blocking_rules.clone() });
-    rf_gate::preview_with_policy_and_baseline_and_exceptions(&scan.planned_unit_ids, &scan.unit_statuses, &scan.committed_findings, baseline.as_ref(), &options.exceptions, policy.as_ref())
+    let gate_timer = StageTimer::start(Stage::Gate, digest_summary(&format!("pilot-observer-gate:{:?}", scan.plan_digest)))
+        .expect("gate telemetry input digest is always valid");
+    let mut preview = rf_gate::preview_with_policy_and_baseline_and_exceptions_and_delivery_and_observation_errors(&scan.planned_unit_ids, &scan.unit_statuses, &scan.committed_findings, baseline.as_ref(), &options.exceptions, policy.as_ref(), None, scan.resolver_required_unresolved_facts.len());
+    let telemetry_error = if let Some(mut telemetry) = scan.stage_telemetry.take() {
+        match telemetry.replace_measurement(gate_timer.finish()) {
+            Ok(()) if telemetry.has_all_stage_summaries() => {
+                scan.stage_telemetry = Some(telemetry);
+                None
+            }
+            Ok(()) => Some("missing stage summary before Gate preview".into()),
+            Err(error) => Some(error.to_string()),
+        }
+    } else {
+        Some("missing stage telemetry before Gate preview".into())
+    };
+    if let Some(error) = telemetry_error {
+        preview.decision = GateDecision::Inconclusive;
+        preview.completeness.complete = false;
+        preview.completeness.observation_errors = preview.completeness.observation_errors.saturating_add(1);
+        preview.input_summary = format!("Gate telemetry rejected: {error}");
+    }
+    if scan.fallback_decision.as_ref().is_some_and(|decision| !decision.allows_authoritative_gate()) {
+        preview.decision = GateDecision::Inconclusive;
+        preview.completeness.complete = false;
+        preview.completeness.observation_errors = preview.completeness.observation_errors.saturating_add(1);
+        preview.input_summary = "incremental route is diagnostic-only until a FULL authority result is paired".into();
+    }
+    preview
 }
 
 fn incomplete_preview(error: &ScanError) -> GatePreview {
@@ -454,7 +611,8 @@ fn incomplete_preview(error: &ScanError) -> GatePreview {
 }
 
 fn local_result(options: &ScanOptions, scan: Option<&rf_runner::ScanResult>, preview: &GatePreview, failure: Option<&str>) -> UnifiedResult {
-    let rule_bundle_digest = candidate_digest(Path::new(&options.candidate)).unwrap_or_else(|_| digest_text("invalid-candidate"));
+    let candidate = Path::new(&options.candidate);
+    let rule_bundle_digest = candidate_digest(candidate).unwrap_or_else(|error| digest_text(&format!("invalid-candidate:path={}:error={error}", candidate.display())));
     let workspace_digest = scan.map(|value| value.workspace_descriptor_digest.as_slice()).filter(|value| value.len() == 32).map(hex_digest).unwrap_or_else(|| digest_text(&format!("workspace:{}:{}", options.repository, options.commit)));
     let plan_digest = scan.map(|value| fixed_digest(&value.plan_digest, "plan")).unwrap_or_else(|| fixed_digest(failure.unwrap_or("plan").as_bytes(), "plan"));
     let attempt_digest = scan.map(|value| fixed_digest(&value.attempt_transcript_digest, "attempt")).unwrap_or_else(|| fixed_digest(failure.unwrap_or("attempt").as_bytes(), "attempt"));
@@ -497,13 +655,68 @@ fn restore_ledger(path: &Path) -> Result<PilotMetricsLedger, String> {
     PilotMetricsLedger::from_journal(&fs::read(path).map_err(|error| format!("cannot read journal: {error}"))?).map_err(|error| format!("cannot restore journal: {error}"))
 }
 
+struct JournalLock {
+    path: PathBuf,
+}
+
+impl JournalLock {
+    fn acquire(journal: &Path) -> Result<Self, String> {
+        if let Some(parent) = journal.parent() {
+            fs::create_dir_all(parent).map_err(|error| format!("cannot create journal directory: {error}"))?;
+        }
+        let file_name = journal.file_name().ok_or("journal path must name a file")?;
+        let lock_path = journal.with_file_name(format!("{}.lock", file_name.to_string_lossy()));
+        let deadline = Instant::now() + JOURNAL_LOCK_TIMEOUT;
+        loop {
+            match OpenOptions::new().write(true).create_new(true).open(&lock_path) {
+                Ok(mut file) => {
+                    let lock = Self { path: lock_path };
+                    if let Err(error) = writeln!(file, "pid={}", std::process::id()) {
+                        drop(lock);
+                        return Err(format!("cannot write journal lock: {error}"));
+                    }
+                    if let Err(error) = file.sync_all() {
+                        drop(lock);
+                        return Err(format!("cannot sync journal lock: {error}"));
+                    }
+                    return Ok(lock);
+                }
+                Err(error) if error.kind() == ErrorKind::AlreadyExists && Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                    return Err(format!("journal lock is held beyond {:?}: {}", JOURNAL_LOCK_TIMEOUT, lock_path.display()));
+                }
+                Err(error) => return Err(format!("cannot acquire journal lock: {error}")),
+            }
+        }
+    }
+}
+
+impl Drop for JournalLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn with_journal_lock<T>(journal: &Path, operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _lock = JournalLock::acquire(journal)?;
+    operation()
+}
+
 fn atomic_write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
     if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|error| format!("cannot create evidence directory: {error}"))?; }
     let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    let mut file = fs::File::create(&temp).map_err(|error| format!("cannot create temporary evidence file: {error}"))?;
-    file.write_all(contents.as_ref()).map_err(|error| format!("cannot write evidence: {error}"))?;
-    file.sync_all().map_err(|error| format!("cannot sync evidence: {error}"))?;
-    fs::rename(&temp, path).map_err(|error| format!("cannot publish evidence atomically: {error}"))
+    let result = (|| {
+        let mut file = fs::File::create(&temp).map_err(|error| format!("cannot create temporary evidence file: {error}"))?;
+        file.write_all(contents.as_ref()).map_err(|error| format!("cannot write evidence: {error}"))?;
+        file.sync_all().map_err(|error| format!("cannot sync evidence: {error}"))?;
+        fs::rename(&temp, path).map_err(|error| format!("cannot publish evidence atomically: {error}"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
 }
 
 fn parse_u64(value: &str, flag: &str) -> Result<u64, String> {
@@ -544,8 +757,31 @@ fn read_rss_bytes() -> u64 {
 }
 
 fn digest_text(value: &str) -> String {
-    let digest: [u8; 32] = Sha256::digest(value.as_bytes()).into();
-    hex_digest(&digest)
+    hex_digest(&digest_bytes(value))
+}
+
+fn digest_bytes(value: &str) -> [u8; 32] {
+    Sha256::digest(value.as_bytes()).into()
+}
+
+fn parse_fixed_digest(value: &str) -> Result<[u8; 32], String> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("registered sample rule-bundle digest must be 64 hexadecimal characters".into());
+    }
+    let mut digest = [0; 32];
+    for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+        digest[index] = (hex_nibble(chunk[0]) << 4) | hex_nibble(chunk[1]);
+    }
+    Ok(digest)
+}
+
+fn hex_nibble(value: u8) -> u8 {
+    match value {
+        b'0'..=b'9' => value - b'0',
+        b'a'..=b'f' => value - b'a' + 10,
+        b'A'..=b'F' => value - b'A' + 10,
+        _ => unreachable!("parse_fixed_digest only accepts hexadecimal input"),
+    }
 }
 
 fn fixed_digest(value: &[u8], label: &str) -> [u8; 32] {
@@ -596,6 +832,7 @@ fn check(name: &'static str, passed: bool) -> (&'static str, &'static str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
     #[test]
     fn percentile_is_ceil_p95_and_deterministic() {
@@ -607,6 +844,102 @@ mod tests {
     #[test]
     fn mode_names_are_explicit() {
         assert_eq!(Mode::LocalSimulation.as_str(), "LOCAL_SIMULATION");
+        assert_eq!(Mode::SyntheticShadow.as_str(), "SYNTHETIC_SHADOW");
         assert_eq!(Mode::LiveShadow.as_str(), "LIVE_SHADOW");
+    }
+
+    #[test]
+    fn journal_lock_serializes_competing_writers() {
+        let directory = std::env::temp_dir().join(format!(
+            "erf-pilot-observer-lock-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let journal = directory.join("journal.bin");
+        let first = JournalLock::acquire(&journal).unwrap();
+        let acquired = Arc::new(AtomicBool::new(false));
+        let thread_acquired = Arc::clone(&acquired);
+        let thread_journal = journal.clone();
+        let waiter = std::thread::spawn(move || {
+            let second = JournalLock::acquire(&thread_journal).unwrap();
+            thread_acquired.store(true, Ordering::Release);
+            drop(second);
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!acquired.load(Ordering::Acquire));
+        drop(first);
+        waiter.join().unwrap();
+        assert!(acquired.load(Ordering::Acquire));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn registered_sample_positive_and_mode_or_commit_mismatch_cases_fail_closed() {
+        let path = std::env::temp_dir().join(format!("erf-pilot-sample-{}.tsv", std::process::id()));
+        fs::write(&path, format!("format=erf-pilot-sample-v1\nmode=LIVE_SHADOW\nrule-bundle={}\nsample=org/repo\tabc123\n", "03".repeat(32))).unwrap();
+        let registered = read_registered_sample(&path, Mode::LiveShadow).unwrap();
+        let good = erf_pilot_metrics::RunMeasurement {
+            measurement_id: "run:1".into(),
+            run_identity_digest: digest_bytes("run:1"),
+            mode: ObservationMode::LiveShadow,
+            repository_digest: digest_bytes("org/repo"),
+            commit_digest: digest_bytes("abc123"),
+            rule_bundle_digest: [3; 32],
+            unified_result_digest: [4; 32],
+            trust: erf_unified_result::ResultTrust::LocalUnattested,
+            decision: GateDecision::Pass,
+            complete: true,
+            new_finding_count: 0,
+            historical_finding_count: 0,
+            latency_millis: 1,
+            peak_memory_bytes: 1,
+            observed_at_epoch_secs: 1,
+        };
+        assert!(validate_registered_identities(&[&good], &registered, Mode::LiveShadow, 1).is_ok());
+        let wrong_commit = erf_pilot_metrics::RunMeasurement { commit_digest: digest_bytes("different"), ..good.clone() };
+        assert!(validate_registered_identities(&[&wrong_commit], &registered, Mode::LiveShadow, 1).is_err());
+        let wrong_bundle = erf_pilot_metrics::RunMeasurement { rule_bundle_digest: [4; 32], ..good.clone() };
+        assert!(validate_registered_identities(&[&wrong_bundle], &registered, Mode::LiveShadow, 1).is_err());
+        let wrong_mode = erf_pilot_metrics::RunMeasurement { mode: ObservationMode::LocalSimulation, ..good };
+        assert!(validate_registered_identities(&[&wrong_mode], &registered, Mode::LiveShadow, 1).is_err());
+        assert!(read_registered_sample(&path, Mode::SyntheticShadow).is_err());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn registered_sample_positive_and_mismatch_cases_cover_each_observation_mode() {
+        for (index, (mode, metric_mode)) in [
+            (Mode::LocalSimulation, ObservationMode::LocalSimulation),
+            (Mode::SyntheticShadow, ObservationMode::SyntheticShadow),
+            (Mode::LiveShadow, ObservationMode::LiveShadow),
+        ].into_iter().enumerate() {
+            let path = std::env::temp_dir().join(format!("erf-pilot-sample-{}-{index}.tsv", std::process::id()));
+            fs::write(&path, format!("format=erf-pilot-sample-v1\nmode={}\nrule-bundle={}\nsample=org/repo-{index}\tcommit-{index}\n", mode.as_str(), "05".repeat(32))).unwrap();
+            let registered = read_registered_sample(&path, mode).unwrap();
+            let run = erf_pilot_metrics::RunMeasurement {
+                measurement_id: format!("run:{index}"),
+                run_identity_digest: digest_bytes(&format!("run:{index}")),
+                mode: metric_mode,
+                repository_digest: digest_bytes(&format!("org/repo-{index}")),
+                commit_digest: digest_bytes(&format!("commit-{index}")),
+                rule_bundle_digest: [5; 32],
+                unified_result_digest: [6; 32],
+                trust: erf_unified_result::ResultTrust::LocalUnattested,
+                decision: GateDecision::Pass,
+                complete: true,
+                new_finding_count: 0,
+                historical_finding_count: 0,
+                latency_millis: 1,
+                peak_memory_bytes: 1,
+                observed_at_epoch_secs: 1,
+            };
+            assert!(validate_registered_identities(&[&run], &registered, mode, 1).is_ok());
+            let mismatched_mode = erf_pilot_metrics::RunMeasurement { mode: match metric_mode { ObservationMode::LocalSimulation => ObservationMode::LiveShadow, _ => ObservationMode::LocalSimulation }, ..run.clone() };
+            assert!(validate_registered_identities(&[&mismatched_mode], &registered, mode, 1).is_err());
+            let mismatched_bundle = erf_pilot_metrics::RunMeasurement { rule_bundle_digest: [7; 32], ..run };
+            assert!(validate_registered_identities(&[&mismatched_bundle], &registered, mode, 1).is_err());
+            fs::remove_file(path).unwrap();
+        }
     }
 }

@@ -1,0 +1,17 @@
+[package]
+name = "erf-fast-decision"
+version = "0.1.0"
+edition = "2021"
+description = "Provider-neutral shadow-only Fast Decision Evidence seam"
+
+[dependencies]
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_fast_decision"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-fast-decision"
+path = "src/main.rs"

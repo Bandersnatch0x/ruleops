@@ -4,7 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+erf-bundle-cache = { path = "../bundle-cache" }
+erf-affected-scope = { path = "../affected-scope" }
+erf-incremental-baseline = { path = "../incremental-baseline" }
+erf-packs = { path = "../packs" }
+erf-project-config = { path = "../project-config" }
+erf-rule-bundle = { path = "../rule-bundle" }
+erf-scan-output = { path = "../scan-output" }
+erf-scan-plan = { path = "../scan-plan" }
 erf-host-client = { path = "../host-client" }
+erf-git-scope = { path = "../git-scope" }
 erf-resolver-client = { path = "../resolver-client" }
+erf-trust = { path = "../trust" }
 rf-runner = { path = "../rf-runner" }
 rf-gate = { path = "../gate" }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }

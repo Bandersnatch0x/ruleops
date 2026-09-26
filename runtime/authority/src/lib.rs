@@ -103,6 +103,8 @@ mod tests {
             rule_id: "corp.rule".into(),
             location_kind: FindingLocationKind::SourceSpan,
             path: "src/A.java".into(),
+            line: Some(1),
+            column: Some(1),
             semantic_anchor: "source-span|src/A.java|1|2".into(),
             message: "finding".into(),
         };

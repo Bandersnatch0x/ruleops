@@ -1,0 +1,26 @@
+[package]
+name = "erf-verification-worker"
+version = "0.1.0"
+edition = "2021"
+description = "Isolated Verification Worker seam for running the exact ERF Contract Conformance Suite and signing verification evidence"
+
+[features]
+default = []
+fixture-signer = []
+
+[dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
+erf-conformance = { path = "../conformance" }
+erf-trust = { path = "../trust" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_verification_worker"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-verification-worker"
+path = "src/main.rs"

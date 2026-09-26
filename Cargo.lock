@@ -159,6 +159,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erf-affected-scope"
+version = "0.1.0"
+dependencies = [
+ "erf-git-scope",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "erf-authority"
 version = "0.1.0"
 dependencies = [
@@ -179,6 +188,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "erf-bundle-cache"
+version = "0.1.0"
+dependencies = [
+ "erf-rule-bundle",
+ "libc",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-bundle-delivery"
+version = "0.1.0"
+dependencies = [
+ "erf-bundle-cache",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "erf-conformance"
 version = "0.1.0"
 dependencies = [
@@ -186,6 +215,7 @@ dependencies = [
  "erf-contracts",
  "erf-framing",
  "erf-host-client",
+ "erf-resolver-client",
  "erf-trust",
  "prost",
  "rf-gate",
@@ -223,6 +253,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "erf-fast-decision"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "erf-feedback"
 version = "0.1.0"
 dependencies = [
@@ -234,6 +272,14 @@ dependencies = [
 name = "erf-framing"
 version = "0.1.0"
 dependencies = [
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-git-scope"
+version = "0.1.0"
+dependencies = [
+ "sha2",
  "thiserror 2.0.20",
 ]
 
@@ -259,11 +305,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "erf-incremental-baseline"
+version = "0.1.0"
+dependencies = [
+ "erf-scan-plan",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "erf-packs"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "erf-trust",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-pilot-evidence"
+version = "0.1.0"
+dependencies = [
  "sha2",
  "thiserror 2.0.20",
 ]
@@ -284,12 +349,25 @@ name = "erf-pilot-observer"
 version = "0.1.0"
 dependencies = [
  "erf-feedback",
+ "erf-incremental-baseline",
  "erf-pilot-metrics",
  "erf-unified-result",
  "rf-gate",
  "rf-runner",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "erf-project-config"
+version = "0.1.0"
+dependencies = [
+ "erf-bundle-cache",
+ "erf-trust-state",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -343,6 +421,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "erf-scan-output"
+version = "0.1.0"
+dependencies = [
+ "erf-host-client",
+ "erf-incremental-baseline",
+ "erf-resolver-client",
+ "erf-thin-client",
+ "rf-gate",
+ "rf-runner",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-scan-plan"
+version = "0.1.0"
+dependencies = [
+ "erf-affected-scope",
+ "erf-git-scope",
+ "rf-gate",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "erf-static-resolver"
 version = "0.1.0"
 dependencies = [
@@ -361,6 +468,21 @@ dependencies = [
  "ed25519-dalek",
  "erf-trust",
  "rf-gate",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-thin-client"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "erf-trust",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror 2.0.20",
 ]
 
@@ -369,6 +491,7 @@ name = "erf-trust"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "serde_json",
  "sha2",
  "thiserror 2.0.20",
 ]
@@ -377,7 +500,9 @@ dependencies = [
 name = "erf-trust-state"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
  "erf-trust",
+ "libc",
  "thiserror 2.0.20",
 ]
 
@@ -389,11 +514,15 @@ dependencies = [
  "erf-bootstrap",
  "erf-conformance",
  "erf-host-client",
+ "erf-incremental-baseline",
  "erf-packs",
+ "erf-sandbox",
  "erf-status",
  "erf-trust",
+ "erf-trust-state",
  "erf-trusted-context",
  "erf-unified-result",
+ "erf-verification-worker",
  "rf-gate",
  "rf-runner",
  "sha2",
@@ -411,6 +540,8 @@ dependencies = [
  "erf-packs",
  "erf-status",
  "erf-trust",
+ "erf-trust-state",
+ "erf-verification-worker",
  "rf-gate",
  "rf-runner",
  "sha2",
@@ -422,6 +553,19 @@ name = "erf-unified-result"
 version = "0.1.0"
 dependencies = [
  "rf-gate",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "erf-verification-worker"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "erf-conformance",
+ "erf-trust",
+ "serde",
+ "serde_json",
  "sha2",
  "thiserror 2.0.20",
 ]
@@ -707,10 +851,23 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "rf-cli"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
+ "erf-affected-scope",
+ "erf-bundle-cache",
+ "erf-git-scope",
  "erf-host-client",
+ "erf-incremental-baseline",
+ "erf-packs",
+ "erf-project-config",
  "erf-resolver-client",
+ "erf-rule-bundle",
+ "erf-scan-output",
+ "erf-scan-plan",
+ "erf-trust",
  "rf-gate",
  "rf-runner",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -720,6 +877,7 @@ dependencies = [
  "ed25519-dalek",
  "erf-contracts",
  "erf-trust",
+ "serde_json",
  "sha2",
 ]
 
@@ -728,10 +886,18 @@ name = "rf-runner"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "erf-affected-scope",
+ "erf-bundle-cache",
+ "erf-bundle-delivery",
  "erf-contracts",
+ "erf-git-scope",
  "erf-host-client",
+ "erf-incremental-baseline",
+ "erf-packs",
  "erf-resolver-client",
+ "erf-rule-bundle",
  "erf-sandbox",
+ "erf-scan-plan",
  "erf-trust",
  "prost",
  "rf-gate",
@@ -775,6 +941,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]

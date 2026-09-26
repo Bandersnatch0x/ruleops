@@ -1,0 +1,15 @@
+[package]
+name = "erf-bundle-cache"
+version = "0.1.0"
+edition = "2021"
+description = "Digest-addressed RuleBundle delivery and offline availability boundary"
+
+[dependencies]
+erf-rule-bundle = { path = "../rule-bundle" }
+libc = "0.2"
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_bundle_cache"
+path = "src/lib.rs"

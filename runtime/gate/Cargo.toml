@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 erf-contracts = { path = "../../contracts/rust" }
 erf-trust = { path = "../trust" }
+serde_json = "1"
 sha2 = "0.10"
 
 [dev-dependencies]

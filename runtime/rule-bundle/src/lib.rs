@@ -17,6 +17,10 @@ pub const RULE_BUNDLE_SIGNING_ROLE: &str = "rule-bundle-signing";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleBundleManifest {
     pub bundle_version: String,
+    /// Digest of the canonical RuleBundle payload that this signed manifest
+    /// authorizes. Keeping it inside the signed payload closes the gap between
+    /// a valid control-plane manifest and the bytes the Runner materializes.
+    pub bundle_digest: [u8; 32],
     pub rule_release_digest: [u8; 32],
     pub policy_profile_digest: [u8; 32],
     pub execution_lock_digest: [u8; 32],
@@ -29,6 +33,7 @@ impl RuleBundleManifest {
     pub fn canonical_payload(&self) -> Vec<u8> {
         let mut payload = b"erf-rule-bundle-manifest-v0\0".to_vec();
         append_string(&mut payload, &self.bundle_version);
+        payload.extend_from_slice(&self.bundle_digest);
         payload.extend_from_slice(&self.rule_release_digest);
         payload.extend_from_slice(&self.policy_profile_digest);
         payload.extend_from_slice(&self.execution_lock_digest);
@@ -59,6 +64,7 @@ impl RuleBundleManifest {
 
     fn validate(&self) -> Result<(), BundleError> {
         for (name, digest) in [
+            ("bundle_digest", self.bundle_digest),
             ("rule_release_digest", self.rule_release_digest),
             ("policy_profile_digest", self.policy_profile_digest),
             ("execution_lock_digest", self.execution_lock_digest),
@@ -131,7 +137,36 @@ impl RuleBundleVerifier {
         metadata: Option<&TrustMetadata>,
         now_epoch_secs: u64,
     ) -> Result<RuleBundleMeasurement, BundleError> {
+        self.verify_and_measure_bound_to_digest(
+            bundle,
+            manifest_bytes,
+            inputs,
+            bundle.manifest.bundle_digest,
+            store,
+            metadata,
+            now_epoch_secs,
+        )
+    }
+
+    /// Verify a signed manifest and bind it to the content-addressed payload
+    /// selected by the delivery/cache seam. The cache verifies the actual
+    /// bytes; this method verifies that the signed RuleBundle authorizes that
+    /// same digest.
+    #[allow(clippy::too_many_arguments)]
+    pub fn verify_and_measure_bound_to_digest(
+        &self,
+        bundle: &SignedRuleBundle,
+        manifest_bytes: &[u8],
+        inputs: RuleBundleInputs,
+        expected_bundle_digest: [u8; 32],
+        store: &TrustStore,
+        metadata: Option<&TrustMetadata>,
+        now_epoch_secs: u64,
+    ) -> Result<RuleBundleMeasurement, BundleError> {
         bundle.manifest.validate()?;
+        if bundle.manifest.bundle_digest != expected_bundle_digest {
+            return Err(BundleError::BundleDigestMismatch);
+        }
         if bundle.manifest.compatibility_identity != self.expected_compatibility_identity
             || bundle.manifest.platform != self.expected_platform
         {
@@ -193,6 +228,8 @@ pub enum BundleError {
     SignedManifestMismatch,
     #[error("signed RuleBundle subject digest does not match the manifest")]
     SignedManifestSubjectMismatch,
+    #[error("signed RuleBundle does not authorize the selected payload digest")]
+    BundleDigestMismatch,
     #[error(transparent)]
     Trust(#[from] TrustError),
 }
@@ -218,6 +255,7 @@ mod tests {
         let key = SigningKey::from_bytes(&[91; 32]);
         let manifest = RuleBundleManifest {
             bundle_version: RULE_BUNDLE_SCHEMA_VERSION.into(),
+            bundle_digest: [5; 32],
             rule_release_digest: INPUTS.rule_release_digest,
             policy_profile_digest: INPUTS.policy_profile_digest,
             execution_lock_digest: INPUTS.execution_lock_digest,
@@ -299,5 +337,22 @@ mod tests {
             )
             .unwrap_err();
         assert!(matches!(error, BundleError::InvalidManifest(message) if message.contains("bundle_version must be")));
+    }
+
+    #[test]
+    fn verifier_binds_signed_bundle_to_selected_payload_digest() {
+        let (bundle, store) = fixture();
+        let error = RuleBundleVerifier::new("java21-pmd7", "linux/amd64")
+            .verify_and_measure_bound_to_digest(
+                &bundle,
+                &bundle.manifest.canonical_payload(),
+                INPUTS,
+                [6; 32],
+                &store,
+                None,
+                10,
+            )
+            .unwrap_err();
+        assert_eq!(error, BundleError::BundleDigestMismatch);
     }
 }
