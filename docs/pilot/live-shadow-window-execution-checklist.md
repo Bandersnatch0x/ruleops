@@ -1,5 +1,9 @@
 # LIVE_SHADOW 观察窗口执行清单（窗口：2026-10-01 → 2026-10-31）
 
+> **内部流程提示**：本清单只面向 Pilot 观察员、质量裁决人和治理负责人，不是规则作者或
+> 普通扫描使用说明。日常使用请先看 `docs/pilot/operator-quickstart.md`；不要为了运行普通
+> 扫描而编辑 `AuthorCostRecord`。作者成本表只在正式 Pilot 研究需要验证该假设时启用。
+
 > 目的：在已登记窗口内，用真实 LIVE_SHADOW 采齐**只能由人产生**的证据，产出一份
 > 非 INCONCLUSIVE 的 `PilotAdjudication`（GO / NO_GO）。这是 product-scope-audit 的
 > 「唯一下一步行动」，也是 goals-and-success-metrics 的本月里程碑。

@@ -87,6 +87,9 @@ Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 
 ### Shadow 窗口内部 / 预发布（暂不进入新手主线）
 
+日常使用不需要进入本区，也不需要填写 Pilot 证据 YAML。规则作者和扫描使用者先看
+`docs/pilot/operator-quickstart.md`；下面命令仅供观察员、质量裁决和治理流程使用。
+
 ```text
 ./rf pilot report OUTPUT_DIR
 ./rf pilot delivery-check OUTPUT_DIR
