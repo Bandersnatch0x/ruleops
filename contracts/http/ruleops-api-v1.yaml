@@ -1,0 +1,186 @@
+apiVersion: rulefactory.io/v1
+kind: RuleOpsHttpApi
+version: 1.0.0
+privacyProfile:
+  default:
+    acceptsSource: false
+    acceptsFullFinding: false
+    responseFindingMode: digest-only
+headers:
+  mutating:
+    - Content-Type: application/json
+    - Idempotency-Key
+    - X-Actor
+    - X-Reason
+  optional:
+    - X-Request-Id
+envelope:
+  requiredFields: [id, version, payload]
+  additionalFields: false
+errors:
+  mediaType: application/json
+  fields: [apiVersion, code, message, requestId]
+  conflictStatus: 409
+  invalidStatus: 400
+  incompleteNeverMapsToSuccess: true
+endpoints:
+  - method: GET
+    path: /v1/health
+  - method: POST
+    path: /v1/standards
+  - method: POST
+    path: /v1/coverage/analyze
+  - method: POST
+    path: /v1/rules
+  - method: POST
+    path: /v1/rules/{id}/generate
+  - method: POST
+    path: /v1/rules/{id}/evaluations
+  - method: POST
+    path: /v1/releases
+  - method: POST
+    path: /v1/releases/{id}/promote
+  - method: POST
+    path: /v1/releases/{id}/revoke
+  - method: POST
+    path: /v1/policies
+  - method: POST
+    path: /v1/policies/{id}/promote
+  - method: POST
+    path: /v1/policies/{id}/revoke
+  - method: POST
+    path: /v1/scans
+  - method: GET
+    path: /v1/scans/{id}
+  - method: GET
+    path: /v1/findings
+  - method: GET
+    path: /v1/rule-bundles/{bundleDigest}/delivery
+    readOnly: true
+    response: rule-bundle-delivery-v1
+  - method: POST
+    path: /v1/feedback
+  - method: POST
+    path: /v1/exceptions
+  - method: GET
+    path: /v1/submissions/status
+    query:
+      oneOf:
+        - requestId
+        - artifactDigest
+      bothAllowed: true
+      values: lowercaseSha256Digest
+    readOnly: true
+    response: submission-status-v1
+  - method: POST
+    path: /v1/exceptions/{id}/promote
+  - method: POST
+    path: /v1/exceptions/{id}/revoke
+  - method: GET
+    path: /v1/audit
+    readOnly: true
+    query:
+      afterSequence:
+        type: uint64
+        default: 0
+        minimum: 0
+      limit:
+        type: uint32
+        default: 256
+        minimum: 1
+        maximum: 256
+      additionalFields: false
+    response: audit-v1
+collectionReads:
+  listEndpoints: [standards, coverage, rules, factory-jobs, verification-jobs, releases, policies, scans, findings, feedback, exceptions]
+  query:
+    cursor:
+      type: opaqueResourceCursor
+      default: ""
+    limit:
+      type: uint32
+      default: 256
+      minimum: 1
+      maximum: 256
+    additionalFields: false
+  responseFields: [apiVersion, items, cursor, nextCursor, hasMore, requestId]
+  cursor:
+    ordering: resourceType/id/version
+    nextCursor: lastReturnedResourceOrInputCursor
+    hasMore: trueWhenAnotherResourceExists
+  maxPageSize: 256
+  overLimitCode: RESOURCE_QUERY_INVALID
+submissionStatus:
+  schemaVersion: submission-status-v1
+  statuses: [PENDING, RECEIVED_ONLY, REPLAYED, UNKNOWN]
+  requestIdentity:
+    selectors: [requestId, artifactDigest]
+    mismatch: SUBMISSION_IDENTITY_CONFLICT
+  knownSubmission:
+    requires:
+      - requestId
+      - artifactDigest
+      - resource
+      - resource.type
+      - resource.id
+      - resource.version
+      - resource.state
+      - resource.digest
+      - auditContext.actor
+      - auditContext.reason
+      - auditContext.eventDigest
+    authority: RECEIVED_ONLY
+  unknownSubmission:
+    resource: null
+    auditContext: null
+    automaticRetry: false
+    authority: UNKNOWN
+  replay:
+    status: REPLAYED
+    authority: RECEIVED_ONLY
+  pending:
+    status: PENDING
+    resourceMayBeNull: true
+    authority: UNKNOWN
+
+audit:
+  schemaVersion: audit-v1
+  responseFields: [apiVersion, events, afterSequence, nextAfterSequence, hasMore, headDigest, requestId]
+  eventFields: [sequence, operation, operationId, actor, reason, resourceType, resourceId, resourceVersion, resourceDigest, previousDigest, eventDigest, recordedAt]
+  cursor:
+    afterSequence: exclusive
+    nextAfterSequence: lastReturnedSequenceOrInputCursor
+    hasMore: trueWhenAnotherEventExists
+  capacity:
+    maxInMemoryEvents: 100000
+    exhaustedStatus: 503
+    exhaustedCode: AUDIT_CAPACITY_EXCEEDED
+lifecycle:
+  immutableIdentity: true
+  transitionRequest:
+    pathIdentity: id
+    requiredFields: [version]
+    additionalFields: false
+    missingVersionCode: RESOURCE_VERSION_REQUIRED
+    versionMustBeText: true
+    exactLookup: [type, id, version]
+  states:
+    release: [CANDIDATE, ACTIVE, REVOKED]
+    policy: [DRAFT, ACTIVE, REVOKED]
+    exception: [REQUESTED, ACTIVE, REVOKED]
+  revokedIsTerminal: true
+
+delivery:
+  response: rule-bundle-delivery-v1
+  pathIdentity: bundleDigest
+  method: GET
+  immutable: true
+  boundedResponseBytes: 180005548
+  deliveryExecutor: bounded
+  overloadStatus: 503
+  overloadCode: DELIVERY_OVERLOADED
+  requiredFields: [apiVersion, kind, schemaVersion, descriptor, bundleBytesBase64, verification, requestId]
+  descriptorRequiredFields: [protocolVersion, descriptorVersion, bundleDigest, bundleSchemaVersion, compatibilityIdentity, platform, ruleReleaseDigest, policyProfileDigest, executionLockDigest, ontologyContractPackDigest, runtimePackDigests, artifactStatementDigest, revocationSnapshotDigest, issuedAtEpochSecs, expiresAtEpochSecs]
+  verificationRequiredFields: [signatureValid, trustMetadataFresh, revocationSnapshotFresh, referencedPacksAvailable, trustedContextValid]
+  sourceUpload: false
+  fullFindingUpload: false

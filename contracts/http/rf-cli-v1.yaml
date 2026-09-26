@@ -1,0 +1,151 @@
+apiVersion: rulefactory.io/v1
+kind: RfCliContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Freeze the installable, non-interactive Thin Client entrypoint used by local
+  and CI scans. The CLI owns configuration and presentation only; rf-runner,
+  the verified RuleBundle and the selected Backend/Resolver assets own
+  execution authority.
+
+entrypoint:
+  command: rf
+  requiredInputs:
+    - repository
+    - .ruleops/config.yaml
+    - installedRuntimeRelease
+  standardScan:
+    requiredArguments:
+      - --repo-root
+      - --rule-id or --candidate or --delivery-descriptor
+    incrementalArguments:
+      pair:
+        - --base REVISION
+        - --head REVISION
+      bothRequired: true
+      semantics: >-
+        rf-runner resolves a read-only ChangedSet, computes the affected Java
+        closure, freezes a digest-bound ScanPlan after Workspace resolution,
+        and widens to FULL when graph, generated-source, or policy facts are
+        not proven. A missing or unverifiable range is an input failure; the
+        CLI never guesses HEAD~1 or silently narrows scope.
+      planIdentityBinds:
+        - repository
+        - base
+        - head
+        - tree
+        - ruleBundleDigest
+        - policyDigest
+        - resolverIdentity
+        - backendIdentity
+        - runnerIdentity
+    deliveryDescriptor:
+      option: --delivery-descriptor FILE
+      environment: RULEOPS_DELIVERY_DESCRIPTOR
+      precedence:
+        - command line
+        - environment
+      schemaVersion: rf-delivery-v1
+      candidateCombination: forbidden
+      executionLockBinding: required before delivery execution
+    runtimeReleaseTrustRoot:
+      environment: RULEOPS_RUNTIME_RELEASE_TRUST_ROOT_PEM
+      requiredFor: deliveryDescriptor
+      purpose: external Ed25519 trust anchor for runtime-manifest.json DSSE verification
+      manifestKeyMustMatch: true
+    deliveryTrustRoot:
+      environment: RULEOPS_DELIVERY_TRUST_ROOT_PUBLIC_KEY_HEX
+      requiredFor: deliveryDescriptor
+      purpose: external Root anchor for signed delegated RuleBundle/Pack/ExecutionLock keys
+      descriptorSelfDeclaredKeys: insufficient
+    forbiddenRequirements:
+      - internal --host command
+      - internal --resolver command
+  advancedHarnessOverrides:
+    - --host
+    - --resolver
+    - --runtime-home
+  assetNames:
+    backendHost: rf-backend-host
+    workspaceResolver: rf-workspace-resolver
+  assetSearch:
+    - explicit runtime home
+    - RULEOPS_RUNTIME_HOME
+    - installed rf package bin directory
+    - PATH
+  missingAssetOutcome: INPUT_OR_CONTRACT_ERROR
+
+configuration:
+  file: .ruleops/config.yaml
+  schemaVersion: ruleops.config/v1
+  precedence:
+    - cli
+    - environment
+    - project
+    - defaults
+  supportedLanguage: java
+  unsupportedLanguageOutcome: INPUT_OR_CONTRACT_ERROR
+  scopeFields:
+    - modules
+    - source_roots
+    - test_roots
+    - generated_roots
+    - vendor_roots
+    - include
+    - exclude
+  identity:
+    - effectiveConfigDigest
+    - workspaceDescriptorDigest
+    - resolvedWorkspaceDescriptorDigest
+    - configScanPlanDigest
+    binding:
+      workspaceDescriptorDigest: deterministic project-config scope projection
+      resolvedWorkspaceDescriptorDigest: actual descriptor digest returned by the selected Resolver
+  executionModes:
+    connected:
+      cacheMiss: SERVER_FETCH_REQUIRED
+    offline:
+      cacheMiss: INCONCLUSIVE
+    standalone:
+      cacheMiss: INCONCLUSIVE
+
+output:
+  formats:
+    - text
+    - json
+    - sarif
+  jsonKind: ScanResult
+  failureKind: ScanFailure
+  sourceUploadDefault: false
+  fullFindingUploadDefault: false
+  scmCredentials: forbidden
+  exitCodes:
+    complete: 0
+    inputOrContractError: 2
+    incompleteOrRuntimeFailure: 3
+    trustFailure: 4
+
+packaging:
+  manifest: runtime-manifest.json
+  entrypoint: rf
+  cli: bin/rf-cli
+  projectConfig: bin/erf-project-config
+  backendHost: bin/rf-backend-host
+  workspaceResolver: bin/rf-workspace-resolver
+  referencePackageCheck: scripts/ci-neutral-scan-check.sh
+  manifestAssetRequirements:
+    - digest
+    - compatibilityIdentity
+    - verification
+    - signed DSSE runtime manifest
+  referenceFixtureBoundary: fake host/resolver assets are marked REFERENCE_FIXTURE and must be replaced in production
+  productionDeliveryFollowUp: '#123: signed RuleBundle delivery/cache, ExecutionLock binding, and production Runtime Pack'
+  productionFixturePolicy: REFERENCE_FIXTURE assets and verification.algorithm=none are rejected by production packaging checks
+
+nonGoals:
+  - gateApproval
+  - exceptionApproval
+  - scmWrite
+  - sourceUpload
+  - clientOwnedScanAuthority

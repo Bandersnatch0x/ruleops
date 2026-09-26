@@ -1,0 +1,143 @@
+apiVersion: rulefactory.io/v1
+kind: RfDeliveryDescriptorContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Freeze the local, machine-readable delivery input consumed by the standard
+  rf scan path. The descriptor is an input envelope for an already verified
+  RuleBundle and Runtime Pack context; it is not a replacement for the signed
+  asset verification seams.
+
+entrypoint:
+  option: --delivery-descriptor <file>
+  environment: RULEOPS_DELIVERY_DESCRIPTOR
+  precedence:
+    - command line
+    - environment
+  standardPath:
+    requires: installedRuntimeRelease
+    requiresRuntimeReleaseTrustRoot: RULEOPS_RUNTIME_RELEASE_TRUST_ROOT_PEM
+    requiresDeliveryTrustRoot: RULEOPS_DELIVERY_TRUST_ROOT_PUBLIC_KEY_HEX
+    forbids:
+      - internal --host command
+      - internal --resolver command
+      - local Candidate combined with delivery descriptor
+
+envelope:
+  apiVersion: rulefactory.io/v1
+  kind: BundleDeliveryConfig
+  schemaVersion: rf-delivery-v1
+  required:
+    - apiVersion
+    - kind
+    - schemaVersion
+    - ruleId
+    - endpoint
+    - cacheRoot
+    - profile
+    - expectedCompatibilityIdentity
+    - expectedPlatform
+    - timeoutMs
+    - descriptor
+    - verification
+  optional:
+    - executionLockPath
+  pathBoundary:
+    descriptor: repository-local regular file
+    cacheRoot: repository-local path
+    executionLockPath: repository-local regular file
+    parentTraversal: forbidden
+  unknownFields: rejected
+
+profileMapping:
+  connected: connected
+  offline: enterpriseAirGapped
+  standalone: standaloneDeveloper
+
+descriptor:
+  schemaVersion: rule-bundle-delivery-v1
+  sourceContract: contracts/http/rule-bundle-delivery-v1.yaml
+  binding:
+    - bundleDigest
+    - ruleReleaseDigest
+    - policyProfileDigest
+    - executionLockDigest
+    - ontologyContractPackDigest
+    - runtimePackDigests
+    - artifactStatementDigest
+    - revocationSnapshotDigest
+    - compatibilityIdentity
+    - platform
+
+verification:
+  requiredContext:
+    - signedBundle
+    - signedBundlePayloadDigest
+    - canonicalManifestBytes
+    - RuleBundleInputs
+    - TrustStore
+    - TrustMetadata
+    - revocationSnapshotDigest
+    - backendRuntimePack
+    - workspaceResolverPack
+    - signedExecutionLock
+  availabilityEvidence:
+    - signatureValid
+    - trustMetadataFresh
+    - revocationSnapshotFresh
+    - referencedPacksAvailable
+    - trustedContextValid
+  authority:
+    localVerifier: rf-runner
+    serverBooleansAreAuthority: false
+    missingContext: trustFailure
+  runtimeManifest:
+    algorithm: ed25519-dsse
+    trustAnchor: external RULEOPS_RUNTIME_RELEASE_TRUST_ROOT_PEM
+    selfDeclaredPublicKey: insufficient
+    verificationOrder: beforeResolverOrBackendStartup
+  trustDelegation:
+    algorithm: ed25519-dsse
+    externalRoot: RULEOPS_DELIVERY_TRUST_ROOT_PUBLIC_KEY_HEX
+    covers:
+      - RuleBundle signing key
+      - Runtime Pack signing key
+      - ExecutionLock signing key
+  executionLock:
+    signed: required
+    runnerReleaseDigest: must match installed rf-cli asset digest
+
+resolution:
+  construction: rf-cli constructs BundleDeliveryConfig and passes it to rf-runner
+  ordering: delivery/cache/trust verification completes before Resolver or Backend startup
+  validityClock: rf-cli runtime Unix clock; descriptor cannot override current time
+  profiles:
+    connected:
+      cacheMiss: SERVER_FETCH_REQUIRED
+      exitCode: 3
+    enterpriseAirGapped:
+      cacheMiss: INCONCLUSIVE
+      exitCode: 3
+    standaloneDeveloper:
+      cacheMiss: INCONCLUSIVE
+      exitCode: 3
+  invalidDescriptor:
+    diagnosticCode: DELIVERY_INVALID
+    exitCode: 2
+  trustFailure:
+    exitCode: 4
+  inputMismatch:
+    exitCode: 2
+
+privacy:
+  sourceUploadDefault: false
+  fullFindingUploadDefault: false
+  endpointAndFilesystemDetailsInStructuredOutput: forbidden
+  detailDigestOnlyForJsonAndSarif: true
+
+nonGoals:
+  - new server delivery API
+  - governance approval
+  - SCM mutation
+  - source upload

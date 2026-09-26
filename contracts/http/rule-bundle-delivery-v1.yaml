@@ -1,0 +1,141 @@
+apiVersion: rulefactory.io/v1
+kind: RuleBundleDeliveryContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Freeze the Server-to-Runner delivery descriptor, digest-addressed local cache,
+  and offline availability decision without granting cache or client authority.
+
+descriptor:
+  schemaVersion: rule-bundle-delivery-v1
+  required:
+    - protocolVersion
+    - descriptorVersion
+    - bundleDigest
+    - bundleSchemaVersion
+    - compatibilityIdentity
+    - platform
+    - ruleReleaseDigest
+    - policyProfileDigest
+    - executionLockDigest
+    - ontologyContractPackDigest
+    - runtimePackDigests
+    - artifactStatementDigest
+    - revocationSnapshotDigest
+    - issuedAtEpochSecs
+    - expiresAtEpochSecs
+  identity:
+    contentAddressed: true
+    key: bundleDigest
+    tagsAreIdentity: false
+    latestIsIdentity: false
+  immutable: true
+  signedInputs:
+    - RuleRelease
+    - PolicyProfile
+    - ExecutionLock
+    - OntologyContractPack
+    - BackendRuntimePack
+  trustDelegation:
+    externalRoot: RULEOPS_DELIVERY_TRUST_ROOT_PUBLIC_KEY_HEX
+    signedDSSE: true
+    covers:
+      - RuleBundle signing key
+      - Runtime Pack signing key
+      - ExecutionLock signing key
+      - Revocation Snapshot signing key
+  revocationSnapshot:
+    required: true
+    contentAddressed: true
+    signedDSSE: true
+    signingRole: revocation-snapshot-signing
+    externalTrustMetadataRequired: true
+    assetDigestRevocationCheckedBeforeScan: true
+  executionLock:
+    signatureRequired: true
+    runnerReleaseDigestRequired: true
+  runtimePacks:
+    physicalFormat: OCI Image Layout
+    deliveryRepresentation: inlineContentAddressedLayout
+    manifestMediaType: application/vnd.oci.image.manifest.v1+json
+    requiredInlineFiles:
+      - oci-layout
+      - index.json
+      - configBlob
+      - layerBlob
+    indexManifestDigestAndSizeRequired: true
+    configDigestAndSizeRequired: true
+    layerDigestAndSizeRequired: true
+    configIdentityBindsManifest: true
+    layerDigestBindsInstalledAsset: true
+  validity:
+    issuedAtBeforeExpiresAt: true
+    expiredIsInconclusive: true
+    notYetValidIsInconclusive: true
+
+cache:
+  key: bundleDigest
+  overwrite: forbidden
+  writeMode: atomic-create-only
+  restartReadable: true
+  integrity: sha256(bytes) == bundleDigest
+  symlinkOrNonRegularObject: reject
+  maxBundleBytes: 134217728
+  maxEntries: 256
+  maxBytes: 536870912
+  capacityOutcome: INCONCLUSIVE
+  materializedPayload: sameContentAddressedRoot
+
+profiles:
+  connected:
+    cacheMiss: SERVER_FETCH_REQUIRED
+    serverIsSinglePointOfExecution: false
+  enterprise-air-gapped:
+    cacheMiss: INCONCLUSIVE
+  standalone-developer:
+    cacheMiss: INCONCLUSIVE
+
+offlinePreconditions:
+  allRequired: true
+  executionIdentityRequiredForScan: true
+  checks:
+    - bundleSignatureValid
+    - trustMetadataFresh
+    - revocationSnapshotFresh
+    - referencedPacksAvailable
+    - trustedContextValid
+  failedCheckOutcome: INCONCLUSIVE
+  staleOrUnknownRevocationOutcome: INCONCLUSIVE
+
+privacy:
+  sourceUploadDefault: false
+  fullFindingUploadDefault: false
+  cacheContains: signedBundleBytesOnly
+
+http:
+  method: GET
+  path: /v1/rule-bundles/{bundleDigest}/delivery
+  readOnly: true
+  responseKind: RuleBundleDelivery
+  encoding: bundleBytesBase64
+  boundedResponseBytes: 180005548
+  deliveryExecutor: bounded
+  overloadStatus: 503
+  overloadCode: DELIVERY_OVERLOADED
+  requiredResponseFields:
+    - apiVersion
+    - kind
+    - schemaVersion
+    - descriptor
+    - bundleBytesBase64
+    - verification
+    - requestId
+  noSourceOrFullFindingFields: true
+
+nonGoals:
+  - remoteRegistry
+  - objectStorage
+  - productionKmsOrHsm
+  - scmAuthority
+  - ideUi

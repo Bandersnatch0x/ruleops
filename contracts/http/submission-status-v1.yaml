@@ -1,0 +1,76 @@
+apiVersion: rulefactory.io/v1
+kind: SubmissionStatus
+version: 1.0.0
+schemaVersion: submission-status-v1
+
+purpose: >-
+  Read-only recovery lookup for a digest-only feedback or exception submission after
+  an unknown transport outcome. A lookup never replays a write and never grants
+  approval, Gate authority, or SCM authority.
+
+selectors:
+  oneOf: [requestId, artifactDigest]
+  bothAllowed: true
+  format: lowercaseSha256Digest
+  mismatchCode: SUBMISSION_IDENTITY_CONFLICT
+
+statuses:
+  - PENDING
+  - RECEIVED_ONLY
+  - REPLAYED
+  - UNKNOWN
+
+response:
+  required:
+    - apiVersion
+    - kind
+    - schemaVersion
+    - status
+    - serverRequestId
+    - automaticRetry
+    - authority
+  known:
+    required:
+      - requestId
+      - artifactDigest
+      - resource
+      - auditContext
+    resourceRequired:
+      - type
+      - id
+      - version
+      - state
+      - digest
+    resourceForbidden:
+      - payload
+    auditContextRequired:
+      - operation
+      - operationId
+      - actor
+      - reason
+      - resourceType
+      - resourceId
+      - resourceVersion
+      - eventDigest
+      - recordedAt
+    authority: RECEIVED_ONLY
+  unknown:
+    resource: null
+    auditContext: null
+    automaticRetry: false
+    authority: UNKNOWN
+  pending:
+    resourceMayBeNull: true
+    automaticRetry: false
+    authority: UNKNOWN
+
+privacy:
+  sourceUploadDefault: false
+  fullFindingUploadDefault: false
+  sourceFieldsForbidden: true
+
+nonGoals:
+  - replayWrite
+  - exceptionApproval
+  - gateMutation
+  - scmPublication

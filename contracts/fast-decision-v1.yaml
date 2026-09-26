@@ -1,0 +1,31 @@
+apiVersion: rulefactory.io/v1
+kind: FastDecisionContract
+metadata:
+  id: fast-decision-v1
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  authority: SHADOW_ONLY
+  questionTypes: [CHOICE, SCORE, BOOLEAN]
+  evidence:
+    required: [inputDigest, decisionSpecId, decisionSpecVersion, decisionSpecDigest, providerIdentity, answer, probabilityBps, confidenceBps, thresholdPolicy, fallback, createdAt, expiresAt, evidenceDigest]
+    disclosure: DIGEST_ONLY
+    sourceUpload: none
+    findingUpload: none
+  policy:
+    confidenceUnit: basis-points
+    confidenceRange: 0..10000
+    minMarginRequired: true
+    expiryRequired: true
+    unknownReasons: [LOW_CONFIDENCE, MARGIN_TOO_SMALL, INPUT_EXPIRED, ANSWER_CONFLICT, PROVIDER_UNAVAILABLE, INVALID_INPUT]
+    unknownFallback: [EXISTING_DETERMINISTIC_PATH, HUMAN_REVIEW]
+  shadowComparison:
+    required: [existingRoute, observedRoute, disagreement, abstain, latencyMillis, calibration]
+    gateAuthority: none
+  boundaries:
+    canProduceGateDecision: false
+    canApproveException: false
+    canChangeTrustState: false
+    canRetry: false
+    canWriteScm: false

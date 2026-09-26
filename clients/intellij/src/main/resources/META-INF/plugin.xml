@@ -1,0 +1,50 @@
+<!-- ERF Thin Client（IntelliJ 平台）插件描述。仅注册 UX 动作，不持有 Runtime/Server/Gate 权威。 -->
+<idea-plugin>
+    <id>io.ruleops.ide.thinclient</id>
+    <name>ERF Thin Client</name>
+    <vendor>ruleops</vendor>
+    <version>0.1.0</version>
+
+    <description><![CDATA[
+        Enterprise Rule Factory 的 IDE 薄客户端：以 digest-only 姿态展示/导航/解释 Finding，
+        起草 Feedback、发起 Exception 申请、可选向 Server 提交（仅 RECEIVED_ONLY）。
+        绝不持有 Runtime/Factory/Server/Gate/SCM 权威，导航前强制路径安全门禁。
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="io.ruleops.ide.ErfSettings"/>
+        <projectService serviceImplementation="io.ruleops.ide.RfInvoker"/>
+    </extensions>
+
+    <actions>
+        <group id="io.ruleops.ide.ErfMenu" text="ERF" description="Enterprise Rule Factory Thin Client" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="io.ruleops.ide.ShowFinding"
+                    class="io.ruleops.ide.actions.ShowFindingAction"
+                    text="展示 Finding" description="展示 digest-only FindingView"/>
+            <action id="io.ruleops.ide.NavigateToLocation"
+                    class="io.ruleops.ide.actions.NavigateToLocationAction"
+                    text="导航到位置" description="经路径安全门禁后打开 Finding 位置"/>
+            <action id="io.ruleops.ide.ExplainFinding"
+                    class="io.ruleops.ide.actions.ExplainFindingAction"
+                    text="解释 Finding" description="调用 rf explain 并只读呈现"/>
+            <action id="io.ruleops.ide.DraftFeedback"
+                    class="io.ruleops.ide.actions.DraftFeedbackAction"
+                    text="起草 Feedback" description="rf feedback draft（PROPOSED，未提交）"/>
+            <action id="io.ruleops.ide.RequestException"
+                    class="io.ruleops.ide.actions.RequestExceptionAction"
+                    text="申请 Exception" description="rf exception request（REQUESTED，未批准）"/>
+            <action id="io.ruleops.ide.SubmitFeedback"
+                    class="io.ruleops.ide.actions.SubmitFeedbackAction"
+                    text="提交 Feedback" description="rf feedback submit（仅 RECEIVED_ONLY）"/>
+            <action id="io.ruleops.ide.SubmitException"
+                    class="io.ruleops.ide.actions.SubmitExceptionAction"
+                    text="提交 Exception" description="rf exception submit（仅 RECEIVED_ONLY）"/>
+            <action id="io.ruleops.ide.SubmissionStatus"
+                    class="io.ruleops.ide.actions.SubmissionStatusAction"
+                    text="查询提交状态" description="rf submission status"/>
+        </group>
+    </actions>
+</idea-plugin>

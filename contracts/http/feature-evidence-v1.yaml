@@ -1,0 +1,36 @@
+schemaVersion: feature-evidence-v1
+kind: FeatureEvidenceReport
+purpose: distinguish executable behavior evidence from structural checks
+
+status: [PASS, STATIC_ONLY, BLOCKED]
+
+statusSemantics:
+  PASS: executable command completed successfully and its log identifies the exercised tests or fixtures
+  STATIC_ONLY: only file, schema, symbol, or source-shape assertions ran; no implementation behavior is claimed
+  BLOCKED: executable evidence was required but the command failed, the required tool was unavailable, or an input could not be resolved
+
+requiredFields:
+  - feature
+  - status
+  - inputIdentity
+  - checks
+  - commands
+  - logs
+  - generatedAt
+
+checkRecord:
+  required: [name, status, evidence, command]
+  allowedStatus: [PASS, STATIC_ONLY, BLOCKED]
+  inputIdentity:
+    required: [path, sha256]
+    pathMustBeRepositoryRelative: true
+  command:
+    mustBeReproducible: true
+    stdoutAndStderrLogRequired: true
+
+rules:
+  - executableBehaviorPassMayBeReportedAs: PASS
+  - structuralOnlyCheckMayBeReportedAs: STATIC_ONLY
+  - blockedExecutableCheckMustNotBeReportedAs: PASS
+  - failedTestLogMustNameTestFixtureOrContract: true
+  - reportMustNotClaimLivePilotOrProductionAuthority: true
