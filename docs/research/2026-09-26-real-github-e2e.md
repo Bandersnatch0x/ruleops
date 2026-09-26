@@ -29,10 +29,10 @@
    fallback、hexagonal-architecture 和 retry 六个模块。第一次整改复扫又暴露了
    `AppAllCases` 中的 `ABCD` 重复字面量，继续修复后最终为 `findings=0`、
    `planned=183`、`executed=183`、`observationErrors=0`、`gateDecision=PASS`。
-7. 对整改后的本地 commit `aae3e4c70ec3477f4102fbd6ba7275de36c3a930` 运行 Pilot baseline、
-   observe、feedback、governance 和 window-report。结果为：完整率 `1.0000`、新发现趋势
-   `0`、历史债务趋势 `0`、p95 `3702 ms`、峰值内存 `8409088 bytes`，Shadow window
-   report 为 `PASS`。
+7. 使用整改前 13 条 Finding 的精确指纹作为历史债务基线，对整改后的本地 commit
+   `aae3e4c70ec3477f4102fbd6ba7275de36c3a930` 运行 Pilot observe、feedback、governance
+   和 window-report。结果为：完整率 `1.0000`、新发现趋势 `0`、历史债务趋势 `0`、
+   p95 `3702 ms`、峰值内存 `8409088 bytes`，Shadow window report 为 `PASS`。
 8. 对六个整改模块执行 `mvn -q -pl caching,commander,dao-factory,fallback,hexagonal-architecture,retry -DskipTests compile`，通过。
 
 ## 演练中修复的问题
