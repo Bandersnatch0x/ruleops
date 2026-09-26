@@ -93,7 +93,10 @@ fn resolve_with_backend(
     ];
 
     match system {
-        BuildSystem::Maven => collect_maven(&root, "", &mut specs, &mut unresolved)?,
+        BuildSystem::Maven => {
+            let mut visited = BTreeSet::new();
+            collect_maven(&root, "", &mut specs, &mut unresolved, &mut visited)?;
+        }
         BuildSystem::Gradle => collect_gradle(&root, &mut specs, &mut unresolved)?,
     }
 
@@ -169,15 +172,10 @@ fn collect_maven(
     relative: &str,
     specs: &mut BTreeMap<String, ModuleSpec>,
     unresolved: &mut Vec<String>,
+    visited: &mut BTreeSet<String>,
 ) -> Result<(), ResolveError> {
     let id = if relative.is_empty() { "root" } else { relative };
-    if !relative.is_empty() && specs.insert(
-        id.to_string(),
-        ModuleSpec {
-            id: id.to_string(),
-            relative_path: Some(relative.to_string()),
-        },
-    ).is_some() {
+    if !relative.is_empty() && !visited.insert(id.to_string()) {
         return Err(ResolveError::DuplicateModule(id.to_string()));
     }
     let module_dir = root.join(relative);
@@ -200,9 +198,25 @@ fn collect_maven(
         return Ok(());
     }
     let text = read_regular_text(&pom)?;
+    let packaging = extract_xml_values(&text, "packaging", &pom)?
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "jar".into());
+    // Maven aggregator POMs describe child modules but are not themselves
+    // Java analysis units. Keep their children in the descriptor while
+    // avoiding a false java-source-roots:none fact for the aggregator.
+    if packaging != "pom" && !relative.is_empty() && specs.insert(
+        id.to_string(),
+        ModuleSpec {
+            id: id.to_string(),
+            relative_path: Some(relative.to_string()),
+        },
+    ).is_some() {
+        return Err(ResolveError::DuplicateModule(id.to_string()));
+    }
     for child in extract_xml_values(&text, "module", &pom)? {
         let child_rel = join_relative(relative, &child)?;
-        collect_maven(root, &child_rel, specs, unresolved)?;
+        collect_maven(root, &child_rel, specs, unresolved, visited)?;
     }
     Ok(())
 }
@@ -779,6 +793,30 @@ mod tests {
         assert_eq!(first.modules.iter().map(|m| m.module_id.as_str()).collect::<Vec<_>>(), vec!["app", "lib"]);
         assert!(first.modules[0].source_roots.iter().any(|r| r == "app/src/main/java"));
         assert!(first.unresolved_facts.iter().any(|f| f == "dependency-classpath:not-determined-statically"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn maven_aggregator_pom_is_not_an_analysis_unit() {
+        let root = repo("maven-aggregator");
+        write(
+            &root.join("pom.xml"),
+            "<project><packaging>pom</packaging><modules><module>services</module></modules></project>",
+        );
+        write(
+            &root.join("services/pom.xml"),
+            "<project><packaging>pom</packaging><modules><module>api</module></modules></project>",
+        );
+        write(&root.join("services/api/pom.xml"), "<project/>");
+        write(&root.join("services/api/src/main/java/example/App.java"), "class App {}\n");
+
+        let descriptor = resolve(&root, BuildSystem::Maven).unwrap();
+        assert_eq!(descriptor.modules.iter().map(|m| m.module_id.as_str()).collect::<Vec<_>>(), vec!["services/api"]);
+        assert!(descriptor
+            .unresolved_facts
+            .iter()
+            .all(|fact| !fact.contains("java-source-roots:none:services")));
+        assert!(descriptor.modules[0].source_roots.iter().any(|root| root == "services/api/src/main/java"));
         let _ = fs::remove_dir_all(root);
     }
 

@@ -1,9 +1,10 @@
 use erf_feedback::FeedbackClass;
 use erf_incremental_baseline::{digest_summary, Stage, StageTimer};
 use erf_pilot_metrics::{ObservationMode, PilotMetricsLedger, RegressionOutcome};
+use erf_project_config::{apply_precedence, load_config, process_environment, ConfigOverrides};
 use erf_unified_result::{AuditEventKind, AuditTrail, ResultInputs, UnifiedResult};
 use rf_gate::{Baseline, BaselineKind, Completeness, GateDecision, GatePolicy, GatePreview};
-use rf_runner::{scan, ScanConfig, ScanError};
+use rf_runner::{scan, ProjectScanScope, ScanConfig, ScanError};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
@@ -69,6 +70,7 @@ struct ScanOptions {
     repository: String,
     commit: String,
     repo_root: String,
+    project_config: Option<PathBuf>,
     candidate: String,
     host: String,
     host_args: Vec<String>,
@@ -137,7 +139,7 @@ fn run_main() -> Result<(), String> {
 
 fn print_usage() {
     println!(
-        "usage:\n  erf-pilot-observer baseline --repository ID --commit SHA --repo-root PATH --candidate DIR --host CMD --resolver CMD --output FILE [--host-arg ARG] [--resolver-arg ARG]\n  erf-pilot-observer run --repository ID --commit SHA --repo-root PATH --candidate DIR --host CMD --resolver CMD --journal FILE --mode local-simulation|synthetic-shadow|live-shadow [options]\n  erf-pilot-observer feedback --journal FILE --measurement-id ID --classification valid|documentation|scope|false-positive --regression pending|clean|finding [options]\n  erf-pilot-observer governance --journal FILE --measurement-id ID --rollback-count N --active-exception-count N --oldest-exception-age-secs N [options]\n  erf-pilot-observer report --journal FILE --output FILE --window-start EPOCH --window-end EPOCH --expected-repositories N --mode local-simulation|synthetic-shadow|live-shadow [--registered-sample FILE] [--latency-baseline-millis N] [--memory-baseline-bytes N]"
+        "usage:\n  erf-pilot-observer baseline --repository ID --commit SHA --repo-root PATH --project-config FILE --candidate DIR --host CMD --resolver CMD --output FILE [--host-arg ARG] [--resolver-arg ARG]\n  erf-pilot-observer run --repository ID --commit SHA --repo-root PATH --project-config FILE --candidate DIR --host CMD --resolver CMD --journal FILE --mode local-simulation|synthetic-shadow|live-shadow [options]\n  erf-pilot-observer feedback --journal FILE --measurement-id ID --classification valid|documentation|scope|false-positive --regression pending|clean|finding [options]\n  erf-pilot-observer governance --journal FILE --measurement-id ID --rollback-count N --active-exception-count N --oldest-exception-age-secs N [options]\n  erf-pilot-observer report --journal FILE --output FILE --window-start EPOCH --window-end EPOCH --expected-repositories N --mode local-simulation|synthetic-shadow|live-shadow [--registered-sample FILE] [--latency-baseline-millis N] [--memory-baseline-bytes N]"
     );
 }
 
@@ -155,6 +157,7 @@ fn parse_scan_options(args: Vec<String>, requires_journal: bool) -> Result<ScanO
             "--repository" => options.repository = take()?,
             "--commit" => options.commit = take()?,
             "--repo-root" => options.repo_root = take()?,
+            "--project-config" => options.project_config = Some(PathBuf::from(take()?)),
             "--candidate" => options.candidate = take()?,
             "--host" => options.host = take()?,
             "--host-arg" => options.host_args.push(take()?),
@@ -287,7 +290,8 @@ fn parse_report_options(args: Vec<String>) -> Result<ReportOptions, String> {
 
 fn run_baseline(options: ScanOptions) -> Result<(), String> {
     let started = Instant::now();
-    let mut scan = execute_scan(&options).map_err(|error| format!("cannot establish baseline: {error}"))?;
+    let project_scope = project_scope_for(&options)?;
+    let mut scan = execute_scan(&options, project_scope.as_ref()).map_err(|error| format!("cannot establish baseline: {error}"))?;
     let preview = preview_for(&mut scan, &options, None);
     if !preview.completeness.complete { return Err("baseline scan was incomplete".into()); }
     let mut lines = vec![
@@ -310,8 +314,9 @@ fn run_baseline(options: ScanOptions) -> Result<(), String> {
 fn run_observation(options: ScanOptions) -> Result<(), String> {
     let journal = options.journal.clone().expect("journal validated");
     let baseline = options.baseline.as_deref().map(read_baseline).transpose()?;
+    let project_scope = project_scope_for(&options)?;
     let started = Instant::now();
-    let scan_result = execute_scan(&options);
+    let scan_result = execute_scan(&options, project_scope.as_ref());
     let elapsed = elapsed_millis(started);
     let peak_memory = read_rss_bytes().max(1);
     let (scan, preview, failure) = match scan_result {
@@ -543,7 +548,7 @@ fn validate_registered_identities(
     Ok(())
 }
 
-fn execute_scan(options: &ScanOptions) -> Result<rf_runner::ScanResult, ScanError> {
+fn execute_scan(options: &ScanOptions, project_scope: Option<&ProjectScanScope>) -> Result<rf_runner::ScanResult, ScanError> {
     scan(&ScanConfig {
         repo_root: options.repo_root.clone(),
         rule_id: String::new(),
@@ -565,8 +570,32 @@ fn execute_scan(options: &ScanOptions) -> Result<rf_runner::ScanResult, ScanErro
         incremental: None,
         scan_cache_dir: None,
         fallback_inputs: None,
-        project_scope: None,
+        project_scope: project_scope.cloned(),
     })
+}
+
+fn project_scope_for(options: &ScanOptions) -> Result<Option<ProjectScanScope>, String> {
+    let Some(config_path) = options.project_config.as_deref() else {
+        return Ok(None);
+    };
+    let repo_root = Path::new(&options.repo_root);
+    let canonical_repo = fs::canonicalize(repo_root).map_err(|error| format!("cannot resolve repository root: {error}"))?;
+    let requested_config = if config_path.is_absolute() { config_path.to_path_buf() } else { repo_root.join(config_path) };
+    let canonical_config = fs::canonicalize(&requested_config).map_err(|error| format!("cannot resolve project config: {error}"))?;
+    if !canonical_config.starts_with(&canonical_repo) {
+        return Err("project config is outside the repository root".into());
+    }
+    let (project, _) = load_config(&canonical_repo, Some(&canonical_config)).map_err(|error| format!("cannot load project config: {error}"))?;
+    let (project, _) = apply_precedence(&project, &ConfigOverrides::default(), &process_environment())
+        .map_err(|error| format!("cannot resolve project config: {error}"))?;
+    let scope = ProjectScanScope {
+        modules: project.modules,
+        roots: project.source_roots,
+        include: project.include,
+        exclude: project.exclude,
+    };
+    scope.validate().map_err(|error| format!("invalid project scan scope: {error}"))?;
+    Ok(Some(scope))
 }
 
 fn preview_for(scan: &mut rf_runner::ScanResult, options: &ScanOptions, baseline: Option<&BTreeSet<String>>) -> GatePreview {
@@ -941,5 +970,33 @@ mod tests {
             assert!(validate_registered_identities(&[&mismatched_bundle], &registered, mode, 1).is_err());
             fs::remove_file(path).unwrap();
         }
+    }
+
+    #[test]
+    fn project_config_scope_is_loaded_for_observation() {
+        let directory = std::env::temp_dir().join(format!(
+            "erf-pilot-observer-scope-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let repo = directory.join("repo");
+        fs::create_dir_all(repo.join(".ruleops")).unwrap();
+        let config = repo.join(".ruleops/config.yaml");
+        fs::write(
+            &config,
+            "version: ruleops.config/v1\nlanguage: java\nbuild_system: maven\nmodules: [\"app\"]\nsource_roots: [\"app/src/main/java\"]\ntest_roots: []\ngenerated_roots: []\nvendor_roots: []\ninclude: [\"app/src/main/java/**\"]\nexclude: [\".ruleops/**\"]\nexecution_mode: connected\ncache_dir: .ruleops/cache/bundles\ntrust_state_path: .ruleops/trust-state\n",
+        )
+        .unwrap();
+        let options = ScanOptions {
+            repo_root: repo.display().to_string(),
+            project_config: Some(config),
+            ..ScanOptions::default()
+        };
+        let scope = project_scope_for(&options).unwrap().unwrap();
+        assert_eq!(scope.modules, vec!["app"]);
+        assert_eq!(scope.roots, vec!["app/src/main/java"]);
+        assert_eq!(scope.include, vec!["app/src/main/java/**"]);
+        assert_eq!(scope.exclude, vec![".ruleops/**"]);
+        fs::remove_dir_all(directory).unwrap();
     }
 }

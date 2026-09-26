@@ -8,6 +8,7 @@ description = "Read-only Shadow observation runner and digest-only window report
 erf-incremental-baseline = { path = "../incremental-baseline" }
 erf-feedback = { path = "../feedback" }
 erf-pilot-metrics = { path = "../pilot-metrics" }
+erf-project-config = { path = "../project-config" }
 erf-unified-result = { path = "../unified-result" }
 rf-gate = { path = "../gate" }
 rf-runner = { path = "../rf-runner" }

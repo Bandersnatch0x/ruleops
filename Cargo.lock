@@ -351,6 +351,7 @@ dependencies = [
  "erf-feedback",
  "erf-incremental-baseline",
  "erf-pilot-metrics",
+ "erf-project-config",
  "erf-unified-result",
  "rf-gate",
  "rf-runner",

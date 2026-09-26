@@ -14,6 +14,21 @@ scripts/authoring-validate.sh specs/standard/*.yaml "${intents[@]}" > "$out_dir/
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# Build the Maven products and dependency classpaths once per Phase 4 run.
+# candidate-compile.sh and candidate-verify.sh remain independently runnable;
+# these scoped env vars only let this batch avoid repeating the same Maven
+# bootstrap for every RuleIntent.
+factory_cp_file="$work/factory-classpath"
+(cd "$repo_root" && mvn -q -pl control-plane/factory -am package -DskipTests \
+  dependency:build-classpath -Dmdep.outputFile="$factory_cp_file" -q)
+[ -s "$factory_cp_file" ] || { echo "factory classpath bootstrap is empty" >&2; exit 1; }
+verification_cp_file="$work/verification-classpath"
+(cd "$repo_root" && mvn -q -pl control-plane/verification -am package -DskipTests \
+  dependency:build-classpath -Dmdep.outputFile="$verification_cp_file" -q)
+[ -s "$verification_cp_file" ] || { echo "verification classpath bootstrap is empty" >&2; exit 1; }
+export ERF_FACTORY_CP_FILE="$factory_cp_file"
+export ERF_VERIFICATION_CP_FILE="$verification_cp_file"
+
 for intent in "${intents[@]}"; do
   id="$(basename "$intent" .yaml)"
   compiled="$(scripts/candidate-compile.sh "$intent" "$work/first")"
