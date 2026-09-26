@@ -4,7 +4,7 @@ status: accepted
 
 # 固化本地模拟与真实只读 Shadow 观测的双模式
 
-当前 Pilot 需要在不向外部 GitHub 仓库写入、不持有 SCM 凭据的前提下，先验证观测链路，再执行真实默认分支的 Shadow 采集。决定将两者明确建模为 `LOCAL_SIMULATION` 与 `LIVE_SHADOW` 两种 `ObservationMode`：本地追加提交只用于验证趋势、回放、反馈和窗口汇总；只有登记清单中的外部仓库只读提交可以进入 live pilot 结果。两种模式共享同一个 Observer 和 digest-only journal，但 mode 会进入运行记录身份，避免把模拟结果伪装成产品结果。
+当前 Pilot 需要在不向外部 GitHub 仓库写入、不持有 SCM 凭据的前提下，先验证观测链路，再执行真实默认分支的 Shadow 采集。此 ADR 先定义了 `LOCAL_SIMULATION` 与 `LIVE_SHADOW` 的边界；后续 ADR-0156 在两者之间补充 `SYNTHETIC_SHADOW` 作为内部合成资格验证模式，并要求三种模式按登记身份独立聚合。
 
 ## Consequences
 

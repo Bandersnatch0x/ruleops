@@ -1,0 +1,60 @@
+apiVersion: rulefactory.io/v1
+kind: AuthorCostRecord
+metadata:
+  id: author-cost-record-template-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  status: HUMAN_INPUT_REQUIRED
+  baselineRef: specs/pilot/author-cost-baseline.yaml
+  run:
+    id: HUMAN_INPUT_REQUIRED
+    authorId: HUMAN_INPUT_REQUIRED
+    startedAtUtc: HUMAN_INPUT_REQUIRED
+    completedAtUtc: HUMAN_INPUT_REQUIRED
+    pathOrder: HUMAN_INPUT_REQUIRED
+    notes: HUMAN_INPUT_REQUIRED
+  samples:
+    - id: corp.java.no-system-exit
+      standard: SEC-JAVA-017
+      scenario: direct-system-exit
+      targetKind: method-call
+      template: SymbolRule
+      intent: specs/rule-intent/corp.java.no-system-exit.yaml
+      manual:
+        activeMinutes: HUMAN_INPUT_REQUIRED
+        machineElapsedSeconds: HUMAN_INPUT_REQUIRED
+        evidence: HUMAN_INPUT_REQUIRED
+      template:
+        activeMinutes: HUMAN_INPUT_REQUIRED
+        machineElapsedSeconds: HUMAN_INPUT_REQUIRED
+        evidence: HUMAN_INPUT_REQUIRED
+    - id: corp.java.no-clone-method
+      standard: SEC-JAVA-024
+      scenario: no-clone-method
+      targetKind: structural-node
+      template: StructuralRule
+      intent: specs/rule-intent/corp.java.no-clone-method.yaml
+      manual:
+        activeMinutes: HUMAN_INPUT_REQUIRED
+        machineElapsedSeconds: HUMAN_INPUT_REQUIRED
+        evidence: HUMAN_INPUT_REQUIRED
+      template:
+        activeMinutes: HUMAN_INPUT_REQUIRED
+        machineElapsedSeconds: HUMAN_INPUT_REQUIRED
+        evidence: HUMAN_INPUT_REQUIRED
+    - id: corp.java.avoid-duplicate-literals
+      standard: SEC-JAVA-018
+      scenario: avoid-duplicate-literals
+      targetKind: existing-rule
+      template: ExistingRule
+      intent: specs/rule-intent/corp.java.avoid-duplicate-literals.yaml
+      manual:
+        activeMinutes: HUMAN_INPUT_REQUIRED
+        machineElapsedSeconds: HUMAN_INPUT_REQUIRED
+        evidence: HUMAN_INPUT_REQUIRED
+      template:
+        activeMinutes: HUMAN_INPUT_REQUIRED
+        machineElapsedSeconds: HUMAN_INPUT_REQUIRED
+        evidence: HUMAN_INPUT_REQUIRED

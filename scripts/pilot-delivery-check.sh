@@ -10,6 +10,12 @@ sample="$repo_root/specs/pilot/live-java-repositories.yaml"
 
 mkdir -p "$out_dir"
 cd "$repo_root"
+static_log="$out_dir/static-check.log"
+exec 9>"$static_log"
+BASH_XTRACEFD=9
+PS4='+ '
+set -x
+input_identity="$(sha256sum "$manifest" "$contract" "$plan" "$sample" scripts/pilot-local-simulation.sh scripts/phase4-shadow-pilot.sh scripts/pilot-live-observation.sh rf | sha256sum | awk '{print $1}')"
 
 for asset in "$manifest" "$contract" "$plan" "$sample"; do
   [ -s "$asset" ] || { echo "missing delivery asset: $asset" >&2; exit 1; }
@@ -34,12 +40,14 @@ rg -q '^  authority: SHADOW$' "$contract"
 rg -q '^  status: REGISTERED$' "$plan"
 rg -q '^  authority: SHADOW$' "$plan"
 rg -q '^    repositoryCount: 3$' "$plan"
+rg -q '^    - id: SYNTHETIC_SHADOW$' "$plan"
 rg -q '^kind: LivePilotRepositoryManifest$' "$sample"
 rg -q '^  count: 3$' "$sample"
 
 for script in \
   scripts/check.sh \
   scripts/pilot-local-simulation.sh \
+  scripts/phase4-shadow-pilot.sh \
   scripts/pilot-live-observation.sh \
   scripts/pilot-observation-check.sh \
   scripts/pilot-delivery-check.sh; do
@@ -61,12 +69,18 @@ for command in \
   }
 done
 
-git diff --check
+git diff --check > "$out_dir/diff-check.log" 2>&1
+
+set +x
 
 cat > "$out_dir/pilot-release-candidate.md" <<EOF
 # ERF Shadow MVP Delivery Preflight
 
+- evidenceSchema: feature-evidence-v1
+- status: STATIC_ONLY
+- evidenceLevel: STRUCTURAL
 - Manifest: \`specs/pilot/pilot-release-manifest.yaml\`
+- inputIdentity: sha256:$input_identity
 - Release status: \`READY_FOR_SHADOW_WINDOW\`
 - Release type: \`SHADOW_ONLY_MVP\`
 - Authority: \`SHADOW\` only
@@ -79,10 +93,17 @@ cat > "$out_dir/pilot-release-candidate.md" <<EOF
 | Registered three-repository observation plan | PASS |
 | Fixed Java repository manifest | PASS |
 | Local simulation and live Shadow entrypoints | PASS |
+| Internal Synthetic Shadow qualification entrypoint and product boundary | PASS |
 | Digest-only and no-write safety boundary | PASS |
 | \`rf\` delivery and observation CLI surface | PASS |
 | RuleOps Center closure CLI surface | PASS |
 | Working-tree diff check | PASS |
+
+- commands: repository-local file/manifest assertions, \`rf --help\`, and \`git diff --check\`
+- logs:
+  - static: $static_log
+  - CLI help: $out_dir/rf-help.txt
+  - diff: $out_dir/diff-check.log
 
 ## Handoff boundary
 
@@ -105,4 +126,4 @@ must remain missing; this package does not synthesize them.
    authority change.
 EOF
 
-echo "pilot-delivery=PASS evidence=$out_dir/pilot-release-candidate.md"
+echo "pilot-delivery=STATIC_ONLY evidence=$out_dir/pilot-release-candidate.md evidenceLevel=STRUCTURAL inputIdentity=sha256:$input_identity"

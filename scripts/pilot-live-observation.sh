@@ -30,6 +30,7 @@ fi
 compiled="$(scripts/candidate-compile.sh specs/rule-intent/corp.java.avoid-duplicate-literals.yaml "$out_dir/candidate-build")"
 candidate="$(printf '%s\n' "$compiled" | sed -n 's/^CANDIDATE //p')"
 [ -n "$candidate" ] || { echo "candidate path missing" >&2; exit 1; }
+rule_bundle_digest="$(jq -r '.digest' "$candidate/manifest.json")"
 
 manifest="$repo_root/specs/pilot/live-java-repositories.yaml"
 mapfile -t records < <(awk '
@@ -41,6 +42,15 @@ mapfile -t records < <(awk '
   END { if (repo != "") print repo "\t" url "\t" branch "\t" commit }
 ' "$manifest")
 [ "${#records[@]}" -eq 3 ] || { echo "expected three registered repositories" >&2; exit 1; }
+
+registered_sample="$out_dir/registered-sample.tsv"
+{
+  printf '%s\n' 'format=erf-pilot-sample-v1' 'mode=LIVE_SHADOW' "rule-bundle=$rule_bundle_digest"
+  for record in "${records[@]}"; do
+    IFS=$'\t' read -r repository _url _branch registered_commit <<< "$record"
+    printf 'sample=%s\t%s\n' "$repository" "$registered_commit"
+  done
+} > "$registered_sample"
 
 window_start="$(date -u +%s)"
 for record in "${records[@]}"; do
@@ -55,6 +65,10 @@ for record in "${records[@]}"; do
     git clone --depth=1 --branch "$branch" "$url" "$destination" >/dev/null
   fi
   commit="$(git -C "$destination" rev-parse HEAD)"
+  [ "$commit" = "$registered_commit" ] || {
+    echo "LIVE_SHADOW commit mismatch for $repository: registered=$registered_commit observed=$commit" >&2
+    exit 1
+  }
   baseline="$out_dir/baselines/$key.baseline"
   ./rf pilot baseline \
     --repository "$repository" --commit "$commit" \
@@ -89,6 +103,7 @@ set +e
   --window-start "$window_start" --window-end "$((window_end + 1))" \
   --expected-repositories 3 \
   --mode live-shadow \
+  --registered-sample "$registered_sample" \
   > "$out_dir/runs/window-report.console" 2>&1
 report_status=$?
 set -e
@@ -103,6 +118,7 @@ cat > "$out_dir/live-shadow.md" <<EOF
 - Registered sample: $manifest
 - Journal: $out_dir/metrics.journal
 - Report: $out_dir/live-shadow-report.md
+- Registered sample: $registered_sample
 - Registered commit identities are recorded in observed-commits.tsv.
 
 This is a pre-window rehearsal when run before 2026-10-01. The report remains

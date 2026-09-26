@@ -32,6 +32,9 @@ part of this repository slice.
 
 ## Required next measurements
 
+- paired `author-active-time` baseline across one RuleIntent per selected
+  template; the measurement protocol and empty record are in
+  `docs/pilot/author-cost-baseline.md`;
 - independently selected repositories: maintain 3 or more;
 - pilot-qualified rules: maintain 20 or more and measure against the
   pre-registered contract;

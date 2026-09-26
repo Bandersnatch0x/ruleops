@@ -63,24 +63,30 @@ for intent in \
 done
 
 echo "== runtime: Resolver -> ScanPlan -> Host -> Gate preview =="
+cp -a control-plane "$WORK_DIR/runtime-repo"
+printf '%s\n' '<project></project>' > "$WORK_DIR/runtime-repo/pom.xml"
+cargo run -q -p erf-project-config -- init \
+  --repo-root "$WORK_DIR/runtime-repo" \
+  --non-interactive \
+  >"$OUT_DIR/runtime-config.txt"
 cargo run -q -p rf-cli -- scan \
-  --repo-root control-plane \
+  --repo-root "$WORK_DIR/runtime-repo" \
+  --project-config "$WORK_DIR/runtime-repo/.ruleops/config.yaml" \
   --candidate "$candidate_dir" \
   --host target/debug/erf-fake-host \
+  --resolver target/debug/erf-fake-resolver \
   >"$OUT_DIR/runtime-scan.txt"
 cat "$OUT_DIR/runtime-scan.txt"
 
-echo "== contract: Node Host/Resolver =="
-node --check backend-hosts/node-fake/host.js
-node --check backend-hosts/node-fake/resolver.js
-cargo run -q -p erf-conformance -- \
-  --host node --host-arg backend-hosts/node-fake/host.js \
-  --cancel-window-ms 150 >"$OUT_DIR/node-conformance.txt"
-cat "$OUT_DIR/node-conformance.txt"
-cargo test -q -p erf-fake-resolver --test integration \
-  node_fake_resolver_interoperates_with_rust_client -- --nocapture \
-  >"$OUT_DIR/node-resolver.txt"
-cat "$OUT_DIR/node-resolver.txt"
+echo "== contract neutrality: Node.js Fake Host + Resolver =="
+command -v node >/dev/null 2>&1 || { echo "node is required for Phase 1 exit evidence" >&2; exit 2; }
+cargo build --quiet -p erf-conformance
+target/debug/erf-conformance \
+  --host node --host-arg "$REPO_ROOT/backend-hosts/node-fake/host.js" \
+  --resolver node --resolver-arg "$REPO_ROOT/backend-hosts/node-fake/resolver.js" \
+  --cancel-window-ms 150 \
+  >"$OUT_DIR/node-conformance.txt" 2>&1
+rg -q '^31/31 checks passed$' "$OUT_DIR/node-conformance.txt"
 
 cat >"$OUT_DIR/phase1-exit-evidence.md" <<EOF
 # Phase 1 Exit Evidence
@@ -98,8 +104,8 @@ cat >"$OUT_DIR/phase1-exit-evidence.md" <<EOF
 | SymbolRule + ExistingRule + StructuralRule → EvidenceBundle | template-evidence/* | PASS |
 | Core Ontology + Java Extension → content-addressed pack | ontology.txt, ontology-pack/manifest.json | PASS |
 | Runtime scan → findings → Completeness → Gate preview | \`runtime-scan.txt\` | PASS |
-| Node fake Host/Resolver contract basics | \`node-conformance.txt\`, \`node-resolver.txt\`, Node syntax checks | PASS |
 | No partial findings after failed unit | rf-runner atomic commit path and failure probe | PASS |
+| Fake Node.js Host/Resolver → shared Conformance Suite | \`node-conformance.txt\` (31/31) | PASS |
 
 ## Pilot Success Contract
 

@@ -11,7 +11,7 @@ commit acquired during this run.
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | `davidmoten/word-wrap` | [GitHub repository](https://github.com/davidmoten/word-wrap) | `53fbb8aec1b2c6f6f6150b7405aec94dcabdb364` | 11 / 22 | 8 | 93 passed | complete, 7 findings, `FAIL` |
 | `gitbucket/markedj` | [GitHub repository](https://github.com/gitbucket/markedj) | `4a158d00562be394462ba1f6d088d1a1e485efa7` | 41 / 86 | 8 | 40 passed | complete, 4 findings, `FAIL` |
-| `jacekkow/keycloak-protocol-cas` | [GitHub repository](https://github.com/jacekkow/keycloak-protocol-cas) | `5d5b68094fbbd611b3d2215ce256c7f83fedbd5` | 46 / 64 | 17 | 19 passed | complete, 4 findings, `FAIL` |
+| `jacekkow/keycloak-protocol-cas` | [GitHub repository](https://github.com/jacekkow/keycloak-protocol-cas) | `5d5b68094fbbd611b3d2215ce256c7f83fedbd5b` | 46 / 64 | 17 | 19 passed | complete, 4 findings, `FAIL` |
 
 GitHub describes `word-wrap` as a Java word-wrapping library and documents
 Maven use; `markedj` is a JVM Markdown processor with an Apache-2.0 license;

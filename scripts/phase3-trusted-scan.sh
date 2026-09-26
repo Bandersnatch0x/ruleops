@@ -7,6 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-}"
 [ -n "$OUT" ] || { echo "usage: $0 OUT_DIR" >&2; exit 2; }
 mkdir -p "$OUT/repository/src/main/java"
+OUT="$(cd "$OUT" && pwd)"
 cd "$ROOT"
 exec > >(tee "$OUT/console.log") 2>&1
 

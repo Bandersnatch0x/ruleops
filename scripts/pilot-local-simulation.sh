@@ -24,6 +24,7 @@ fi
 compiled="$(scripts/candidate-compile.sh specs/rule-intent/corp.java.avoid-duplicate-literals.yaml "$out_dir/candidate-build")"
 candidate="$(printf '%s\n' "$compiled" | sed -n 's/^CANDIDATE //p')"
 [ -n "$candidate" ] || { echo "candidate path missing" >&2; exit 1; }
+rule_bundle_digest="$(jq -r '.digest' "$candidate/manifest.json")"
 
 simulation_start="$(date -u +%s)"
 baseline_latency=1
@@ -85,6 +86,12 @@ for repository in "${repositories[@]}"; do
   done
 done
 
+registered_sample="$out_dir/registered-sample.tsv"
+{
+  printf '%s\n' 'format=erf-pilot-sample-v1' 'mode=LOCAL_SIMULATION' "rule-bundle=$rule_bundle_digest"
+  awk -F '\t' '$2 != "base" { print "sample=" $1 "\t" $3 }' "$out_dir/commit-sequence.tsv" | sort -u
+} > "$registered_sample"
+
 fingerprint="$(sed -n 's/^fingerprint=//p' "$out_dir/baselines/word-wrap.baseline" | head -1)"
 if [ -n "$fingerprint" ]; then
   ./rf pilot feedback \
@@ -110,6 +117,7 @@ set +e
   --window-start "$simulation_start" --window-end "$((simulation_start + 100))" \
   --expected-repositories 3 \
   --mode local-simulation \
+  --registered-sample "$registered_sample" \
   --latency-baseline-millis "$baseline_latency" \
   > "$out_dir/runs/window-report.console" 2>&1
 report_status=$?
@@ -127,6 +135,7 @@ cat > "$out_dir/local-simulation.md" <<EOF
 - Synthetic commits: 3 stages per repository
 - Journal: $out_dir/metrics.journal
 - Window report: $out_dir/local-simulation-report.md
+- Registered sample: $registered_sample
 - Live outcome eligibility: denied
 
 The simulation validates commit identity, baseline classification, digest-only

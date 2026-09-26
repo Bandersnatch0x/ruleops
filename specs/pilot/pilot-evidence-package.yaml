@@ -1,0 +1,59 @@
+apiVersion: rulefactory.io/v1
+kind: PilotEvidencePackage
+metadata:
+  id: pilot-evidence-package-v1
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  disclosure: DIGEST_ONLY
+  format: erf-pilot-evidence-package-v1
+  contract:
+    required: [id, version, digest]
+    digest: sha256(bytes-of-approved-contract)
+  sample:
+    required: [registered-sample-digest]
+    replacement: forbidden
+  observationWindow:
+    required: [start, end]
+    approved: 2026-10-01T00:00:00Z/2026-10-31T23:59:59Z
+    boundary: inclusive
+    timezone: UTC
+    recordWindowsMustMatchPackage: true
+  requiredMetrics:
+    - author-active-time
+    - precision
+    - recall
+    - false-positive-regression
+    - complete-rate
+    - inconclusive-rate
+    - scan-latency
+    - resource-consumption
+    - new-violation-trend
+    - historical-debt-trend
+    - false-pass-count
+  evidenceRecord:
+    required: [metricId, provenance, window, completeness, artifactDigest, status]
+    status: [PASS, FAIL, INCONCLUSIVE]
+    completeness: [COMPLETE, MISSING, INVALID, CONFLICTING, TAMPERED, INCOMPLETE]
+    passRequires: COMPLETE
+    sourceDisclosure: digest-and-provenance-only
+  aggregation:
+    precedence: [FAIL, INCONCLUSIVE, PASS]
+    missingOrInvalid: INCONCLUSIVE
+    duplicateOrConflictingMetric: INCONCLUSIVE
+    tamperedPackage: INCONCLUSIVE
+  adjudication:
+    type: PilotAdjudication
+    owner: platform-engineering
+    decisions: [GO, NO_GO, INCONCLUSIVE]
+    goRequires: complete-package-and-all-required-metrics-PASS
+    noGoRequires: at-least-one-required-metric-FAIL
+    inconclusiveRequires: missing-invalid-conflicting-tampered-or-incomplete-evidence
+
+boundaries:
+  sourceUpload: none
+  findingUpload: none
+  scmMutation: none
+  protectedBranchAuthority: none
+  externalTransport: none

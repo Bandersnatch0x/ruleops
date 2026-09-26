@@ -5,8 +5,10 @@
 本交付候选已经把 Java 规则工厂的 MVP 工程闭环收敛为一个可交接包：
 
 - 100 条 Standard inventory、20 条候选 RuleIntent 与 3 个固定 Java Shadow 仓库；
-- 本地机制模拟与只读 `LIVE_SHADOW` 观测入口；
+- 本地机制模拟、内部 `SYNTHETIC_SHADOW` 资格验证与只读 `LIVE_SHADOW` 观测入口；
 - digest-only journal、窗口聚合、反馈与治理快照；
+- digest-only `PilotEvidencePackage` 封存和 `PilotAdjudication` fail-closed 裁决入口；
+- `fast-decision-v1` provider-neutral、shadow-only typed routing evidence 与 deterministic baseline；
 - `rf pilot delivery-check` 交付预检与 `bash scripts/check.sh` 全量门禁；
 - `rf center check` 对用户约定的 RuleOps Center 全链路做单一验收；
 - SCM 写入、源代码上传、状态发布和受保护分支权力全部保持禁用。

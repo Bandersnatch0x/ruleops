@@ -33,6 +33,11 @@ public final class ShadowBad {
 }
 EOF
 
+cargo run --quiet -p erf-project-config -- init \
+  --repo-root "$REPO" \
+  --non-interactive \
+  > "$OUT/config-init.txt"
+
 cd "$REPO_ROOT"
 cargo build --quiet -p rf-cli -p erf-static-resolver
 mvn -q -f backend-hosts/java/pom.xml package -DskipTests
@@ -48,6 +53,7 @@ cli="$REPO_ROOT/target/debug/rf-cli"
 for run in 1 2; do
   "$cli" scan \
     --repo-root "$REPO" \
+    --project-config "$REPO/.ruleops/config.yaml" \
     --candidate "$candidate" \
     --resolver "$resolver" \
     --resolver-arg --kind \
@@ -57,6 +63,60 @@ for run in 1 2; do
     --host-arg "$host_jar" \
     > "$OUT/run-$run.txt" 2>&1
 done
+
+"$cli" scan \
+  --repo-root "$REPO" \
+  --project-config "$REPO/.ruleops/config.yaml" \
+  --candidate "$candidate" \
+  --resolver "$resolver" \
+  --resolver-arg --kind \
+  --resolver-arg maven \
+  --host java \
+  --host-arg -jar \
+  --host-arg "$host_jar" \
+  --format json \
+  --progress none \
+  > "$OUT/run-json.json"
+"$cli" scan \
+  --repo-root "$REPO" \
+  --project-config "$REPO/.ruleops/config.yaml" \
+  --candidate "$candidate" \
+  --resolver "$resolver" \
+  --resolver-arg --kind \
+  --resolver-arg maven \
+  --host java \
+  --host-arg -jar \
+  --host-arg "$host_jar" \
+  --format sarif \
+  --progress none \
+  > "$OUT/run-sarif.json"
+
+python3 - "$OUT/run-json.json" "$OUT/run-sarif.json" <<'PY'
+import json
+import sys
+
+scan = json.load(open(sys.argv[1], encoding="utf-8"))
+sarif = json.load(open(sys.argv[2], encoding="utf-8"))
+assert scan["kind"] == "ScanResult"
+assert scan["status"] == "FAIL"
+assert scan["gateDecision"] == "FAIL"
+assert scan["authority"] == "LOCAL_UNATTESTED"
+assert scan["findingViews"]
+location = scan["findingViews"][0]["location"]
+assert location["path"] == "src/main/java/ShadowBad.java"
+assert location["line"] > 0 and location["column"] > 0
+assert scan["resultDigest"].startswith("sha256:")
+assert "sourceContent" not in json.dumps(scan)
+assert sarif["version"] == "2.1.0"
+sarif_result = sarif["runs"][0]["results"][0]
+sarif_location = sarif_result["locations"][0]["physicalLocation"]
+assert sarif_location["artifactLocation"]["uri"] == location["path"]
+assert sarif_location["region"]["startLine"] == location["line"]
+assert sarif_location["region"]["startColumn"] == location["column"]
+assert sarif_result["partialFingerprints"]["erfFindingFingerprint"] == scan["findingViews"][0]["fingerprint"]
+assert sarif_result["properties"]["findingId"] == scan["findingRecords"][0]["findingId"]
+assert sarif_result["properties"]["findingDigest"] == scan["findingRecords"][0]["findingDigest"]
+PY
 
 alt_repo="$WORK/representative-existing-rule-repo"
 mkdir -p "$alt_repo/src/main/java"
@@ -71,11 +131,16 @@ public final class ExistingRuleBad {
     }
 }
 EOF
+cargo run --quiet -p erf-project-config -- init \
+  --repo-root "$alt_repo" \
+  --non-interactive \
+  > "$OUT/existing-rule-config-init.txt"
 alt_compiled="$(scripts/candidate-compile.sh specs/rule-intent/corp.java.avoid-duplicate-literals.yaml "$CANDIDATES")"
 alt_candidate="$(printf '%s\n' "$alt_compiled" | sed -n 's/^CANDIDATE //p')"
 [ -n "$alt_candidate" ] || { echo "existing-rule candidate path missing" >&2; exit 1; }
 "$cli" scan \
   --repo-root "$alt_repo" \
+  --project-config "$alt_repo/.ruleops/config.yaml" \
   --candidate "$alt_candidate" \
   --resolver "$resolver" \
   --resolver-arg --kind \
@@ -110,6 +175,7 @@ cat > "$OUT/phase2-java-shadow.md" <<EOF
 - Trust: \`LOCAL_UNATTESTED\`
 - Authority: \`SHADOW\` only
 - Runs: 2
+- Output projection: JSON and SARIF from the real Java PMD Host
 
 ## Result
 
@@ -119,6 +185,9 @@ Finding, and returned a complete non-authoritative Gate result. Plan digest and
 SemanticResultDigest were equal across both runs. A separate ExistingRule
 candidate was also scanned and its manifest-derived rule identity was preserved
 as \`corp.java.avoid-duplicate-literals\` in the ScanPlan and CLI output.
+The same real Java scan also emitted a closed JSON ScanResult and SARIF 2.1.0;
+both retained the repository-relative Finding path and positive line/column,
+while keeping the result LOCAL_UNATTESTED and excluding source content.
 
 The fixture is intentionally small and local. This proves the resolver/Runner/
 Host seam and repeatability for the representative path; it does not prove

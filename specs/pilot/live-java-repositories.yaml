@@ -85,7 +85,7 @@ repositories:
     repository: jacekkow/keycloak-protocol-cas
     url: https://github.com/jacekkow/keycloak-protocol-cas
     defaultBranch: master
-    commit: 5d5b68094fbbd611b3d2215ce256c7f83fedbd5
+    commit: 5d5b68094fbbd611b3d2215ce256c7f83fedbd5b
     commitDate: 2026-09-17
     githubSizeKb: 358
     starsAtSelection: 132

@@ -28,6 +28,10 @@ spec:
       purpose: validate-observation-mechanics
       source: local-clone-with-synthetic-commits
       eligibleForLiveOutcome: false
+    - id: SYNTHETIC_SHADOW
+      purpose: qualify-runner-to-trusted-ci-handoff
+      source: internal-controlled-fixture-repositories
+      eligibleForLiveOutcome: false
     - id: LIVE_SHADOW
       purpose: collect-registered-pilot-evidence
       source: read-only-public-default-branch

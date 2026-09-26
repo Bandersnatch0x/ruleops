@@ -20,6 +20,7 @@ spec:
   entrypoints:
     preflight: scripts/pilot-delivery-check.sh OUT_DIR
     localSimulation: scripts/pilot-local-simulation.sh OUT_DIR
+    syntheticShadow: scripts/phase4-shadow-pilot.sh OUT_DIR
     liveShadow: scripts/pilot-live-observation.sh OUT_DIR
     windowReport: rf pilot window-report OBSERVER_OPTIONS...
   finalGate:
