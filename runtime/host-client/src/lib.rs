@@ -13,13 +13,18 @@
 use erf_contracts::backend::v0 as pb;
 use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
+use std::io::Read;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 pub const PROTOCOL_MAJOR: u32 = 0;
 pub const PROTOCOL_MINOR: u32 = 1;
+/// Maximum number of decoded host responses waiting for the runtime.
+/// The reader applies backpressure instead of allowing unbounded child output
+/// to grow Runtime memory.
+pub const RESPONSE_QUEUE_CAPACITY: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct HostConfig {
@@ -95,7 +100,17 @@ fn spawn_reader(
     stdout: ChildStdout,
     max_frame_bytes: u64,
 ) -> Receiver<Result<(Vec<u8>, pb::HostEnvelope), FrameError>> {
-    let (tx, rx) = channel();
+    spawn_reader_from(stdout, max_frame_bytes)
+}
+
+fn spawn_reader_from<R>(
+    stdout: R,
+    max_frame_bytes: u64,
+) -> Receiver<Result<(Vec<u8>, pb::HostEnvelope), FrameError>>
+where
+    R: Read + Send + 'static,
+{
+    let (tx, rx) = sync_channel(RESPONSE_QUEUE_CAPACITY);
     std::thread::spawn(move || {
         let mut reader = FrameReader::new(stdout, max_frame_bytes);
         loop {
@@ -134,7 +149,7 @@ impl HostHandle {
             writer: Some(FrameWriter::new(stdin, config.limits.max_frame_bytes)),
             rx,
             next_correlation: 1,
-            limits: config.limits.clone(),
+            limits: config.limits,
         };
         let ack = handle.handshake(config)?;
         Ok((handle, ack))
@@ -149,7 +164,7 @@ impl HostHandle {
                 protocol_minor: PROTOCOL_MINOR,
                 required_capabilities: config.required_capabilities.clone(),
                 optional_capabilities: config.optional_capabilities.clone(),
-                limits: Some(config.limits.clone()),
+                limits: Some(config.limits),
             })),
         };
         self.write_frame(&hello)?;
@@ -330,27 +345,26 @@ impl HostHandle {
     /// process to exit. A non-zero exit after COMPLETED is a Hangup.
     pub fn complete(mut self) -> Result<pb::Completion, HostError> {
         let _ = self.writer.take(); // dropping closes the pipe: session end signal
-        loop {
-            let frame = self.next_envelope()?;
+        let frame = self.next_envelope()?;
             match frame.payload {
                 Some(pb::host_envelope::Payload::Completion(c)) => {
                     let exit = self.child.wait()?;
                     if c.status == pb::completion::Status::Completed as i32 && !exit.success() {
-                        return Err(HostError::Hangup {
+                        Err(HostError::Hangup {
                             status: exit.to_string(),
-                        });
+                        })
+                    } else {
+                        Ok(c)
                     }
-                    return Ok(c);
                 }
-                Some(pb::host_envelope::Payload::Error(e)) => return Err(protocol_error(e)),
+                Some(pb::host_envelope::Payload::Error(e)) => Err(protocol_error(e)),
                 Some(other) => {
-                    return Err(HostError::Violation(format!(
+                    Err(HostError::Violation(format!(
                         "expected Completion, got {other:?}"
                     )))
                 }
-                None => return Err(HostError::Violation("empty envelope".into())),
+                None => Err(HostError::Violation("empty envelope".into())),
             }
-        }
     }
 }
 
@@ -390,8 +404,7 @@ impl<'a> ExecuteStream<'a> {
         if self.finished {
             return Ok(None);
         }
-        loop {
-            let (payload, frame) = self.handle.next_frame()?;
+        let (payload, frame) = self.handle.next_frame()?;
             let mut delimited = Vec::with_capacity(4 + payload.len());
             delimited.extend_from_slice(&(payload.len() as u32).to_be_bytes());
             delimited.extend_from_slice(&payload);
@@ -411,13 +424,13 @@ impl<'a> ExecuteStream<'a> {
                     }
                     match ev.event {
                         Some(pb::execute_event::Event::Observation(o)) => {
-                            return Ok(Some(ExecEvent::Observation(o)))
+                            Ok(Some(ExecEvent::Observation(o)))
                         }
                         Some(pb::execute_event::Event::UnitStatus(u)) => {
-                            return Ok(Some(ExecEvent::UnitStatus(u)))
+                            Ok(Some(ExecEvent::UnitStatus(u)))
                         }
                         None => {
-                            return Err(HostError::Violation(
+                            Err(HostError::Violation(
                                 "ExecuteEvent without event payload".into(),
                             ))
                         }
@@ -425,30 +438,29 @@ impl<'a> ExecuteStream<'a> {
                 }
                 Some(pb::host_envelope::Payload::ExecuteComplete(c)) => {
                     self.finished = true;
-                    return Ok(Some(ExecEvent::Complete(c)));
+                    Ok(Some(ExecEvent::Complete(c)))
                 }
                 Some(pb::host_envelope::Payload::Completion(c)) => {
                     // Terminal: fatal failure or cancellation finalization.
                     self.finished = true;
                     let status = pb::completion::Status::try_from(c.status)
                         .unwrap_or(pb::completion::Status::Failed);
-                    return match status {
+                    match status {
                         pb::completion::Status::Cancelled => Ok(None),
                         _ => Err(HostError::Violation(format!(
                             "Completion {:?} during execute: {}",
                             status, c.reason
                         ))),
-                    };
+                    }
                 }
-                Some(pb::host_envelope::Payload::Error(e)) => return Err(protocol_error(e)),
+                Some(pb::host_envelope::Payload::Error(e)) => Err(protocol_error(e)),
                 Some(other) => {
-                    return Err(HostError::Violation(format!(
+                    Err(HostError::Violation(format!(
                         "unexpected frame during execute: {other:?}"
                     )))
                 }
-                None => return Err(HostError::Violation("empty envelope".into())),
+                None => Err(HostError::Violation("empty envelope".into())),
             }
-        }
     }
 
     /// Digest of the exact length-delimited response frames received for execute.
@@ -495,5 +507,78 @@ impl<'a> ExecuteStream<'a> {
                 None => return Err(HostError::Violation("empty envelope".into())),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::SyncSender};
+    use std::time::Duration;
+
+    struct GateReader {
+        bytes: Vec<u8>,
+        position: usize,
+        pause_at: usize,
+        ready: Option<SyncSender<()>>,
+        release: Arc<AtomicBool>,
+    }
+
+    impl Read for GateReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if self.position >= self.pause_at {
+                if let Some(ready) = self.ready.take() {
+                    let _ = ready.send(());
+                }
+                while !self.release.load(Ordering::Acquire) {
+                    std::thread::yield_now();
+                }
+            }
+            if self.position == self.bytes.len() {
+                return Ok(0);
+            }
+            let count = buffer.len().min(self.bytes.len() - self.position);
+            buffer[..count].copy_from_slice(&self.bytes[self.position..self.position + count]);
+            self.position += count;
+            Ok(count)
+        }
+    }
+
+    #[test]
+    fn response_reader_stops_at_the_bounded_queue_capacity() {
+        let mut bytes = Vec::new();
+        let mut frame_ends = Vec::new();
+        for correlation_id in 1..=RESPONSE_QUEUE_CAPACITY as u64 + 1 {
+            let envelope = pb::HostEnvelope {
+                correlation_id,
+                payload: Some(pb::host_envelope::Payload::CancelAck(pb::CancelAck {
+                    accepted: true,
+                })),
+            };
+            FrameWriter::new(&mut bytes, 1024)
+                .write_frame(&envelope.encode_to_vec())
+                .expect("fixture frame");
+            frame_ends.push(bytes.len());
+        }
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        let release = Arc::new(AtomicBool::new(false));
+        let receiver = spawn_reader_from(
+            GateReader {
+                bytes,
+                position: 0,
+                pause_at: frame_ends[RESPONSE_QUEUE_CAPACITY - 1],
+                ready: Some(ready_tx),
+                release: Arc::clone(&release),
+            },
+            1024,
+        );
+
+        ready_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("reader did not reach the ninth-frame pause");
+        assert_eq!(receiver.try_iter().count(), RESPONSE_QUEUE_CAPACITY);
+        release.store(true, Ordering::Release);
+        drop(receiver);
     }
 }

@@ -17,6 +17,30 @@ pub fn canned_capabilities() -> pb::CapabilityDescriptor {
     }
 }
 
+/// The fake host remains `fake-backend` by default for protocol tests.  The
+/// delivery vertical can opt it into one of the two signed Java identities so
+/// Runner's fail-closed backend selection is exercised without weakening the
+/// production identity rule.
+pub fn capabilities_for_runtime_backend() -> pb::CapabilityDescriptor {
+    let mut capabilities = canned_capabilities();
+    if std::env::var_os("ERF_REFERENCE_DELIVERY_BACKEND").is_none() {
+        return capabilities;
+    }
+    match std::env::var("ERF_BACKEND").as_deref() {
+        Ok("pmd") => {
+            capabilities.backend_id = "pmd-java".into();
+            capabilities.backend_version = "7.9.0".into();
+        }
+        Ok("spotbugs") => {
+            capabilities.backend_id = "spotbugs-java".into();
+            capabilities.backend_version = "4.9.8".into();
+            capabilities.facts.insert("java.bytecode".into(), true);
+        }
+        _ => {}
+    }
+    capabilities
+}
+
 pub fn canned_observation(unit_id: &str) -> pb::BackendObservation {
     pb::BackendObservation {
         rule_id: "corp.java.no-system-exit".to_string(),

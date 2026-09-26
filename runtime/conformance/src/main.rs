@@ -2,13 +2,16 @@
 //! and prints a per-check report bound to the suite version.
 //! Exit: 0 all checks pass, 1 failures, 2 usage.
 //!
-//! Usage: erf-conformance --host <COMMAND...> [--cancel-window-ms <n>]
+//! Usage: erf-conformance --host <COMMAND> --resolver <COMMAND>
+//!   [--cancel-window-ms <n>] [--host-arg <ARG>] [--resolver-arg <ARG>]
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut host: Option<String> = None;
     let mut host_args: Vec<String> = Vec::new();
-    let mut cancel_window_ms: u64 = 0;
+    let mut resolver: Option<String> = None;
+    let mut resolver_args: Vec<String> = Vec::new();
+    let mut cancel_window_ms: u64 = 150;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -18,6 +21,14 @@ fn main() {
             }
             "--host-arg" if i + 1 < args.len() => {
                 host_args.push(args[i + 1].clone());
+                i += 2;
+            }
+            "--resolver" if i + 1 < args.len() => {
+                resolver = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--resolver-arg" if i + 1 < args.len() => {
+                resolver_args.push(args[i + 1].clone());
                 i += 2;
             }
             "--cancel-window-ms" if i + 1 < args.len() => {
@@ -31,7 +42,11 @@ fn main() {
         }
     }
     let Some(host) = host else {
-        eprintln!("usage: erf-conformance --host <COMMAND> [--cancel-window-ms <n>]");
+        eprintln!("usage: erf-conformance --host <COMMAND> --resolver <COMMAND> [--cancel-window-ms <n>]");
+        std::process::exit(2);
+    };
+    let Some(resolver) = resolver else {
+        eprintln!("usage: erf-conformance --host <COMMAND> --resolver <COMMAND> [--cancel-window-ms <n>]");
         std::process::exit(2);
     };
 
@@ -39,6 +54,8 @@ fn main() {
         host_program: host,
         host_args,
         cancel_probe_delay_ms: cancel_window_ms,
+        resolver_program: resolver,
+        resolver_args,
         ..Default::default()
     };
     eprintln!("running suite against {} ...", config.host_program);

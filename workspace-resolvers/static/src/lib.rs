@@ -77,6 +77,14 @@ struct ModuleSpec {
 
 /// Resolve one Maven or Gradle repository snapshot without executing it.
 pub fn resolve(repo_root: &Path, system: BuildSystem) -> Result<wb::WorkspaceDescriptor, ResolveError> {
+    resolve_with_backend(repo_root, system, std::env::var("ERF_BACKEND").as_deref() == Ok("spotbugs"))
+}
+
+fn resolve_with_backend(
+    repo_root: &Path,
+    system: BuildSystem,
+    bytecode_mode: bool,
+) -> Result<wb::WorkspaceDescriptor, ResolveError> {
     let root = checked_root(repo_root)?;
     let mut specs = BTreeMap::<String, ModuleSpec>::new();
     let mut unresolved = vec![
@@ -91,10 +99,31 @@ pub fn resolve(repo_root: &Path, system: BuildSystem) -> Result<wb::WorkspaceDes
 
     // A root project with source is a real module. An aggregator-only Maven
     // root is intentionally omitted; its declared children remain visible.
-    add_root_if_present(&root, &mut specs);
+    add_root_if_present(&root, &mut specs, bytecode_mode);
     let mut modules = Vec::with_capacity(specs.len());
     for spec in specs.values() {
-        modules.push(build_module(&root, spec, &mut unresolved)?);
+        modules.push(build_module(&root, spec, &mut unresolved, bytecode_mode)?);
+    }
+    if bytecode_mode
+        && !modules.is_empty()
+        && modules
+            .iter()
+            .all(|module| !module.source_roots.is_empty() && !module.files.is_empty())
+        && !unresolved
+            .iter()
+            .any(|fact| fact.starts_with("bytecode-roots:none:"))
+    {
+        // SAFE_STATIC may close these facts from an already materialized,
+        // repository-local class output. No build is executed and no output
+        // is guessed: every discovered class file is content-addressed above.
+        unresolved.retain(|fact| !fact.starts_with("build-output:"));
+        if !has_dependency_declarations(&root, system, &specs)? {
+            // In the closed v0 adapter subset, an explicit absence of Maven
+            // dependency elements (or Gradle dependency declarations) means
+            // the classpath closure is the empty repository-local set. A
+            // declared/inherited-looking dependency remains unresolved.
+            unresolved.retain(|fact| !fact.starts_with("dependency-classpath:"));
+        }
     }
     unresolved.sort();
     unresolved.dedup();
@@ -142,16 +171,14 @@ fn collect_maven(
     unresolved: &mut Vec<String>,
 ) -> Result<(), ResolveError> {
     let id = if relative.is_empty() { "root" } else { relative };
-    if !relative.is_empty() {
-        if specs.insert(
-            id.to_string(),
-            ModuleSpec {
-                id: id.to_string(),
-                relative_path: Some(relative.to_string()),
-            },
-        ).is_some() {
-            return Err(ResolveError::DuplicateModule(id.to_string()));
-        }
+    if !relative.is_empty() && specs.insert(
+        id.to_string(),
+        ModuleSpec {
+            id: id.to_string(),
+            relative_path: Some(relative.to_string()),
+        },
+    ).is_some() {
+        return Err(ResolveError::DuplicateModule(id.to_string()));
     }
     let module_dir = root.join(relative);
     if !safe_is_dir(&module_dir)? {
@@ -229,8 +256,11 @@ fn collect_gradle(
     Ok(())
 }
 
-fn add_root_if_present(root: &Path, specs: &mut BTreeMap<String, ModuleSpec>) {
-    if root.join("src/main/java").is_dir() || root.join("src/test/java").is_dir() {
+fn add_root_if_present(root: &Path, specs: &mut BTreeMap<String, ModuleSpec>, bytecode_mode: bool) {
+    if root.join("src/main/java").is_dir()
+        || root.join("src/test/java").is_dir()
+        || (bytecode_mode && (root.join("target/classes").is_dir() || root.join("build/classes/java/main").is_dir()))
+    {
         specs.entry("root".into()).or_insert_with(|| ModuleSpec {
             id: "root".into(),
             relative_path: Some(String::new()),
@@ -242,6 +272,7 @@ fn build_module(
     root: &Path,
     spec: &ModuleSpec,
     unresolved: &mut Vec<String>,
+    bytecode_mode: bool,
 ) -> Result<wb::ModuleDescriptor, ResolveError> {
     let mut source_roots = Vec::new();
     let mut files = Vec::new();
@@ -253,6 +284,7 @@ fn build_module(
             language: "java".into(),
             source_roots,
             files,
+            ..Default::default()
         });
     };
     let module_dir = root.join(relative);
@@ -263,20 +295,35 @@ fn build_module(
             language: "java".into(),
             source_roots,
             files,
+            ..Default::default()
         });
     }
-    for suffix in ["src/main/java", "src/test/java"] {
-        let source = module_dir.join(suffix);
-        if safe_is_dir(&source)? {
-            ensure_inside(root, &source)?;
-            source_roots.push(relative_path(root, &source));
-            collect_java_files(root, &source, &mut files, &mut seen)?;
-        } else if safe_is_dir(&module_dir.join("src/main"))? && suffix == "src/main/java" {
-            unresolved.push(format!("source-root-missing:{}:{suffix}", spec.id));
+    if bytecode_mode {
+        for suffix in ["target/classes", "build/classes/java/main"] {
+            let classes = module_dir.join(suffix);
+            if safe_is_dir(&classes)? {
+                ensure_inside(root, &classes)?;
+                source_roots.push(relative_path(root, &classes));
+                collect_class_files(root, &classes, &mut files, &mut seen)?;
+            }
         }
-    }
-    if source_roots.is_empty() {
-        unresolved.push(format!("java-source-roots:none:{}", spec.id));
+        if source_roots.is_empty() {
+            unresolved.push(format!("bytecode-roots:none:{}", spec.id));
+        }
+    } else {
+        for suffix in ["src/main/java", "src/test/java"] {
+            let source = module_dir.join(suffix);
+            if safe_is_dir(&source)? {
+                ensure_inside(root, &source)?;
+                source_roots.push(relative_path(root, &source));
+                collect_java_files(root, &source, &mut files, &mut seen)?;
+            } else if safe_is_dir(&module_dir.join("src/main"))? && suffix == "src/main/java" {
+                unresolved.push(format!("source-root-missing:{}:{suffix}", spec.id));
+            }
+        }
+        if source_roots.is_empty() {
+            unresolved.push(format!("java-source-roots:none:{}", spec.id));
+        }
     }
     source_roots.sort();
     files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -285,7 +332,72 @@ fn build_module(
         language: "java".into(),
         source_roots,
         files,
+        ..Default::default()
     })
+}
+
+fn has_dependency_declarations(
+    root: &Path,
+    system: BuildSystem,
+    specs: &BTreeMap<String, ModuleSpec>,
+) -> Result<bool, ResolveError> {
+    let mut metadata_paths = vec![match system {
+        BuildSystem::Maven => root.join("pom.xml"),
+        BuildSystem::Gradle => root.join("build.gradle"),
+    }];
+    if system == BuildSystem::Gradle {
+        metadata_paths.push(root.join("build.gradle.kts"));
+    }
+    for spec in specs.values() {
+        let Some(relative) = &spec.relative_path else { continue };
+        let module_dir = root.join(relative);
+        match system {
+            BuildSystem::Maven => metadata_paths.push(module_dir.join("pom.xml")),
+            BuildSystem::Gradle => {
+                metadata_paths.push(module_dir.join("build.gradle"));
+                metadata_paths.push(module_dir.join("build.gradle.kts"));
+            }
+        }
+    }
+    for path in metadata_paths {
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(source) => return Err(ResolveError::Io { path, source }),
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(ResolveError::SymlinkRejected(path));
+        }
+        if !metadata.is_file() {
+            continue;
+        }
+        let text = read_regular_text(&path)?;
+        let has_dependency = match system {
+            BuildSystem::Maven => contains_xml_element(&strip_xml_comments(&text, &path)?, "dependency"),
+            BuildSystem::Gradle => text.contains("dependencies") || text.contains("implementation(") || text.contains("api("),
+        };
+        if has_dependency {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn contains_xml_element(text: &str, tag: &str) -> bool {
+    let open = format!("<{tag}");
+    let mut cursor = 0;
+    while let Some(offset) = text[cursor..].find(&open) {
+        let start = cursor + offset + open.len();
+        if !text
+            .as_bytes()
+            .get(start)
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+        {
+            return true;
+        }
+        cursor = start;
+    }
+    false
 }
 
 fn collect_java_files(
@@ -309,6 +421,43 @@ fn collect_java_files(
         if metadata.is_dir() {
             collect_java_files(root, &path, files, seen)?;
         } else if metadata.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("java") {
+            ensure_inside(root, &path)?;
+            let bytes = fs::read(&path)
+                .map_err(|source| ResolveError::Io { path: path.clone(), source })?;
+            let relative = relative_path(root, &path);
+            if !seen.insert(relative.clone()) {
+                return Err(ResolveError::DuplicateFile(relative));
+            }
+            files.push(wb::FileEntry {
+                path: relative,
+                blob_sha256: Sha256::digest(bytes).to_vec(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn collect_class_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<wb::FileEntry>,
+    seen: &mut BTreeSet<String>,
+) -> Result<(), ResolveError> {
+    let mut entries = fs::read_dir(directory)
+        .map_err(|source| ResolveError::Io { path: directory.into(), source })?
+        .map(|entry| entry.map_err(|source| ResolveError::Io { path: directory.into(), source }))
+        .collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|source| ResolveError::Io { path: path.clone(), source })?;
+        if metadata.file_type().is_symlink() {
+            return Err(ResolveError::SymlinkRejected(path));
+        }
+        if metadata.is_dir() {
+            collect_class_files(root, &path, files, seen)?;
+        } else if metadata.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("class") {
             ensure_inside(root, &path)?;
             let bytes = fs::read(&path)
                 .map_err(|source| ResolveError::Io { path: path.clone(), source })?;
@@ -619,7 +768,10 @@ mod tests {
         write(&root.join("pom.xml"), "<project><modules><module>app</module><module>lib</module></modules></project>");
         write(&root.join("app/src/main/java/a/App.java"), "class App {}\n");
         write(&root.join("lib/src/test/java/l/LibTest.java"), "class LibTest {}\n");
-        write(&root.join("app/pom.xml"), "<project/>");
+        write(
+            &root.join("app/pom.xml"),
+            "<project><dependencies><dependency><groupId>example</groupId><artifactId>api</artifactId></dependency></dependencies></project>",
+        );
         write(&root.join("lib/pom.xml"), "<project/>");
         let first = resolve(&root, BuildSystem::Maven).unwrap();
         let second = resolve(&root, BuildSystem::Maven).unwrap();
@@ -627,6 +779,20 @@ mod tests {
         assert_eq!(first.modules.iter().map(|m| m.module_id.as_str()).collect::<Vec<_>>(), vec!["app", "lib"]);
         assert!(first.modules[0].source_roots.iter().any(|r| r == "app/src/main/java"));
         assert!(first.unresolved_facts.iter().any(|f| f == "dependency-classpath:not-determined-statically"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn spotbugs_class_output_and_empty_dependency_set_close_required_facts() {
+        let root = repo("spotbugs-closed");
+        write(&root.join("pom.xml"), "<project/>");
+        write(&root.join("target/classes/example/Bad.class"), "class-bytes");
+        let descriptor = resolve_with_backend(&root, BuildSystem::Maven, true).unwrap();
+        assert!(descriptor
+            .unresolved_facts
+            .iter()
+            .all(|fact| !fact.starts_with("build-output:") && !fact.starts_with("dependency-classpath:")));
+        assert_eq!(descriptor.modules[0].files.len(), 1);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -671,6 +837,18 @@ mod tests {
         fs::create_dir_all(root.join("src/main")).unwrap();
         symlink("/tmp", root.join("src/main/java")).unwrap();
         assert!(matches!(resolve(&root, BuildSystem::Maven), Err(ResolveError::SymlinkRejected(_))));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn spotbugs_mode_discovers_compiled_class_outputs() {
+        let root = repo("spotbugs-output");
+        write(&root.join("pom.xml"), "<project/>");
+        fs::create_dir_all(root.join("target/classes/example")).unwrap();
+        fs::write(root.join("target/classes/example/Bad.class"), b"cafebabe").unwrap();
+        let descriptor = resolve_with_backend(&root, BuildSystem::Maven, true).unwrap();
+        assert_eq!(descriptor.modules.len(), 1);
+        assert_eq!(descriptor.modules[0].files[0].path, "target/classes/example/Bad.class");
         let _ = fs::remove_dir_all(root);
     }
 }

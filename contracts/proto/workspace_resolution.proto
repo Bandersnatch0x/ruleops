@@ -103,6 +103,19 @@ message ModuleDescriptor {
   repeated string source_roots = 3;
   // Every analyzed file bound to its exact content digest.
   repeated FileEntry files = 4;
+  // ATTESTED_BUILD_EXPORT only: ordered, digest-bound classpath entries.
+  // Entries are repository-relative or absolute paths inside the trusted
+  // execution mount; SAFE_STATIC leaves these fields empty and reports the
+  // missing fact through unresolved_facts.
+  repeated string classpath_entries = 5;
+  // ATTESTED_BUILD_EXPORT only: ordered, digest-bound compiler output roots.
+  repeated string build_output_roots = 6;
+  // Stable identity of the build invocation that produced the export.
+  string invocation_identity = 7;
+  // SHA-256 over the canonical ordered classpath entries.
+  bytes classpath_sha256 = 8;
+  // SHA-256 over the canonical ordered build output roots.
+  bytes build_output_sha256 = 9;
 }
 
 message FileEntry {

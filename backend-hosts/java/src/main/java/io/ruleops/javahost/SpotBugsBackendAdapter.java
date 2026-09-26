@@ -37,6 +37,10 @@ import java.util.Set;
 final class SpotBugsBackendAdapter implements BackendAdapter {
 
     private static final String BACKEND_ID = "spotbugs-java";
+    // Keep the negotiated capability tied to the dependency version in the
+    // checked-in POM. The upstream Version.VERSION_STRING is absent from the
+    // shaded release jar and reports "(Unknown)" there.
+    private static final String ENGINE_VERSION = "4.9.8";
     private final Path repoRoot;
 
     private SpotBugsBackendAdapter(Path repoRoot) {
@@ -57,7 +61,7 @@ final class SpotBugsBackendAdapter implements BackendAdapter {
 
     @Override
     public String engineVersion() {
-        return edu.umd.cs.findbugs.Version.VERSION_STRING;
+        return ENGINE_VERSION;
     }
 
     @Override
@@ -75,6 +79,7 @@ final class SpotBugsBackendAdapter implements BackendAdapter {
         if (!unit.getLanguage().equals("java")) {
             throw new IOException("SpotBugs adapter only accepts java units");
         }
+        JavaExecutionContext context = JavaExecutionContext.from(repoRoot, unit);
         List<String> relativeFiles = new ArrayList<>(unit.getFilesList());
         relativeFiles.sort(String::compareTo);
         Set<String> identities = new HashSet<>();
@@ -109,7 +114,16 @@ final class SpotBugsBackendAdapter implements BackendAdapter {
         }
 
         Project project = new Project();
-        project.setProjectName(unit.getUnitId());
+        project.setProjectName(
+                unit.getUnitId()
+                        + (context.invocationIdentity().isEmpty()
+                                ? ""
+                                : "@" + context.invocationIdentity()));
+        for (Path entry : context.classpathAndBuildOutputs()) {
+            if (!project.addAuxClasspathEntry(entry.toString())) {
+                throw new IOException("SpotBugs rejected Java classpath entry: " + entry);
+            }
+        }
         for (Path classFile : classFiles) {
             if (!project.addFile(classFile.toString())) {
                 throw new IOException("SpotBugs rejected class file: " + classFile);

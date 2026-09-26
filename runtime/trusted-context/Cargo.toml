@@ -7,8 +7,10 @@ description = "Cross-asset trusted execution closure verification"
 [dependencies]
 erf-bootstrap = { path = "../bootstrap" }
 erf-conformance = { path = "../conformance" }
+erf-verification-worker = { path = "../verification-worker" }
 erf-packs = { path = "../packs" }
 erf-trust = { path = "../trust" }
+erf-trust-state = { path = "../trust-state" }
 rf-gate = { path = "../gate" }
 rf-runner = { path = "../rf-runner" }
 thiserror = "2"

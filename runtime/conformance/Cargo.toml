@@ -2,13 +2,14 @@
 name = "erf-conformance"
 version = "0.1.0"
 edition = "2021"
-description = "Versioned, backend-agnostic Contract Conformance Suite skeleton (spec §11.3): a runner driving any Backend Host executable through negotiation, framing robustness, execution accounting and failure-injection checks, bound to a suite version."
+description = "Versioned, backend-agnostic Contract Conformance Suite (spec §11.3): a runner driving Backend Host and Workspace Resolver executables through compatibility, framing, execution accounting and failure-injection checks, bound to a suite version."
 
 [dependencies]
 erf-contracts = { path = "../../contracts/rust" }
 erf-framing = { path = "../framing" }
 rf-gate = { path = "../gate" }
 erf-host-client = { path = "../host-client" }
+erf-resolver-client = { path = "../resolver-client" }
 erf-trust = { path = "../trust" }
 prost = "0.13"
 sha2 = "0.10"

@@ -23,7 +23,7 @@ pub fn facts() -> HashMap<String, bool> {
 
 /// Resolves the layout under `repo_root` into a descriptor.
 pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDescriptor> {
-    if !repo_root.is_dir() {
+    if !is_real_dir(repo_root)? {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("repo root {} is not a directory", repo_root.display()),
@@ -37,10 +37,10 @@ pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDesc
     // a dependency graph from incomplete static information.
     let has_maven = ["pom.xml", "settings.xml"]
         .iter()
-        .any(|name| repo_root.join(name).is_file());
+        .any(|name| is_real_file(&repo_root.join(name)).unwrap_or(false));
     let has_gradle = ["settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts"]
         .iter()
-        .any(|name| repo_root.join(name).is_file());
+        .any(|name| is_real_file(&repo_root.join(name)).unwrap_or(false));
     if has_maven { unresolved.push("build-system:maven".to_string()); }
     if has_gradle { unresolved.push("build-system:gradle".to_string()); }
 
@@ -49,13 +49,20 @@ pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDesc
     // default module.
     let default_root = repo_root.join("src");
     let mut roots: Vec<(String, std::path::PathBuf)> = Vec::new();
-    if default_root.join("main").is_dir() {
+    if is_real_dir(&default_root.join("main"))? {
         roots.push(("default".to_string(), default_root));
     }
     for entry in std::fs::read_dir(repo_root)? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_dir() && path != repo_root && path.join("src/main").is_dir() {
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("repository contains a symbolic link: {}", path.display()),
+            ));
+        }
+        if file_type.is_dir() && path != repo_root && is_real_dir(&path.join("src/main"))? {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 roots.push((name.to_string(), path.join("src")));
             }
@@ -65,6 +72,7 @@ pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDesc
     if roots.is_empty() {
         unresolved.push("module-structure:not-determined-statically".to_string());
     }
+    roots.sort_by(|left, right| left.0.cmp(&right.0));
     // Static resolution never executes builds or reads dependency graphs
     // that would require them; both are structured as unresolved facts
     // (spec §21: never local guesses).
@@ -85,6 +93,7 @@ pub fn resolve(repo_root: &std::path::Path) -> std::io::Result<wb::WorkspaceDesc
             language: "java".to_string(),
             source_roots: vec![relative_root],
             files,
+            ..Default::default()
         });
     }
 
@@ -115,9 +124,16 @@ fn collect_files(
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_dir() {
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("source tree contains a symbolic link: {}", path.display()),
+            ));
+        }
+        if file_type.is_dir() {
             collect_files(repo_root, &path, files)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("java") {
+        } else if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("java") {
             let bytes = std::fs::read(&path)?;
             let relative = path
                 .strip_prefix(repo_root)
@@ -131,4 +147,20 @@ fn collect_files(
         }
     }
     Ok(())
+}
+
+fn is_real_dir(path: &std::path::Path) -> std::io::Result<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_dir()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn is_real_file(path: &std::path::Path) -> std::io::Result<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_file()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
 }
