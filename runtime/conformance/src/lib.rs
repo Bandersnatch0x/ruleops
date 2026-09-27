@@ -1243,9 +1243,11 @@ fn cooperative_cancel_accounts_units(config: &SuiteConfig) -> CheckResult {
 fn deadline_is_failure(config: &SuiteConfig) -> CheckResult {
     let name = "deadline_is_failure";
     let mut command = config.command();
-    command.env("FAKE_DELAY_MS", "200").env("ERF_DELAY_MS", "200");
+    // Leave enough budget for a cold process handshake. The injected delay
+    // must still exceed the request deadline for both the Rust and Node hosts.
+    command.env("FAKE_DELAY_MS", "1000").env("ERF_DELAY_MS", "1000");
     let mut limits = config.limits.clone();
-    limits.deadline_ms = 50;
+    limits.deadline_ms = 250;
     let cfg = HostConfig {
         required_capabilities: config.required_capabilities.clone(),
         optional_capabilities: vec![],
@@ -1261,7 +1263,7 @@ fn deadline_is_failure(config: &SuiteConfig) -> CheckResult {
         }])?;
         let mut stream = host.execute(vec!["deadline-unit".into()])?;
         match stream.next_event() {
-            Err(HostError::DeadlineExceeded { deadline_ms: 50 }) => Ok(()),
+            Err(HostError::DeadlineExceeded { deadline_ms: 250 }) => Ok(()),
             Err(other) => Err(HostError::Violation(format!("wrong deadline failure: {other}"))),
             Ok(event) => Err(HostError::Violation(format!(
                 "deadline unexpectedly yielded {event:?}"
@@ -1565,16 +1567,19 @@ fn resolver_deadline_is_failure(config: &SuiteConfig) -> CheckResult {
         Err(error) => return check(name, false, format!("fixture failed: {error}")),
     };
     let mut command = config.resolver_command();
-    command.env("FAKE_RESOLVE_DELAY_MS", "200");
+    // Leave enough budget for a cold process handshake while keeping the
+    // resolver delay well beyond the request deadline. The contract applies
+    // this limit to the handshake as well as resolution requests.
+    command.env("FAKE_RESOLVE_DELAY_MS", "5000");
     let mut limits = config.resolver_limits.clone();
-    limits.deadline_ms = 50;
+    limits.deadline_ms = 2_000;
     let outcome = (|| -> Result<(), ResolverError> {
         let (mut resolver, _) = ResolverHandle::spawn(
             &mut command,
             &resolver_config(config.resolver_required_capabilities.clone(), limits),
         )?;
         match resolver.resolve(fixture.root.to_str().expect("fixture path is UTF-8")) {
-            Err(ResolverError::DeadlineExceeded { deadline_ms: 50 }) => Ok(()),
+            Err(ResolverError::DeadlineExceeded { deadline_ms: 2_000 }) => Ok(()),
             Err(error) => Err(error),
             Ok(_) => Err(ResolverError::Violation("resolution unexpectedly completed".into())),
         }
