@@ -81,8 +81,27 @@ fn run_init(args: &[String]) -> Result<(), ConfigError> {
     }
     let environment = project_environment();
     let (config, sources) = resolve_precedence(&base, &overrides, &environment)?;
-    if !detected.notes.is_empty() || config.language != "java" || config.build_system == "unknown" || config.source_roots.is_empty() {
-        let detail = if detected.notes.is_empty() { "workspace detection is incomplete".into() } else { detected.notes.join("; ") };
+    // A repository may intentionally contain a supported Java backend and an
+    // unsupported frontend. When the caller explicitly selects Java, the
+    // detected Java source roots already define the safe analysis boundary;
+    // the presence of the other language is no longer unresolved ambiguity.
+    // Keep every other detection note fail-closed until it is explicitly
+    // modelled and resolved.
+    let unresolved_notes = detected
+        .notes
+        .iter()
+        .filter(|note| {
+            if note.starts_with("language detection is ambiguous:") {
+                let language_is_explicit = overrides.language.is_some() || environment.contains_key("RULEOPS_LANGUAGE");
+                !(language_is_explicit && config.language == "java" && !config.source_roots.is_empty())
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unresolved_notes.is_empty() || config.language != "java" || config.build_system == "unknown" || config.source_roots.is_empty() {
+        let detail = if unresolved_notes.is_empty() { "workspace detection is incomplete".into() } else { unresolved_notes.join("; ") };
         if non_interactive || !io::stdin().is_terminal() {
             return Err(ConfigError::ConflictingValues { field: "workspace_detection", detail });
         }

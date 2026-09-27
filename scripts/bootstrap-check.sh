@@ -35,6 +35,26 @@ rg -q '^execution_mode: offline$' "$out_dir/config-env.txt"
 ./rf config show --repo-root "$out_dir/java-repo" --execution-mode standalone > "$out_dir/config-cli.txt"
 rg -q '^execution_mode: standalone$' "$out_dir/config-cli.txt"
 
+# A real repository may contain a supported Java backend and an unsupported
+# frontend. Explicit Java/Maven scope must resolve that language ambiguity;
+# leaving it unspecified must remain fail-closed.
+rm -rf "$out_dir/multilang-repo"
+mkdir -p "$out_dir/multilang-repo/src/main/java/example" "$out_dir/multilang-repo/schemaplexai-ui/src"
+printf '%s\n' '<project><modelVersion>4.0.0</modelVersion><groupId>example</groupId><artifactId>multilang</artifactId><version>1</version></project>' > "$out_dir/multilang-repo/pom.xml"
+printf '%s\n' 'package example; public final class App { private App() {} }' > "$out_dir/multilang-repo/src/main/java/example/App.java"
+printf '%s\n' 'export const frontend = "javascript";' > "$out_dir/multilang-repo/schemaplexai-ui/src/main.ts"
+set +e
+./rf init --repo-root "$out_dir/multilang-repo" --non-interactive > "$out_dir/multilang-init-default.txt" 2>&1
+multilang_default_rc=$?
+set -e
+[ "$multilang_default_rc" -eq 2 ]
+rg -q 'language detection is ambiguous: javascript' "$out_dir/multilang-init-default.txt"
+./rf init --repo-root "$out_dir/multilang-repo" --non-interactive --language java --build-system maven > "$out_dir/multilang-init-explicit.txt"
+rg -q '^CONFIG_WRITTEN ' "$out_dir/multilang-init-explicit.txt"
+rg -q '^language: java$' "$out_dir/multilang-repo/.ruleops/config.yaml"
+rg -q '^build_system: maven$' "$out_dir/multilang-repo/.ruleops/config.yaml"
+rg -q 'src/main/java/\*\*' "$out_dir/multilang-repo/.ruleops/config.yaml"
+
 cp "$out_dir/java-repo/.ruleops/config.yaml" "$out_dir/duplicate-config.yaml"
 printf '%s\n' 'language: java' >> "$out_dir/duplicate-config.yaml"
 set +e
