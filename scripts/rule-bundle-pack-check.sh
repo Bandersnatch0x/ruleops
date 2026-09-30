@@ -12,6 +12,10 @@ out_dir="$(cd "$out_dir" && pwd)"
 
 first="$out_dir/first"
 second="$out_dir/second"
+# 只清理门禁固定临时目录内的自有产物，不删除调用者指定目录的数据。
+if [ "$out_dir" = "$repo_root/.scratch/rule-bundle-pack-check" ]; then
+  rm -rf -- "$first" "$second"
+fi
 intents=(
   "$repo_root/specs/rule-intent/corp.java.no-system-exit.yaml"
   "$repo_root/specs/rule-intent/corp.java.avoid-duplicate-literals.yaml"
