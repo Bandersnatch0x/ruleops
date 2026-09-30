@@ -18,6 +18,12 @@ if ! command -v java >/dev/null 2>&1; then
   echo "error: java not found. Set JAVA_HOME to a JDK >= 21 or provide ~/.local/opt/erf-env.sh" >&2
   exit 2
 fi
+for tool in mvn cargo python3 rg openssl; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "error: $tool not found. Install it or provide ~/.local/opt/erf-env.sh" >&2
+    exit 2
+  fi
+done
 JAVA_MAJOR="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\)\..*/\1/p')"
 if [ -z "$JAVA_MAJOR" ] || [ "$JAVA_MAJOR" -lt 21 ]; then
   echo "error: JDK >= 21 required, got: $(java -version 2>&1 | head -1)" >&2
