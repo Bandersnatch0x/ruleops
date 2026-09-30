@@ -8,8 +8,8 @@ ScanPlan 的 Completeness、PASS/FAIL/INCONCLUSIVE 三态 Gate 与签名执行�
 > （`rf:272-274`），扫描权威恒为 `LOCAL_UNATTESTED` / `SHADOW`。「可执行 / 受保护分支强制」是
 > **待验证假设与后续阶段目标**，不在当前交付边界内，不作对外承诺。
 
-- Spec: `docs/Enterprise_Rule_Factory_Architecture_Spec_Plan_V1.2_Final.md`
-- 白皮书: `docs/Enterprise_Rule_Factory_Whitepaper_V1.1.md`
+- 设计基线（非当前交付清单）: `docs/Enterprise_Rule_Factory_Architecture_Spec_Plan_V1.2_Final.md`
+- 白皮书（设计背景，当前承诺范围见文首说明）: `docs/Enterprise_Rule_Factory_Whitepaper_V1.1.md`
 - 领域统一语言: `CONTEXT.md`(单上下文 + `docs/adr/`)
 
 ## Build & check
@@ -41,7 +41,6 @@ Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 - `runtime/` — Rust Runtime(`rf-cli`、`rf-runner`、`gate`、trust、scan-plan)
 - `runtime/bundle-cache/` — RuleBundle delivery descriptor、digest cache 与 offline availability seam
 - `runtime/bundle-delivery/`、`runtime/rule-bundle/` — 签名 RuleBundle 交付与消费（两簇 seam）
-- `runtime/thin-client/` — FindingView、digest-only request artifacts 与显式 Server submission transport
 - `runtime/status/` — StatusPublication v1、Gate 三态映射与无凭据 adapter seam
 - `runtime/trust-state/` — TrustCheckpoint 的有界持久化、回退保护与可信 handoff 状态边界
 - `runtime/git-scope/` — 显式 base/head、merge-base、路径安全与确定性 ChangedSet seam
@@ -59,11 +58,11 @@ Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 - `control-plane/authoring|factory|coverage` — Java 21 JPMS 模块化创作/工厂/覆盖(ADR-0018)，
   产出签名 RuleBundle 经 delivery 契约交给执行核心；分析引擎经跨进程契约接入(ADR-0027)
 - `control-plane/ontology|server|verification` — 本体、控制面 Server、验证
-- `clients/{vscode,intellij}` — IDE 薄客户端(ADR-0166)，只调用 `rf`，经纯核 + 薄绑定适配
 
 ## CLI
 
 当前 checkout 的 V0.1 薄 CLI 为 `./rf`，命令按用途分区（ADR-0167）。
+Defer 项不列为本页的公开功能推荐；已有工具、内部兼容说明和已登记窗口保持不变。
 
 ### 主线（执行层，新手 10 分钟）
 
@@ -85,28 +84,13 @@ Rust 版本由 `rust-toolchain.toml` 锁定,依赖由 `Cargo.lock` 锁定。
 ./rf coverage analyze OUTPUT_DIR
 ```
 
-### Shadow 窗口内部 / 预发布（暂不进入新手主线）
+### 内部工程与兼容检查（非公开能力承诺）
 
 日常使用不需要进入本区，也不需要填写 Pilot 证据 YAML。规则作者和扫描使用者先看
 `docs/pilot/operator-quickstart.md`；下面命令仅供观察员、质量裁决和治理流程使用。
 
 ```text
-./rf pilot report OUTPUT_DIR
 ./rf pilot delivery-check OUTPUT_DIR
-./rf pilot baseline OBSERVER_OPTIONS...
-./rf pilot observe OBSERVER_OPTIONS...
-./rf pilot feedback OBSERVER_OPTIONS...
-./rf pilot governance OBSERVER_OPTIONS...
-./rf pilot window-report OBSERVER_OPTIONS...
-./rf pilot evidence package INPUT OUTPUT --contract-digest HEX --sample-digest HEX
-./rf pilot evidence adjudicate PACKAGE OUTPUT --contract-digest HEX --sample-digest HEX
-./rf decision evaluate INPUT_DIGEST SIGNAL NOW OUTPUT [OPTIONS]   # experimental，见 ADR-0158/0167 决策 3
-./rf center check OUTPUT_DIR
-./rf explain FINDING.json
-./rf feedback draft FINDING.json --classification CLASS --reason TEXT --actor ACTOR
-./rf exception request FINDING.json --scope GLOB --reason TEXT --actor ACTOR
-./rf feedback submit REQUEST.json --server URL
-./rf exception submit REQUEST.json --server URL
 ./rf submission status --server URL (--request-id DIGEST | --artifact-digest DIGEST)
 ./rf status contract-check OUTPUT_DIR
 ./rf status deployment-check OUTPUT_DIR
@@ -170,22 +154,13 @@ reference、精确 `status:write` scope 与 receipt/error 语义；不连接 pro
 本地 HTTP contract seam；只有 HTTP 400-499 才是确定性拒绝，3xx、5xx、身份缺失、畸形响应
 和连接/超时都保持 `SUBMISSION_UNKNOWN`，不生成成功回执、不自动重试；生产 TLS 由部署边界负责。
 
-可复跑观测演练：
+仅供已登记窗口的观察员与内部演练维护者：见[内部观测运行说明](docs/pilot/observation-implementation.md#运行入口)。
 
-```text
-scripts/pilot-local-simulation.sh .scratch/pilot-local-simulation-<run>
-scripts/pilot-live-observation.sh .scratch/pilot-live-shadow-<run>
-```
-
-前者只在本地 clone 上追加合成提交，后者按登记清单只读获取公共仓库；两者
+本地模拟只在本地 clone 上追加合成提交，登记窗口观测按登记清单只读获取公共仓库；两者
 都输出 digest-only journal 和窗口报告，缺少正式窗口基线或人工审定时报告保持
 `INCONCLUSIVE`。
 
-作者主动时间基线使用三条固定 RuleIntent，空记录与复跑入口为：
-
-```text
-scripts/pilot-author-cost-baseline-check.sh .scratch/author-cost-baseline-<run> [RECORD_FILE]
-```
+仅供参加正式 Pilot 作者成本研究的角色：见[内部作者成本基线说明](docs/pilot/author-cost-baseline.md#复跑)。
 
 缺少真实作者工时的样本保持 `INCONCLUSIVE`，机器编译/验证耗时不替代作者主动时间。
 
@@ -208,12 +183,5 @@ bash scripts/trust-checkpoint-check.sh .scratch/trust-checkpoint-check
 `docs/pilot/release-candidate.md`。当前版本可进入登记的 Shadow 观察窗口，
 但不授予生产强制执行或受保护分支权力。
 
-完整中心闭环验收：
-
-```text
-./rf center check .scratch/ruleops-center-check
-```
-
-它验证 Standards → Factory → Verification → Registry → Policy → Signed Rule
-Bundle → 三个 Shadow 仓库 → Findings/Coverage → Feedback/Exception 的工程
-seam。闭环通过表示工程 MVP 完整，不等于生产强制执行已经启用。
+工程中心闭环只保留作内部验收，不列为当前公开能力承诺；
+不改变既有商定范围，工程验收仍不等于生产强制执行已经启用。

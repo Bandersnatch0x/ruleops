@@ -1,8 +1,9 @@
-# ERF Thin Client — VS Code 扩展
+# ERF Thin Client — VS Code 内部兼容维护说明
 
+本说明仅面向内部兼容维护与受控验收；既有功能和维护职责不变。
 Digest-only Finding 的 IDE 薄客户端。它**只**通过 `rf` 启动器复用 Runner / Thin Client seam，
-展示 digest-only Finding、按相对位置导航、解释、起草反馈、申请例外，并可选提交到已配置的
-RuleOps Server。它**不**复制 Runtime/Factory/Server/Gate 逻辑，不提供本地 Gate PASS、
+不列为当前公开功能承诺。
+它**不**复制 Runtime/Factory/Server/Gate 逻辑，不提供本地 Gate PASS、
 Exception 批准或 SCM 写入入口，默认不上传源码或完整 Finding。
 
 ## 架构：薄绑定 + 纯逻辑核
@@ -26,10 +27,11 @@ Exception 批准或 SCM 写入入口，默认不上传源码或完整 Finding。
 - `erf.telemetryEnabled`（默认 `false`）：隐私优先，默认关闭。
 - `erf.requestTimeoutMs`（默认 `5000`）。
 
-## 离线构建 / 安装（人工最后一步）
+## 维护者：离线构建与人工兼容验收
 
 核逻辑与门禁证据在离线环境即可用 `node --test` 验证（见仓库 `scripts/ide-client-check.sh`）。
 打包为 VSIX 并安装到真实 VS Code 需要离线依赖缓存与 `@vscode/vsce`，属发布负责人执行的最后一步：
+本节仅供维护者按既有商定范围复现，不构成面向普通用户的安装或发布承诺。
 
 ```bash
 # 需预置离线 npm 缓存与 vsce
@@ -38,3 +40,4 @@ code --install-extension erf-thin-client-0.1.0.vsix
 ```
 
 随后在真实 VS Code 上完成 导航→解释→草稿→可选提交 的交互闭环验收。
+上述人工验收职责保持不变；本说明不宣称真实 IDE 验收已完成。

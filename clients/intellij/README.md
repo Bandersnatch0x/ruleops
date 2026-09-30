@@ -1,8 +1,8 @@
-# ERF Thin Client（IntelliJ 平台）
+# ERF Thin Client — IntelliJ 内部兼容维护说明
 
+本说明仅面向内部兼容维护与受控验收；既有功能和维护职责不变，不列为当前公开功能承诺。
 Enterprise Rule Factory 的 IntelliJ IDE 薄客户端。它是纯 UX 适配器：调用 `rf`
-启动器、以 digest-only 姿态展示/导航/解释 Finding、起草 Feedback、发起 Exception
-申请、可选向 Server 提交（仅 `RECEIVED_ONLY`）。它**绝不**持有
+启动器。既有提交回执（仅 `RECEIVED_ONLY`）。它**绝不**持有
 Runtime/Factory/Server/Registry/SCM/Gate 权威。
 
 ## 架构：薄绑定层 + 零依赖纯逻辑核
@@ -46,7 +46,7 @@ java -cp /tmp/erf-intellij-selftest io.ruleops.ide.core.CoreSelfTest
 
 门禁脚本 `scripts/ide-client-check.sh` 会真实驱动 `rf` 并交叉校验本核与 VS Code 端核。
 
-## 完整插件构建与安装（人工离线步骤）
+## 维护者：完整插件离线构建与人工兼容验收
 
 完整 IntelliJ 插件构建需要 IntelliJ 平台 SDK 与 Gradle 插件依赖，须在**离线镜像**下解析：
 
@@ -56,3 +56,4 @@ gradle buildPlugin   # 产出 build/distributions/*.zip
 
 随后在 IntelliJ：Settings → Plugins → ⚙ → Install Plugin from Disk…，选择上述 zip。
 交互式真实 IDE 验收与插件仓库维护属人工最后一步。
+本节仅供维护者按既有商定范围复现，不构成公开安装或发布承诺，也不宣称真实 IDE 验收已完成。

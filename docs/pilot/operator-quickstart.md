@@ -1,6 +1,6 @@
 # ERF 使用路径说明
 
-这份说明面向规则使用者和观察员。它不要求编辑 Pilot 证据 YAML。
+这份说明面向规则使用者和规则作者；已登记窗口观察员按内部清单执行。日常使用不要求编辑 Pilot 证据 YAML。
 
 ## 日常使用：三步
 
@@ -38,15 +38,11 @@
 作者不需要填写作者编号、路径顺序、机器耗时或证据路径。若要参加正式 Pilot 的作者成本
 研究，才另行按照 `docs/pilot/author-cost-baseline.md` 采集配对数据。
 
-## Pilot 观察员：一条运行入口
+## 已登记窗口角色指引
 
-登记窗口内由观察负责人运行：
+已登记窗口的观察负责人按[内部窗口执行清单](live-shadow-window-execution-checklist.md)与[观测运行说明](observation-implementation.md#运行入口)执行。
 
-```text
-scripts/pilot-live-observation.sh .scratch/pilot-live-shadow-<run>
-```
-
-该入口按登记清单只读获取三个固定仓库，自动绑定 commit、规则包摘要并生成 digest-only
+登记窗口观测按登记清单只读获取三个固定仓库，自动绑定 commit、规则包摘要并生成 digest-only
 journal。观察员不上传源码、不写 SCM；质量人工复核和治理裁决属于窗口后处理。
 
 ## 哪些内容属于内部取证
