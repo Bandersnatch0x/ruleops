@@ -39,7 +39,7 @@ cargo run --quiet -p erf-project-config -- init \
   > "$OUT/config-init.txt"
 
 cd "$REPO_ROOT"
-cargo build --quiet -p rf-cli -p erf-static-resolver
+cargo build --quiet -p rf-cli -p erf-static-resolver --message-format=json > "$OUT/cargo-build.jsonl"
 mvn -q -f backend-hosts/java/pom.xml package -DskipTests
 
 compiled="$(scripts/candidate-compile.sh specs/rule-intent/corp.java.no-system-exit.yaml "$CANDIDATES")"
@@ -47,8 +47,9 @@ candidate="$(printf '%s\n' "$compiled" | sed -n 's/^CANDIDATE //p')"
 [ -n "$candidate" ] || { echo "candidate path missing" >&2; exit 1; }
 
 host_jar="$REPO_ROOT/backend-hosts/java/target/erf-java-host-0.1.0-shaded.jar"
-resolver="$REPO_ROOT/target/debug/erf-static-resolver"
-cli="$REPO_ROOT/target/debug/rf-cli"
+# 从本次构建消息读取产物路径，沿用 Cargo 的目标目录与编译目标配置。
+resolver="$(jq -ser 'map(select(.target.name == "erf-static-resolver" and .executable != null)) | last.executable // error("missing erf-static-resolver executable")' "$OUT/cargo-build.jsonl")"
+cli="$(jq -ser 'map(select(.target.name == "rf-cli" and .executable != null)) | last.executable // error("missing rf-cli executable")' "$OUT/cargo-build.jsonl")"
 
 for run in 1 2; do
   "$cli" scan \
