@@ -10,6 +10,8 @@ usage:
   rf doctor --repo-root PATH [--format text|json] [--scan-probe COMMAND]
   rf config validate --repo-root PATH [--config FILE]
   rf config show --repo-root PATH [--config FILE] [--format text|json] [OPTIONS]
+  rf registry list rules|standards --server URL [--cursor-json JSON_STRING] [--limit N] [--timeout-ms N]
+  rf registry show rules|standards ID --version VERSION --expected-digest SHA256 --server URL [--timeout-ms N]
   rf standard validate FILE...
   rf rule validate FILE...
   rf rule generate INTENT.yaml OUTPUT_DIR
@@ -101,6 +103,9 @@ case "$area" in
         die_usage "supported config commands are validate and show"
         ;;
     esac
+    ;;
+  registry)
+    exec cargo run --quiet -p erf-thin-client -- registry "$@"
     ;;
   standard)
     [ "${1:-}" = "validate" ] || die_usage "supported standard command is validate"

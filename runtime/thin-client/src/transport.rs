@@ -1,5 +1,5 @@
 use super::{
-    ClientError, ExceptionRequest, FeedbackDraft, CLIENT_API_VERSION, EXCEPTION_REQUEST_VERSION,
+    is_sha256_digest, ClientError, ExceptionRequest, FeedbackDraft, CLIENT_API_VERSION, EXCEPTION_REQUEST_VERSION,
     FEEDBACK_DRAFT_VERSION,
 };
 use serde::Serialize;
@@ -161,6 +161,23 @@ pub fn query_submission_status(
         selectors.join("&")
     );
     let correlation_id = request_id.or(artifact_digest).unwrap_or("status-query");
+    let response = get_response(&endpoint, &path, correlation_id, timeout)?;
+    parse_submission_status_response(&response, request_id, artifact_digest)
+}
+
+pub(crate) fn registry_response(endpoint: &str, suffix: &str, timeout: Duration) -> Result<(u16, Value), ClientError> {
+    let endpoint = Endpoint::parse(endpoint)?;
+    if !endpoint.host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+        || endpoint.path.trim_end_matches('/') != "/v1"
+        || timeout.is_zero() || timeout > Duration::from_secs(600)
+    {
+        return Err(ClientError::InvalidEndpoint("registry requires a literal loopback /v1 endpoint and bounded timeout".into()));
+    }
+    let path = format!("/v1/registry/{suffix}");
+    parse_json_response(&get_response(&endpoint, &path, "registry-read", timeout)?)
+}
+
+fn get_response(endpoint: &Endpoint, path: &str, correlation_id: &str, timeout: Duration) -> Result<Vec<u8>, ClientError> {
     let request = format!(
         "GET {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json\r\nConnection: close\r\nX-Request-Id: {correlation_id}\r\n\r\n",
         path = path,
@@ -174,8 +191,7 @@ pub fn query_submission_status(
     stream
         .shutdown(Shutdown::Write)
         .map_err(|error| ClientError::SubmissionUnknown(format!("status request close failed: {error}")))?;
-    let response = read_response(&mut stream, timeout)?;
-    parse_submission_status_response(&response, request_id, artifact_digest)
+    read_response(&mut stream, timeout)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -338,12 +354,7 @@ fn read_response(stream: &mut TcpStream, timeout: Duration) -> Result<Vec<u8>, C
     Ok(bytes)
 }
 
-fn parse_submission_response(
-    bytes: &[u8],
-    request_id: &str,
-    artifact_digest: &str,
-    resource_path: &str,
-) -> Result<SubmissionReceipt, ClientError> {
+fn parse_json_response(bytes: &[u8]) -> Result<(u16, Value), ClientError> {
     let separator = bytes
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
@@ -362,6 +373,16 @@ fn parse_submission_response(
     }
     let value: Value = serde_json::from_slice(body)
         .map_err(|error| ClientError::SubmissionUnknown(format!("server response JSON is invalid: {error}")))?;
+    Ok((status, value))
+}
+
+fn parse_submission_response(
+    bytes: &[u8],
+    request_id: &str,
+    artifact_digest: &str,
+    resource_path: &str,
+) -> Result<SubmissionReceipt, ClientError> {
+    let (status, value) = parse_json_response(bytes)?;
     let object = value
         .as_object()
         .ok_or_else(|| ClientError::SubmissionUnknown("server response must be a JSON object".into()))?;
@@ -434,24 +455,7 @@ fn parse_submission_status_response(
     requested_request_id: Option<&str>,
     requested_artifact_digest: Option<&str>,
 ) -> Result<SubmissionStatus, ClientError> {
-    let separator = bytes
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .ok_or_else(|| ClientError::SubmissionUnknown("server response has no HTTP header boundary".into()))?;
-    let header = std::str::from_utf8(&bytes[..separator])
-        .map_err(|_| ClientError::SubmissionUnknown("server response headers are not UTF-8".into()))?;
-    let body = &bytes[separator + 4..];
-    let status = header
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|value| value.parse::<u16>().ok())
-        .ok_or_else(|| ClientError::SubmissionUnknown("server response status is invalid".into()))?;
-    if header.lines().any(|line| line.to_ascii_lowercase().starts_with("transfer-encoding:")) {
-        return Err(ClientError::SubmissionUnknown("chunked server responses are not supported".into()));
-    }
-    let value: Value = serde_json::from_slice(body)
-        .map_err(|error| ClientError::SubmissionUnknown(format!("server response JSON is invalid: {error}")))?;
+    let (status, value) = parse_json_response(bytes)?;
     let object = value
         .as_object()
         .ok_or_else(|| ClientError::SubmissionUnknown("status response must be a JSON object".into()))?;
@@ -688,14 +692,7 @@ fn optional_response_digest(
     Ok(Some(value.to_owned()))
 }
 
-fn is_sha256_digest(value: &str) -> bool {
-    let Some(hex) = value.strip_prefix("sha256:") else {
-        return false;
-    };
-    hex.len() == 64 && hex.chars().all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-}
-
-fn encode_query_component(value: &str) -> String {
+pub(crate) fn encode_query_component(value: &str) -> String {
     value
         .bytes()
         .flat_map(|byte| match byte {

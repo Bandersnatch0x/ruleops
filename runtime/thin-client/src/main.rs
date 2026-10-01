@@ -34,6 +34,7 @@ fn run() -> Result<(), String> {
         return Err("missing client command".into());
     };
     let result = match command.as_str() {
+        "registry" => registry_command(&mut args),
         "explain" => explain_command(&mut args),
         "feedback-draft" => draft_feedback(&mut args),
         "exception-request" => draft_exception(&mut args),
@@ -301,4 +302,46 @@ fn fail(message: &str, code: i32) -> ! {
     eprintln!("error: {message}");
     usage();
     std::process::exit(code);
+}
+
+fn registry_command(args: &mut impl Iterator<Item = String>) -> Result<(), String> {
+    let result = registry_request(args);
+    match result {
+        Ok(receipt) => write_output(None, &receipt),
+        Err(code) => {
+            // Static codes only: never echo endpoint/arguments or untrusted server content.
+            println!("{}", serde_json::json!({"status": "UNKNOWN", "authority": "UNKNOWN", "code": code}));
+            std::process::exit(3);
+        }
+    }
+}
+
+fn registry_request(args: &mut impl Iterator<Item = String>) -> Result<serde_json::Value, &'static str> {
+    let action = args.next().ok_or("REGISTRY_QUERY_INVALID")?;
+    let resource_type = args.next().ok_or("REGISTRY_QUERY_INVALID")?;
+    if !matches!(action.as_str(), "list" | "show") { return Err("REGISTRY_QUERY_INVALID"); }
+    let id = if action == "show" { Some(args.next().ok_or("REGISTRY_PIN_REQUIRED")?) } else { None };
+    let mut options = std::collections::BTreeMap::new();
+    while let Some(key) = args.next() {
+        let allowed = match action.as_str() {
+            "list" => matches!(key.as_str(), "--server" | "--timeout-ms" | "--cursor-json" | "--limit"),
+            _ => matches!(key.as_str(), "--server" | "--timeout-ms" | "--version" | "--expected-digest"),
+        };
+        if !allowed || options.insert(key, args.next().ok_or("REGISTRY_QUERY_INVALID")?).is_some() {
+            return Err("REGISTRY_QUERY_INVALID");
+        }
+    }
+    let option = |key: &str| options.get(key).map(String::as_str);
+    let server = option("--server").ok_or("REGISTRY_ENDPOINT_REQUIRED")?;
+    let timeout: u64 = option("--timeout-ms").unwrap_or("10000").parse().map_err(|_| "REGISTRY_QUERY_INVALID")?;
+    if !(1..=600_000).contains(&timeout) { return Err("REGISTRY_QUERY_INVALID"); }
+    let timeout = Duration::from_millis(timeout);
+    let cursor: String = serde_json::from_str(option("--cursor-json").unwrap_or("\"\"")).map_err(|_| "REGISTRY_QUERY_INVALID")?;
+    match id {
+        Some(id) => erf_thin_client::registry::show(server, &resource_type, &id,
+            option("--version").ok_or("REGISTRY_PIN_REQUIRED")?,
+            option("--expected-digest").ok_or("REGISTRY_PIN_REQUIRED")?, timeout),
+        None => erf_thin_client::registry::list(server, &resource_type, &cursor,
+            option("--limit").unwrap_or("256").parse().map_err(|_| "REGISTRY_QUERY_INVALID")?, timeout),
+    }
 }

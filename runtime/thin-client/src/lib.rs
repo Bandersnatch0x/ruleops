@@ -13,6 +13,7 @@ use thiserror::Error;
 
 mod explain;
 mod transport;
+pub mod registry;
 
 pub use explain::{
     explain_finding, AuthorityContext, AuthorityLabel, AuthorityTrust, ExplainOutcome, FindingAssessmentView,
