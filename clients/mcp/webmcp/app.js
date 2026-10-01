@@ -2,7 +2,35 @@
 const $ = (id) => document.getElementById(id);
 const context = document.modelContext;
 const registered = new Map();
-let tools = [];
+// Keep these offline definitions identical to the server whitelist (checked by app.test.js).
+const text = (description) => ({ type: 'string', minLength: 1, description });
+const root = { repo_root: text('Repository path, relative to the server working directory; default .') };
+const builtinTools = [
+  {
+    name: 'doctor', description: 'Read rf environment/configuration diagnostics; never a Gate decision.',
+    inputSchema: { type: 'object', properties: root, additionalProperties: false },
+  },
+  {
+    name: 'config_show', description: 'Read effective rf project configuration and identity digests.',
+    inputSchema: { type: 'object', properties: root, additionalProperties: false },
+  },
+  {
+    name: 'scan', description: 'Run rf scan and return its digest-only projection without changing its decision.',
+    inputSchema: {
+      type: 'object', additionalProperties: false,
+      properties: { ...root, rule_id: text('Rule identifier'), candidate: text('Existing Candidate directory') },
+      oneOf: [{ required: ['rule_id'] }, { required: ['candidate'] }],
+    },
+  },
+  {
+    name: 'explain', description: 'Explain an existing digest-only FindingView; no authority is added.',
+    inputSchema: {
+      type: 'object', additionalProperties: false, required: ['finding'],
+      properties: { ...root, finding: text('FindingView JSON file'), rule_meta: text('Existing rule metadata JSON file') },
+    },
+  },
+].map((tool) => ({ ...tool, annotations: { readOnlyHint: true } }));
+let tools = builtinTools;
 function status(message, error = false) {
   $('status').textContent = message;
   $('status').className = error ? 'error' : '';
@@ -89,21 +117,34 @@ $('form').addEventListener('submit', async (event) => {
   finally { $('run').disabled = false; }
 });
 $('tool').addEventListener('change', fields);
-async function init() {
-  const supported = typeof context?.registerTool === 'function';
-  $('webmcp').textContent = supported ? 'WebMCP: 正在注册…' : 'WebMCP: 未启用（此浏览器不支持，仍可手动查看）';
-  const response = await fetch('/api/tools');
-  if (!response.ok) throw new Error(`工具加载失败：HTTP ${response.status}`);
-  ({ tools } = await response.json());
+function refreshTools() {
+  const selected = $('tool').value;
+  $('tool').replaceChildren();
   for (const tool of tools) {
     const option = document.createElement('option'); option.value = tool.name; option.textContent = tool.name;
     $('tool').append(option);
   }
+  if (tools.some((tool) => tool.name === selected)) $('tool').value = selected;
+  fields();
+}
+async function refreshManualTools() {
+  try {
+    const response = await fetch('/api/tools', { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error(`工具加载失败：HTTP ${response.status}`);
+    ({ tools } = await response.json());
+    refreshTools();
+  } catch (error) {
+    status(`手动工具列表刷新失败；保留内置工具。${error.message}`, true);
+  }
+}
+function init() {
+  const supported = typeof context?.registerTool === 'function';
+  $('webmcp').textContent = 'WebMCP: 未启用（此浏览器不支持，仍可手动查看）';
   if (supported) {
     try {
-      for (const tool of tools) {
-        const definition = { ...tool, annotations: { readOnlyHint: true }, execute: (args) => execute(tool.name, args) };
-        await context.registerTool(definition); registered.set(tool.name, definition);
+      for (const tool of builtinTools) {
+        const definition = { ...tool, execute: (args) => execute(tool.name, args) };
+        context.registerTool(definition); registered.set(tool.name, definition);
       }
       $('webmcp').textContent = 'WebMCP: 已启用（Chrome 146+）';
     } catch (error) {
@@ -111,6 +152,7 @@ async function init() {
       $('webmcp').textContent = `WebMCP: 注册未全部完成（${registered.size}/4）；仍可手动查看。${error.message}`;
     }
   }
-  fields(); $('tool').disabled = false; $('run').disabled = false; status('就绪；仅展示 CLI 原始判定。');
+  refreshTools(); $('tool').disabled = false; $('run').disabled = false; status('就绪；仅展示 CLI 原始判定。');
+  void refreshManualTools();
 }
-init().catch((error) => status(error.message, true));
+init();
