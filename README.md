@@ -141,6 +141,10 @@ bash scripts/server-persistence-check.sh .scratch/server-persistence-check
 bash scripts/thin-client-check.sh .scratch/thin-client-check
 ```
 
+上列及下列独立调用示例保留原输出路径；实际取证须改传唯一输出路径。
+`bash scripts/check.sh` 的最新阶段输出统一在 `.scratch/gate/`，与人工证据区分开；
+历史输出不搬、不删，详见 `docs/agents/dev-workflow.md`。
+
 这些证据只证明当前 checkout 的工程行为，不把本地测试升级为 Trusted、生产或正式 Pilot
 结论。
 

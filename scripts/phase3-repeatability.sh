@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-EVIDENCE_DIR="$REPO_ROOT/.scratch/phase3-repeat-$STAMP"
+EVIDENCE_DIR="${1:-$REPO_ROOT/.scratch/phase3-repeat-$STAMP}"
 REPEAT_REPO="$EVIDENCE_DIR/repo"
 DIGESTS_FILE="$EVIDENCE_DIR/digests.tsv"
 EVIDENCE_FILE="$EVIDENCE_DIR/phase3-repeatability.md"

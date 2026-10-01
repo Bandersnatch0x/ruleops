@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-EVIDENCE_DIR="$REPO_ROOT/.scratch/phase3-timeout-$STAMP"
+EVIDENCE_DIR="${1:-$REPO_ROOT/.scratch/phase3-timeout-$STAMP}"
 REPEAT_REPO="$EVIDENCE_DIR/repo"
 CLI="$REPO_ROOT/target/debug/rf-cli"
 RESOLVER="$REPO_ROOT/target/debug/erf-fake-resolver"

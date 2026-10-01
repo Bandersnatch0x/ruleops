@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 out_dir="${1:-$repo_root/.scratch/rule-bundle-pack-check}"
 case "$out_dir" in
   /*) ;;
   *) out_dir="$repo_root/$out_dir" ;;
 esac
 mkdir -p "$out_dir"
-out_dir="$(cd "$out_dir" && pwd)"
+out_dir="$(cd "$out_dir" && pwd -P)"
 
 first="$out_dir/first"
 second="$out_dir/second"
 # 只清理门禁固定临时目录内的自有产物，不删除调用者指定目录的数据。
-if [ "$out_dir" = "$repo_root/.scratch/rule-bundle-pack-check" ]; then
+if [ "$out_dir" = "$repo_root/.scratch/rule-bundle-pack-check" ] ||
+   [ "$out_dir" = "$repo_root/.scratch/gate/rule-bundle-pack-check" ]; then
   rm -rf -- "$first" "$second"
 fi
 intents=(

@@ -23,7 +23,7 @@
 
 ## 1. 窗口前跑道（2026-09-24 → 09-30）
 
-- [ ] 交付门禁全绿并留证：`bash scripts/check.sh`（证据入 `.scratch/`）。
+- [ ] 交付门禁全绿并留证：`bash scripts/check.sh`（最新阶段输出和完整日志入 `.scratch/gate/`；人工取证另存唯一目录）。
 - [ ] Shadow 预检全绿：`./rf pilot delivery-check .scratch/pilot-delivery-check`。
 - [ ] 三个登记仓库冻结、不换，锚定 pinned commit（`specs/pilot/live-java-repositories.yaml`）；
       再跑一次只读演练确认 checkout 无漂移：`scripts/pilot-live-observation.sh .scratch/pilot-live-shadow-preflight`。

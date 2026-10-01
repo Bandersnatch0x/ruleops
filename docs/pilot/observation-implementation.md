@@ -17,6 +17,9 @@
 
 ## 已复跑证据
 
+下表保留历史复跑路径，不随总门禁迁移。总门禁最新预检输出另见
+`.scratch/gate/pilot-delivery-check/pilot-release-candidate.md`；独立命令取证须显式传唯一输出路径。
+
 | 运行 | 结果 | 证据 |
 | --- | --- | --- |
 | 本地三仓库模拟，3 个阶段/仓库，9 次观测 | `PASS`（脚本）；报告 `INCONCLUSIVE`（质量/内存基线缺测） | `.scratch/pilot-local-simulation-20260918-4/local-simulation.md` |

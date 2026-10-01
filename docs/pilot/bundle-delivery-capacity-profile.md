@@ -23,8 +23,8 @@
 ## 最近一次本地结果
 
 `RuleOpsHttpServerTest.deliveryCapacityProfileCapturesLatencyPercentilesWithBoundedReadPool`
-在 128 次本地 loopback 请求上输出 p50/p95/p99；每次验收脚本重新采集并写入
-`.scratch/bundle-delivery-e2e-check/bundle-delivery-e2e.md`，不把机器相关的毫秒数伪装成
+在 128 次本地 loopback 请求上输出 p50/p95/p99；总门禁每次重新采集并写入
+`.scratch/gate/bundle-delivery-e2e-check/bundle-delivery-e2e.md`，不把机器相关的毫秒数伪装成
 稳定基线。
 
 ## 资源与隐私边界
