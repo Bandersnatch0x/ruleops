@@ -32,12 +32,10 @@ final class PmdBackendAdapter implements BackendAdapter {
 
     private final Path repoRoot;
     private final RuleSet ruleset;
-    private final String rulesetName;
 
-    private PmdBackendAdapter(Path repoRoot, RuleSet ruleset, String rulesetName) {
+    private PmdBackendAdapter(Path repoRoot, RuleSet ruleset) {
         this.repoRoot = repoRoot;
         this.ruleset = ruleset;
-        this.rulesetName = rulesetName;
     }
 
     /** Loads the adapter from the trusted locations the runtime configured. */
@@ -46,12 +44,12 @@ final class PmdBackendAdapter implements BackendAdapter {
         Path normalizedRuleset = trustedRulesetFile(rulesetFile);
         RuleSet ruleset = new RuleSetLoader().loadFromString(
                 normalizedRuleset.getFileName().toString(), Files.readString(normalizedRuleset));
-        return new PmdBackendAdapter(normalizedRoot, ruleset, normalizedRuleset.getFileName().toString());
+        return new PmdBackendAdapter(normalizedRoot, ruleset);
     }
 
     /** Describe-only adapter for sessions launched before a ruleset exists. */
     static PmdBackendAdapter empty() {
-        return new PmdBackendAdapter(null, null, null);
+        return new PmdBackendAdapter(null, null);
     }
 
     @Override
