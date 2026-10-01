@@ -1,0 +1,5 @@
+#!/bin/sh
+# Opt-in only: installation instructions are in docs/agent-commit-hook.md.
+set -eu
+root=$(git rev-parse --show-toplevel)
+exec python3 "$root/scripts/agent-commit-check.py"
