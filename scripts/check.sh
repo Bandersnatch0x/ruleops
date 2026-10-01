@@ -18,7 +18,7 @@ if ! command -v java >/dev/null 2>&1; then
   echo "error: java not found. Set JAVA_HOME to a JDK >= 21 or provide ~/.local/opt/erf-env.sh" >&2
   exit 2
 fi
-for tool in mvn cargo python3 rg openssl; do
+for tool in mvn cargo python3 rg openssl jq; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "error: $tool not found. Install it or provide ~/.local/opt/erf-env.sh" >&2
     exit 2
