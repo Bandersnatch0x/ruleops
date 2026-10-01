@@ -78,7 +78,8 @@ def run_case(case, out_dir):
     evidence = str(case_dir) if ev in (None, "—", "") or str(ev).startswith("(") else str(case_dir / ev)
     return {
         "id": case["id"], "title": case["title"], "lifecycle": case["lifecycle"],
-        "form": case["form"], "kind": case["kind"], "status": status, "rc": rc,
+        "form": case["form"], "domain": case.get("domain", "core"), "kind": case["kind"],
+        "status": status, "rc": rc,
         "expectedRc": case.get("expectRc"), "durationMs": int((time.monotonic() - started) * 1000),
         "evidence": evidence, "log": str(log), "note": case.get("expectNote"),
     }
@@ -93,6 +94,8 @@ def select(cases, args):
         out = [c for c in out if args.lifecycle.lower() in c["lifecycle"].lower()]
     if args.form:
         out = [c for c in out if args.form.lower() in c["form"].lower()]
+    if args.domain:
+        out = [c for c in out if args.domain.lower() == c.get("domain", "core").lower()]
     if args.kind:
         out = [c for c in out if c["kind"] == args.kind]
     return out
@@ -125,6 +128,8 @@ def write_report(results, out_dir):
             for key in ("note", "reason", "runbook"):
                 if r.get(key):
                     lines.append(f"- `{r['id']}` ({r['status']}) {key}: {r[key]}")
+            if r.get("double"):
+                lines.append(f"- `{r['id']}` 离线替身: {', '.join(r['double'])}")
     (out_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -132,10 +137,12 @@ def write_catalog(path):
     cases = load_cases()
     lines = ["# ERF E2E 用例目录（自动生成，源：scripts/e2e/e2e-cases.json）", "",
              "状态列由 `scripts/e2e/run-e2e.sh` 生成；本目录仅描述用例。", "",
-             "| 用例 ID | 标题 | 生命周期 | 形态 | 类型 | 期望 rc | 入口 | 证据 |", "|---|---|---|---|---|---:|---|---|"]
+             "| 用例 ID | 标题 | 生命周期 | 形态 | 域 | 类型 | 期望 rc | 入口 | 证据 | 离线替身 |",
+             "|---|---|---|---|---|---|---:|---|---|---|"]
     for c in cases:
-        lines.append(f"| {c['id']} | {c['title']} | {c['lifecycle']} | {c['form']} | {c['kind']} | "
-                     f"{c['expectRc'] if c.get('expectRc') is not None else '—'} | `{c.get('entry','')}` | {c.get('evidence','—')} |")
+        lines.append(f"| {c['id']} | {c['title']} | {c['lifecycle']} | {c['form']} | {c.get('domain', 'core')} | {c['kind']} | "
+                     f"{c['expectRc'] if c.get('expectRc') is not None else '—'} | `{c.get('entry','')}` | {c.get('evidence','—')} | "
+                     f"{', '.join(c.get('double', [])) if c.get('double') else '—'} |")
     pathlib.Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {path} ({len(cases)} cases)")
 
@@ -147,6 +154,7 @@ def main():
     group.add_argument("--case", action="append")
     group.add_argument("--lifecycle")
     group.add_argument("--form")
+    group.add_argument("--domain")
     group.add_argument("--kind")
     group.add_argument("--list", action="store_true")
     group.add_argument("--catalog")
@@ -169,17 +177,19 @@ def main():
     for case in select(load_cases(), args):
         if case["kind"] != "run":
             results.append({"id": case["id"], "title": case["title"], "lifecycle": case["lifecycle"],
-                            "form": case["form"], "kind": "manual", "status": "MANUAL", "rc": None,
-                            "expectedRc": None, "durationMs": 0, "evidence": None, "log": None,
-                            "runbook": case.get("runbook")})
+                            "form": case["form"], "domain": case.get("domain", "core"), "kind": "manual",
+                            "status": "MANUAL", "rc": None, "expectedRc": None, "durationMs": 0,
+                            "evidence": None, "log": None, "runbook": case.get("runbook"),
+                            "double": case.get("double", [])})
             print(f"MANUAL {case['id']} {case['title']}")
             continue
         miss = missing_requires(case, out_dir)
         if miss:
             results.append({"id": case["id"], "title": case["title"], "lifecycle": case["lifecycle"],
-                            "form": case["form"], "kind": "run", "status": "SKIP", "rc": None,
-                            "expectedRc": case.get("expectRc"), "durationMs": 0, "evidence": None,
-                            "log": None, "reason": f"missing requires: {miss}"})
+                            "form": case["form"], "domain": case.get("domain", "core"), "kind": "run",
+                            "status": "SKIP", "rc": None, "expectedRc": case.get("expectRc"),
+                            "durationMs": 0, "evidence": None, "log": None,
+                            "reason": f"missing requires: {miss}"})
             print(f"SKIP   {case['id']} missing {miss}")
             continue
         result = run_case(case, out_dir)

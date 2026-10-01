@@ -125,6 +125,25 @@ MCP 工具（`rf_doctor`/`rf_config_show`/`rf_scan`/`rf_explain`）、WebMCP HTT
 此外：`PASS` 不代表 Gate/SCM 权威；`doctor` 的 `CONFIG_MISSING`、MCP 的 `isError`、
 HTTP 状态码都不等于 Gate 结论。
 
+### 人工项与其离线替身
+
+MANUAL 用例自带 `double` 字段指向可离线复跑的替身；替身**只覆盖对应契约/纯核**，
+不产生真实 IDE/窗口/网络/TRUSTED 权威。
+
+| MANUAL 用例 | 离线替身 | 替身覆盖 / 仍缺 |
+| --- | --- | --- |
+| `E2E-MAN-001` 真实 IDE UI | `E2E-L8-003`、`E2E-L8-004`、`E2E-L8-005` | 双端纯核 + 跨端一致性；仍缺真实 IDE 内交互（导航→解释→草稿→提交） |
+| `E2E-MAN-002` 真实访问窗口 | `E2E-L9-013`、`E2E-L9-007` | 本地合成观察（`pilot-local-simulation.sh`，SYNTHETIC_SHADOW）+ phase4 shadow 聚合；仍缺注册窗口与人工 |
+| `E2E-MAN-003` 真实 GitHub 发布 | `E2E-L7-003` | 适配器全边界（离线 fake provider）；仍缺真实网络与凭证 |
+| `E2E-MAN-004` 生产可信 Gate | **无** | TRUSTED 需控制面签发密钥与授权，离线无法伪造；`E2E-L6-001/002/005` 只覆盖判定路径，不产生 TRUSTED 权威 |
+
+### 用例域（domain）
+
+`catalog.md` 与报告含 `domain` 列，缺省 `core`。参考 PMD 补充扫描为独立用例域
+**`reference-pmd`**（`E2E-L9-011`、`E2E-L9-012`）：`E2E-L9-011` 保持 `expectRc=1`
+语义——**rc=1 表示扫出违规，不是绿**，且**不并入核心门禁、不提升为强制**。
+按域运行：`bash scripts/e2e/run-e2e.sh --domain reference-pmd`。
+
 ## 与既有门禁的关系
 
 `scripts/check.sh` 是交付门禁（51 阶段组，全绿才可交付）；本套件的多数 `PASS` 用例是其阶段入口的

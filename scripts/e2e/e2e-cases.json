@@ -755,6 +755,7 @@
       "title": "参考 PMD 补充门禁（对当前 tracked Java 的真实扫描）",
       "lifecycle": "L9-observe",
       "form": "ReferencePMD",
+      "domain": "reference-pmd",
       "kind": "run",
       "timeout": 300,
       "requires": ["{PMD_HOME}", "{RULESET}"],
@@ -769,6 +770,7 @@
       "title": "参考 PMD 门禁工具正负边界",
       "lifecycle": "L9-observe",
       "form": "ReferencePMD",
+      "domain": "reference-pmd",
       "kind": "run",
       "timeout": 300,
       "requires": ["{PMD_HOME}"],
@@ -776,6 +778,19 @@
       "expectRc": 0,
       "evidence": "plugin-tests/",
       "entry": "scripts/plugin-ruleset-check-test.py"
+    },
+    {
+      "id": "E2E-L9-013",
+      "title": "Pilot 本地离线合成观察（观测 seam 的离线替身）",
+      "lifecycle": "L9-observe",
+      "form": "Pilot",
+      "kind": "run",
+      "timeout": 600,
+      "cmd": ["bash", "scripts/pilot-local-simulation.sh", "{OUT}/pilot-local-simulation"],
+      "expectRc": 0,
+      "evidence": "pilot-local-simulation/local-simulation.md",
+      "expectNote": "无远端、无窗口的 SYNTHETIC_SHADOW 替身；真实注册窗口观察仍为 E2E-MAN-002。",
+      "entry": "scripts/pilot-local-simulation.sh"
     },
     {
       "id": "E2E-MAN-001",
@@ -788,7 +803,8 @@
       "expectRc": null,
       "evidence": "—",
       "entry": "docs/e2e/catalog.md#manual",
-      "runbook": "按 clients/vscode/README.md、clients/intellij/README.md 的『人工最后一步』在真实 IDE 内完成交互闭环；需 IDE SDK 与人工。"
+      "double": ["E2E-L8-003", "E2E-L8-004", "E2E-L8-005"],
+      "runbook": "按 clients/vscode/README.md、clients/intellij/README.md 的『人工最后一步』在真实 IDE 内完成交互闭环；需 IDE SDK 与人工。离线替身仅覆盖双端纯逻辑核与跨端一致性。"
     },
     {
       "id": "E2E-MAN-002",
@@ -801,7 +817,8 @@
       "expectRc": null,
       "evidence": "—",
       "entry": "scripts/pilot-live-observation.sh",
-      "runbook": "在注册窗口内运行 scripts/pilot-live-observation.sh OUT_DIR（--mode live-shadow）；需人工与真实窗口。"
+      "double": ["E2E-L9-013", "E2E-L9-007"],
+      "runbook": "在注册窗口内运行 scripts/pilot-live-observation.sh OUT_DIR（--mode live-shadow）；需人工与真实窗口。离线替身：E2E-L9-013（本地合成观察）、E2E-L9-007（phase4 shadow 聚合）。"
     },
     {
       "id": "E2E-MAN-003",
@@ -814,7 +831,8 @@
       "expectRc": null,
       "evidence": "—",
       "entry": "scripts/scm-status-adapter-github.sh",
-      "runbook": "设置受控 ERF_STATUS_TOKEN 与真实 endpoint，运行适配器；需受信网络与凭证，代理环境不在此自动执行。"
+      "double": ["E2E-L7-003"],
+      "runbook": "设置受控 ERF_STATUS_TOKEN 与真实 endpoint，运行适配器；需受信网络与凭证，代理环境不在此自动执行。离线替身：E2E-L7-003（离线 fake provider）。"
     },
     {
       "id": "E2E-MAN-004",
@@ -827,7 +845,8 @@
       "expectRc": null,
       "evidence": "—",
       "entry": "docs/runbooks/",
-      "runbook": "需受信签发者与完整证据链；当前 checkout 为 SHADOW 权限，属治理裁决范畴，不由代理验证。"
+      "double": [],
+      "runbook": "需受信签发者与完整证据链；当前 checkout 为 SHADOW 权限，属治理裁决范畴，不由代理验证。**确无离线替身**：TRUSTED 需控制面签发密钥与授权，离线无法伪造；可用 E2E-L6-001/002/005 覆盖其判定路径，但不产生 TRUSTED 权威。"
     }
   ]
 }
