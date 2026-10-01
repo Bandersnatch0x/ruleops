@@ -999,4 +999,63 @@ mod tests {
         assert_eq!(scope.exclude, vec![".ruleops/**"]);
         fs::remove_dir_all(directory).unwrap();
     }
+
+    #[test]
+    fn approved_window_includes_both_endpoints_and_excludes_adjacent_seconds_and_other_modes() {
+        let directory = std::env::temp_dir().join(format!(
+            "erf-pilot-window-{}-{}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let inputs = ResultInputs {
+            repository: "org/window-fixture".into(), commit: "abc123".into(),
+            policy_digest: "f".repeat(64), rule_bundle_digest: "a".repeat(64),
+            execution_lock_digest: "b".repeat(64), runner_release_digest: "c".repeat(64),
+            workspace_descriptor_digest: "d".repeat(64),
+        };
+        let preview = GatePreview {
+            decision: GateDecision::Pass, findings: vec![],
+            completeness: Completeness { planned: 1, accounted: 1, failed: 0, missing: 0, observation_errors: 0, complete: true },
+            canonical_set_version: rf_gate::CANONICAL_SET_VERSION,
+            trust: "LOCAL_UNATTESTED", input_summary: "window fixture".into(),
+            assessments: vec![], semantic_result_digest: [7; 32],
+        };
+        let mut audit = AuditTrail::new();
+        for (kind, digest) in [
+            (AuditEventKind::ScanPlanned, [1; 32]),
+            (AuditEventKind::ExecutionCompleted, [2; 32]),
+            (AuditEventKind::FindingSetComputed, [7; 32]),
+            (AuditEventKind::GateEvaluated, [7; 32]),
+        ] { audit.append(kind, digest); }
+        let result = UnifiedResult::from_preview(inputs, &preview, audit).unwrap();
+        let mut ledger = PilotMetricsLedger::new();
+        for (index, (id, time, mode)) in [
+            ("before-window", 1_790_899_199, ObservationMode::LiveShadow),
+            ("at-window-start", 1_790_899_200, ObservationMode::LiveShadow),
+            ("at-window-end", 1_791_503_999, ObservationMode::LiveShadow),
+            ("after-window", 1_791_504_000, ObservationMode::LiveShadow),
+            ("local-at-start", 1_790_899_200, ObservationMode::LocalSimulation),
+            ("synthetic-at-end", 1_791_503_999, ObservationMode::SyntheticShadow),
+        ].into_iter().enumerate() {
+            ledger.record_result_with_mode(id, mode, &result, 1, 1, time,
+                "test", "boundary fixture", index as u64 + 1).unwrap();
+        }
+        ledger.record_feedback("test-feedback", FeedbackClass::ConfirmedFalsePositive,
+            RegressionOutcome::Clean, 1_791_503_999, "test", "synthetic quality fixture", 7).unwrap();
+        let journal = directory.join("metrics.journal");
+        let output = directory.join("report.md");
+        fs::write(&journal, ledger.export_journal().unwrap()).unwrap();
+        write_report(ReportOptions {
+            journal, output: output.clone(), mode: Some(Mode::LiveShadow), registered_sample: None,
+            window_start: 1_790_899_200, window_end: 1_791_503_999,
+            expected_repositories: 1, latency_baseline_millis: Some(1), memory_baseline_bytes: Some(1),
+        }).unwrap();
+        let report = fs::read_to_string(output).unwrap();
+        assert!(report.contains("- Runs: `2`\n"));
+        for included in ["at-window-start", "at-window-end"] { assert!(report.contains(included)); }
+        for excluded in ["before-window", "after-window", "local-at-start", "synthetic-at-end"] {
+            assert!(!report.contains(excluded));
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
 }

@@ -108,14 +108,14 @@ cat > "$out_dir/pilot-release-candidate.md" <<EOF
 ## Handoff boundary
 
 This is a complete engineering MVP for a Shadow-only pilot. It is ready to
-enter the registered 2026-10-01 through 2026-10-31 UTC observation window after
-the final engineering gate passes. It is not a production-enforcement release
+enter the registered 2026-10-02T00:00:00Z through 2026-10-08T23:59:59Z UTC
+inclusive observation window only if governance approval, implementation
+acceptance, and personnel/baseline readiness all precede the start (ADR-0176). It is not a production-enforcement release
 and does not grant protected-branch authority.
 
-The outcome remains \`INCONCLUSIVE\` until the formal window supplies the
-latency baseline, resource baseline, and human precision/recall/
-false-positive adjudication required by the approved contract. Missing inputs
-must remain missing; this package does not synthesize them.
+Known FAIL takes precedence as NO_GO. Without a known FAIL, missing required
+evidence means INCONCLUSIVE; this package does not synthesize evidence.
+Operational baselines and personnel must be ready before the window starts.
 
 ## Standard handoff sequence
 
