@@ -25,6 +25,22 @@ errors:
   incompleteNeverMapsToSuccess: true
 endpoints:
   - method: GET
+    path: /v1/registry/rules
+    readOnly: true
+    response: asset-registry-v1
+  - method: GET
+    path: /v1/registry/rules/{id}
+    readOnly: true
+    response: asset-registry-v1
+  - method: GET
+    path: /v1/registry/standards
+    readOnly: true
+    response: asset-registry-v1
+  - method: GET
+    path: /v1/registry/standards/{id}
+    readOnly: true
+    response: asset-registry-v1
+  - method: GET
     path: /v1/health
   - method: POST
     path: /v1/standards
@@ -184,3 +200,27 @@ delivery:
   verificationRequiredFields: [signatureValid, trustMetadataFresh, revocationSnapshotFresh, referencedPacksAvailable, trustedContextValid]
   sourceUpload: false
   fullFindingUpload: false
+
+assetRegistry:
+  schemaVersion: asset-registry-v1
+  source: existingRuleOpsStore
+  resourceTypes: [rules, standards]
+  privacyProfile: digest-only
+  resourceFields: [type, id, version, state, digest]
+  listResponseFields: [apiVersion, schemaVersion, authority, items, cursor, nextCursor, hasMore, requestId]
+  detailResponseFields: [apiVersion, schemaVersion, authority, resource, requestId]
+  digestIdentity: canonicalStoreEnvelopeNotYamlBytesOrPublicationDigest
+  authority: UNKNOWN
+  listQuery: collectionReads.query
+  detailQuery:
+    optionalFields: [version]
+    additionalFields: false
+    duplicateFields: false
+    emptyVersionCode: IDENTITY_INVALID
+    malformedQueryCode: RESOURCE_QUERY_INVALID
+    ambiguousVersionCode: RESOURCE_VERSION_REQUIRED
+    notFoundCode: NOT_FOUND
+  writeStatus: 405
+  writeCode: METHOD_NOT_ALLOWED
+  importsLocalFiles: false
+  grantsPublicationAuthority: false

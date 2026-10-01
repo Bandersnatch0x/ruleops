@@ -708,6 +708,106 @@ class RuleOpsHttpServerTest {
         assertEquals("REQUEST_ID_MISMATCH", JSON.readTree(rejected.body()).get("code").asText());
     }
 
+    @Test
+    void registryReadsAreClosedDigestOnlyVersionedAndReadOnly() throws Exception {
+        for (String type : List.of("rules", "standards")) {
+            assertEquals(201, post("/" + type, "asset", "1.0.0",
+                    "{\"privateText\":\"must-not-leak\"}", type + "-v1").statusCode());
+            assertEquals(201, post("/" + type, "asset", "2.0.0",
+                    "{\"privateText\":\"must-not-leak-either\"}", type + "-v2").statusCode());
+            HttpResponse<String> firstResponse = get("/registry/" + type + "?limit=1");
+            assertEquals(200, firstResponse.statusCode());
+            JsonNode first = JSON.readTree(firstResponse.body());
+            assertEquals(8, first.size());
+            assertEquals("rulefactory.io/v1", first.get("apiVersion").asText());
+            assertEquals("asset-registry-v1", first.get("schemaVersion").asText());
+            assertEquals("UNKNOWN", first.get("authority").asText());
+            assertEquals(1, first.get("items").size());
+            assertTrue(first.get("hasMore").asBoolean());
+            JsonNode item = first.get("items").get(0);
+            assertEquals(5, item.size());
+            assertEquals(type, item.get("type").asText());
+            assertEquals("asset", item.get("id").asText());
+            assertEquals("1.0.0", item.get("version").asText());
+            assertTrue(item.has("state"));
+            JsonNode original = JSON.readTree(get("/" + type + "/asset?version=1.0.0").body());
+            assertEquals(original.get("resource").get("digest"), item.get("digest"));
+            assertTrue(!firstResponse.body().contains("must-not-leak"));
+            String cursor = java.net.URLEncoder.encode(first.get("nextCursor").asText(), StandardCharsets.UTF_8);
+            JsonNode second = JSON.readTree(get("/registry/" + type + "?limit=1&cursor=" + cursor).body());
+            assertEquals("2.0.0", second.get("items").get(0).get("version").asText());
+            assertTrue(!second.get("hasMore").asBoolean());
+            HttpResponse<String> detailResponse = get("/registry/" + type + "/asset?version=1.0.0");
+            assertEquals(200, detailResponse.statusCode());
+            JsonNode detail = JSON.readTree(detailResponse.body());
+            assertEquals(5, detail.size());
+            assertEquals("UNKNOWN", detail.get("authority").asText());
+            assertEquals(item, detail.get("resource"));
+            HttpResponse<String> ambiguous = get("/registry/" + type + "/asset");
+            assertEquals(409, ambiguous.statusCode());
+            assertEquals("RESOURCE_VERSION_REQUIRED", JSON.readTree(ambiguous.body()).get("code").asText());
+        }
+        assertEquals(4, JSON.readTree(get("/audit").body()).get("events").size());
+    }
+
+    @Test
+    void registryRejectsWritesUnknownResourcesAndInvalidSelectors() throws Exception {
+        assertEquals(201, post("/rules", "asset", "1.0.0", "{}", "registry-seed").statusCode());
+        assertEquals(200, get("/registry/rules/asset").statusCode());
+        for (String path : List.of("/registry", "/registry/policies", "/registry/rules/absent",
+                "/registry/rules/asset?version=2.0.0", "/registry/rules/asset/generate")) {
+            HttpResponse<String> response = get(path);
+            assertEquals(404, response.statusCode(), path);
+            assertEquals("NOT_FOUND", JSON.readTree(response.body()).get("code").asText());
+        }
+        for (String query : List.of("?version=", "?version=%20", "?version=%00",
+                "?version=1&version=2", "?version=1&extra=2", "?extra=1", "?version")) {
+            HttpResponse<String> response = get("/registry/rules/asset" + query);
+            assertEquals(400, response.statusCode(), query);
+            JsonNode error = JSON.readTree(response.body());
+            assertEquals(4, error.size());
+            assertTrue(error.has("requestId"));
+            assertTrue(List.of("IDENTITY_INVALID", "RESOURCE_QUERY_INVALID").contains(error.get("code").asText()));
+        }
+        for (String query : List.of("?limit=0", "?limit=257", "?limit=1&limit=2", "?extra=1")) {
+            assertEquals(400, get("/registry/rules" + query).statusCode());
+        }
+        for (String method : List.of("POST", "PUT", "PATCH", "DELETE")) {
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder(uri("/registry/rules"))
+                    .method(method, HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(405, response.statusCode());
+            assertEquals("METHOD_NOT_ALLOWED", JSON.readTree(response.body()).get("code").asText());
+        }
+        JsonNode empty = JSON.readTree(get("/registry/standards").body());
+        assertEquals(0, empty.get("items").size());
+        assertEquals("UNKNOWN", empty.get("authority").asText());
+        assertEquals(1, JSON.readTree(get("/audit").body()).get("events").size());
+    }
+
+    @Test
+    void registryReadsUseTheRecoveredJournalWithoutAppending(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
+            throws Exception {
+        java.nio.file.Path path = dir.resolve("registry.jsonl");
+        try (RuleOpsJournal journal = new FileRuleOpsJournal(path)) {
+            RuleOpsStore store = new RuleOpsStore(journal);
+            store.create(RuleOpsStore.ResourceType.RULE, "recovered", "1.0.0",
+                    JSON.readTree("{\"privateText\":\"never-return\"}"), "recovered-rule", "operator", "contract test");
+        }
+        byte[] before = java.nio.file.Files.readAllBytes(path);
+        server.close();
+        try (RuleOpsJournal journal = new FileRuleOpsJournal(path)) {
+            server = RuleOpsHttpServer.loopback(0, new RuleOpsStore(journal));
+            server.start();
+            HttpResponse<String> response = get("/registry/rules/recovered?version=1.0.0");
+            assertEquals(200, response.statusCode());
+            JsonNode resource = JSON.readTree(response.body()).get("resource");
+            assertEquals("recovered", resource.get("id").asText());
+            assertEquals(5, resource.size());
+            assertTrue(!response.body().contains("never-return"));
+            assertTrue(Arrays.equals(before, java.nio.file.Files.readAllBytes(path)));
+        }
+    }
+
     private HttpResponse<String> get(String path) throws Exception {
         return client.send(HttpRequest.newBuilder(uri(path)).GET().build(), HttpResponse.BodyHandlers.ofString());
     }

@@ -63,6 +63,10 @@ required=(
   'acceptsFullFinding: false'
   'Idempotency-Key'
   'incompleteNeverMapsToSuccess: true'
+  'path: /v1/registry/rules'
+  'path: /v1/registry/standards/{id}'
+  'schemaVersion: asset-registry-v1'
+  'resourceFields: [type, id, version, state, digest]'
   'path: /v1/standards'
   'path: /v1/coverage/analyze'
   'path: /v1/rules/{id}/generate'
@@ -84,6 +88,9 @@ for needle in 'VersionQualifiedLifecycleTransition' 'requireTransitionIdentity' 
   'lifecycleTransitionOperationIdCannotBeReusedAcrossVersions' \
   'lifecycleTransitionRejectsMalformedVersionRequestBody' \
   'replayAfterALaterTransitionReturnsTheOriginalVersionQualifiedResult' \
+  'registryReadsAreClosedDigestOnlyVersionedAndReadOnly' \
+  'registryRejectsWritesUnknownResourcesAndInvalidSelectors' \
+  'registryReadsUseTheRecoveredJournalWithoutAppending' \
   'thinClientGovernanceRequestsAreClosedDigestOnlyAndReplayable'; do
   check_static "$needle" "$SERVER" "$STORE" "$SERVER_TEST"
 done
@@ -174,6 +181,9 @@ for fixture in \
   'lifecycleTransitionRejectsMalformedVersionRequestBody' \
   'replayAfterALaterTransitionReturnsTheOriginalVersionQualifiedResult' \
   'privacyAndAuditHeadersAreRequired' \
+  'registryReadsAreClosedDigestOnlyVersionedAndReadOnly' \
+  'registryRejectsWritesUnknownResourcesAndInvalidSelectors' \
+  'registryReadsUseTheRecoveredJournalWithoutAppending(Path)' \
   'thinClientGovernanceRequestsAreClosedDigestOnlyAndReplayable'; do
   if ! rg -F -q -- "name=\"$fixture\"" "$TEST_REPORT"; then
     behavior_status=BLOCKED

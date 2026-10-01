@@ -121,6 +121,9 @@ public final class RuleOpsHttpServer implements AutoCloseable {
                 return;
             }
             String method = exchange.getRequestMethod();
+            if (parts.get(0).equals("registry") && !method.equals("GET")) {
+                throw new ApiException(405, "METHOD_NOT_ALLOWED", "registry is read-only");
+            }
             if (method.equals("GET") && parts.size() == 3 && parts.get(0).equals("rule-bundles")
                     && parts.get(2).equals("delivery")) {
                 delegated = dispatchDelivery(exchange, parts.get(1), requestId);
@@ -228,11 +231,24 @@ public final class RuleOpsHttpServer implements AutoCloseable {
             submissionStatus(exchange, requestId);
             return;
         }
+        boolean registry = parts.get(0).equals("registry");
+        if (registry) {
+            if (parts.size() < 2 || parts.size() > 3
+                    || !Set.of("rules", "standards").contains(parts.get(1))) {
+                throw new ApiException(404, "NOT_FOUND", "registry resource was not found");
+            }
+            parts = parts.subList(1, parts.size());
+        }
         RuleOpsStore.ResourceType type = resourceType(parts.get(0));
         if (type == null || parts.size() > 2) {
             throw new ApiException(404, "NOT_FOUND", "API resource was not found");
         }
         ObjectNode response = base();
+        if (registry) {
+            response.put("schemaVersion", "asset-registry-v1");
+            // Registration proves presence, not verification, approval or publication.
+            response.put("authority", "UNKNOWN");
+        }
         if (parts.size() == 1) {
             CollectionQuery collectionQuery = collectionQuery(exchange);
             RuleOpsStore.ResourcePage page;
@@ -242,7 +258,8 @@ public final class RuleOpsHttpServer implements AutoCloseable {
                 throw storeError(e);
             }
             ArrayNode items = response.putArray("items");
-            page.resources().forEach(resource -> items.add(resource.asJson(MAPPER)));
+            page.resources().forEach(resource -> items.add(registry
+                    ? resource.asSubmissionStatusJson(MAPPER) : resource.asJson(MAPPER)));
             String nextCursor = page.resources().isEmpty()
                     ? collectionQuery.cursor()
                     : RuleOpsStore.resourceCursor(page.resources().get(page.resources().size() - 1));
@@ -250,7 +267,7 @@ public final class RuleOpsHttpServer implements AutoCloseable {
             response.put("nextCursor", nextCursor);
             response.put("hasMore", page.hasMore());
         } else {
-            String version = query(exchange, "version");
+            String version = registry ? registryVersion(exchange) : query(exchange, "version");
             RuleOpsStore.StoredResource resource;
             try {
                 resource = store.find(type, parts.get(1), version)
@@ -258,10 +275,33 @@ public final class RuleOpsHttpServer implements AutoCloseable {
             } catch (RuleOpsStore.StoreException e) {
                 throw storeError(e);
             }
-            response.set("resource", resource.asJson(MAPPER));
+            response.set("resource", registry
+                    ? resource.asSubmissionStatusJson(MAPPER) : resource.asJson(MAPPER));
         }
         response.put("requestId", requestId);
         send(exchange, 200, response, MAX_COLLECTION_RESPONSE_BYTES);
+    }
+
+    private static String registryVersion(HttpExchange exchange) throws ApiException {
+        String raw = exchange.getRequestURI().getRawQuery();
+        if (raw == null) {
+            return null;
+        }
+        String[] pair = raw.split("=", -1);
+        if (pair.length != 2 || !pair[0].equals("version") || raw.contains("&")) {
+            throw new ApiException(400, "RESOURCE_QUERY_INVALID", "only one version selector is allowed");
+        }
+        String version;
+        try {
+            version = URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException error) {
+            throw new ApiException(400, "RESOURCE_QUERY_INVALID", "version must use valid URL encoding");
+        }
+        if (version.isBlank() || version.length() > 100
+                || version.chars().anyMatch(Character::isISOControl)) {
+            throw new ApiException(400, "IDENTITY_INVALID", "version must be a valid resource identity");
+        }
+        return version;
     }
 
     private void ruleBundleDelivery(String bundleDigest, String requestId, HttpExchange exchange)
