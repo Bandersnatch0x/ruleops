@@ -20,7 +20,9 @@ observationWindow，GitHub issue #79 批准）。实际可留出的验证窗口�
 - 提 issue 申请：把 observationWindow 由 31 天缩为 SHORT_WINDOW（建议 7 天，起止待定），治理负责人批准。
 - **只改窗口长度**；样本（3 仓库、pinned commit、不替换）与全部阈值保持不变。
 - 修订记录写入 `specs/pilot/pilot-success-contract.yaml` 与 `specs/pilot/pilot-observation-plan.yaml`，
-  并补一条 ADR 说明缩短原因与**结论外推力限制**。
+  并补一条 ADR 说明缩短原因与**结论外推力限制**。七天包封存前须经治理批准，
+  重锚 `runtime/pilot-evidence/src/lib.rs` 的批准 epoch 常量，并使合同、证据包规格与运行时窗口一致；
+  实现与回归另计，见计划票 #136，不能仅修订文档后按清单直接封存。
 - 纪律：SHORT_WINDOW 的趋势类结论只能报「有界短窗口趋势」，不得外推为月度结论。
 
 ## 2. 7 天能拿 / 不能拿
@@ -46,7 +48,7 @@ promotion/rollback（治理事件多半不发生，如实记 0 或不适用）�
 - 窗口尾：单模式聚合 `./rf pilot window-report ...`（勿混模式）；封存证据包
   `./rf pilot evidence package ...`（requiredMetrics 须全 `COMPLETE`，窗口/样本 digest 匹配）；
   `./rf pilot evidence adjudicate ...` 出 `GO / NO_GO / INCONCLUSIVE`（聚合优先级 FAIL > INCONCLUSIVE > PASS）。
-- 停止条件：真实作者/质量裁决人无法到位 → 报告保持 `INCONCLUSIVE`，收缩为「工程闭环演示」，绝不凑 GO。
+- 停止条件：真实作者/质量裁决人无法到位 → 已知 `FAIL` 时 `NO_GO` 优先；仅无已知 `FAIL` 且缺必需证据时报告为 `INCONCLUSIVE`，收缩为「工程闭环演示」，绝不凑 GO。
 
 ## 4. 比赛叙事建议（两层报，别混）
 
