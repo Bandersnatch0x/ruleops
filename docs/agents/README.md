@@ -10,6 +10,7 @@
 | 判断开发阶段、执行与验收职责 | [开发工作流](dev-workflow.md) |
 | 操作票据或处理待裁事项 | [票据惯例](issue-tracker.md)、[分诊标签](triage-labels.md) |
 | 理解实现、运行系统、执行测试、使用产品 | [项目指南](../guide/README.md) |
+| 执行或审阅端到端验收 | [E2E 测试套件](../e2e/README.md) |
 | 评估本地提交检查及安装边界 | [提交检查说明](../agent-commit-hook.md) |
 
 ## 目录与现有实现
