@@ -96,11 +96,13 @@ doctor 检查工具、缓存完整性、TrustState 等；其 PASS 不等于 Gate
 ### 3. 扫描与保存结果
 
 ```bash
+PROJECT="/absolute/path/to/project"
 ./rf scan --repo-root "$PROJECT" --candidate "$CANDIDATE" --runtime-home "$RUNTIME_HOME" --format json --progress none; rc=$?; printf 'SCAN_RC=%s\n' "$rc"
-./rf scan --repo-root "$PROJECT" --candidate "$CANDIDATE" --runtime-home "$RUNTIME_HOME" --format sarif --output scan.sarif
+./rf scan --repo-root "$PROJECT" --candidate "$CANDIDATE" --runtime-home "$RUNTIME_HOME" --format sarif --output "$PROJECT/scan.sarif"
 ```
 
-第二行是另一种展示/保存方式，不要求连续重复扫描；`scan.sarif` 为目标仓库内操作者选择的新输出，先确认不覆盖所需旧结果（`docs/pilot/operator-quickstart.md:19`；`README.md:120`）。
+将 `PROJECT` 替换为实际目标项目的绝对路径。SARIF 命令是另一种展示/保存方式，不要求连续重复扫描；`scan.sarif` 为目标仓库内操作者选择的新输出，先确认不覆盖所需旧结果（`docs/pilot/operator-quickstart.md:19`；`README.md:120`）。
+`--output` 的相对路径按当前工作目录（cwd）解析，不按 `--repo-root` 解析；在 ERF 仓根扫描外部项目时，`--output scan.sarif` 会指向项目外并被 `OUTPUT_PATH_INVALID` 拒绝，因此这里使用项目内绝对输出路径。
 已有适配的 rule-id 或 delivery descriptor 时按 help/交付契约选一种输入，不能混合 Candidate 与 descriptor；缺运行包/依赖不应靠 harness 参数假装成功（`contracts/http/rf-cli-v1.yaml:18`、`contracts/http/rf-cli-v1.yaml:50`）。
 需要显式增量时使用成对 `--base`/`--head`，不猜 HEAD~1；图或策略事实不能证明时 Runtime 扩大范围，不静默缩小（`contracts/http/rf-cli-v1.yaml:22`）。
 
