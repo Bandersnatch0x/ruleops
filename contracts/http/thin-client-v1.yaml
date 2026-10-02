@@ -1,0 +1,156 @@
+apiVersion: rulefactory.io/v1
+kind: ThinClientContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Define the CLI/IDE client actions that invoke rf-runner, prepare or explicitly
+  submit digest-only governance requests, without copying runtime or acquiring authority.
+
+findingView:
+  schemaVersion: finding-view-v1
+  required:
+    - apiVersion
+    - kind
+    - findingId
+    - ruleId
+    - fingerprint
+    - message
+    - location
+  location:
+    path: repositoryRelativeAllowlisted
+    line: positiveInteger
+    column: positiveInteger
+  sourceUploadDefault: false
+  fullFindingUploadDefault: false
+  unknownFields: reject
+
+actions:
+  invokeRunner:
+    owner: rf-runner
+    clientMay: invoke
+    clientMayNot: implementRuntime
+  showFinding:
+    input: FindingView
+    output: digestOnly
+  navigateToLocation:
+    input: FindingView.location
+    pathAuthority: localRepositoryOnly
+  explainFinding:
+    input: FindingView
+    output: localSummary
+  draftFeedback:
+    kind: FeedbackDraft
+    schemaVersion: feedback-draft-v1
+    status: PROPOSED
+    submitsToServer: false
+    mutatesGate: false
+  requestException:
+    kind: ExceptionRequest
+    schemaVersion: exception-request-v1
+    status: REQUESTED
+    grantsException: false
+    mutatesGate: false
+  submitFeedback:
+    input: FeedbackDraft
+    endpoint: explicitRuleOpsServer
+    path: /v1/feedback
+    submitsToServer: true
+    successMeans: request-recorded-only
+    replayMeans: same-request-recorded
+    approvalGranted: false
+    mutatesGate: false
+    publishesScm: false
+  submitException:
+    input: ExceptionRequest
+    endpoint: explicitRuleOpsServer
+    path: /v1/exceptions
+    submitsToServer: true
+    successMeans: request-recorded-only
+    replayMeans: same-request-recorded
+    approvalGranted: false
+    mutatesGate: false
+    publishesScm: false
+  querySubmissionStatus:
+    endpoint: explicitRuleOpsServer
+    path: /v1/submissions/status
+    selectors:
+      - requestId
+      - artifactDigest
+    statusValues: [PENDING, RECEIVED_ONLY, REPLAYED, UNKNOWN]
+    readOnly: true
+    automaticRetry: false
+    conflictStatus: SUBMISSION_IDENTITY_CONFLICT
+    authority: received-only-or-unknown
+
+submissionTransport:
+  endpointRequired: true
+  inputMustBeClosedAndDigestVerified: true
+  envelope: idVersionPayload
+  headers:
+    - Idempotency-Key
+    - X-Request-Id
+    - X-Actor
+    - X-Reason
+  localContractScheme: http
+  productionTls: deploymentBoundary
+  unavailableOrUnknownResponse: SUBMISSION_UNKNOWN
+  known4xxStatusRange: "400-499"
+  known4xxResponse: SUBMISSION_REJECTED
+  redirectResponse: SUBMISSION_UNKNOWN
+  serverErrorResponse: SUBMISSION_UNKNOWN
+  responseIdentityRequired: true
+  unknownOutcomeReceipt: none
+  retryAutomatically: false
+
+requestIdentity:
+  contentAddressed: true
+  replayable: true
+  required:
+    - requestId
+    - findingDigest
+    - findingFingerprint
+    - actor
+    - reason
+  authority: serverOrHumanReview
+  # requestId 内容寻址算法冻结（#121 / ADR-0165）。
+  canonicalEnvelope:
+    # requestId 由版本化闭合的 canonical request envelope 计算，Client 与 Server 独立复算并交叉校验。
+    definition: requestPayloadWithoutDerivedFields
+    derivedFieldsExcluded:
+      - requestId
+      - digest
+    versionParticipates: true          # schemaVersion 是 envelope 字段，参与摘要。
+    canonicalization: recursiveLexicographicKeySort
+    encoding: utf8
+    # byte-identical 前提：envelope 全字符串值、object key 全为 ASCII 固定字段名；
+    # 引入数值字段或非 ASCII key 前须先重新冻结数字规范化与排序码元基准（详见 ADR-0165）。
+    crossImplementationEqualityPrecondition: closedAsciiKeyStringValuedEnvelope
+    formula: "requestId = sha256(canonical(envelope))"
+    format: lowercaseSha256Digest       # sha256: + 64 位小写十六进制。
+    crossImplementationEquality: required
+    mismatch:
+      # 任意格式正确但与 envelope 不匹配的 requestId 一律 fail-closed 拒绝。
+      client: REQUEST_ID_MISMATCH
+      server: REQUEST_ID_MISMATCH
+    boundEnvelopeIdentity:
+      # requestId 同时充当传输 envelope.id 与 Idempotency-Key；三者必须一致。
+      - envelope.id
+      - Idempotency-Key
+    replayIdentityConflict: SUBMISSION_IDENTITY_CONFLICT
+
+privacy:
+  forbiddenFields:
+    - source
+    - sourceCode
+    - sourceContent
+    - sourceSnippet
+    - fullFinding
+    - findings
+
+nonGoals:
+  - ruleRuntimeCopy
+  - localGateAuthority
+  - exceptionApproval
+  - scmStatusWrite
+  - idePluginUi

@@ -1,0 +1,15 @@
+[package]
+name = "erf-bundle-delivery"
+version = "0.1.0"
+edition = "2021"
+description = "Bounded RuleBundle delivery client and single-flight resolver"
+
+[dependencies]
+erf-bundle-cache = { path = "../bundle-cache" }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_bundle_delivery"
+path = "src/lib.rs"

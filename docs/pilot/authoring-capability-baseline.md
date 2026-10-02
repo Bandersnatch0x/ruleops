@@ -27,5 +27,7 @@ scripts/authoring-capability-check.sh .scratch/authoring-capability
 ```
 
 Reviewer precision, active-time improvement, holdout quality, observation
-window and other live pilot thresholds remain owned by the pending human Pilot
-Success Contract.
+window and other live pilot thresholds remain owned by the human Pilot Success
+Contract. The three-rule author-active-time measurement protocol is now
+registered in `specs/pilot/author-cost-baseline.yaml`; its empty record remains
+`HUMAN_INPUT_REQUIRED` until real author timings are supplied.

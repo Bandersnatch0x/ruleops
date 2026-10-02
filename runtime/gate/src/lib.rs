@@ -2,6 +2,7 @@
 //! This crate never executes a backend and has no publish/signing authority.
 
 use erf_contracts::backend::v0 as pb;
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
@@ -203,7 +204,7 @@ pub struct GatePolicy {
     pub blocking_rule_ids: BTreeSet<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindingLocationKind { SourceSpan, Symbol, BytecodeMember, File }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +214,10 @@ pub struct Finding {
     pub rule_id: String,
     pub location_kind: FindingLocationKind,
     pub path: String,
+    /// Diagnostic coordinates are presentation facts only. They are not part
+    /// of the semantic finding identity or SemanticResultDigest.
+    pub line: Option<u32>,
+    pub column: Option<u32>,
     pub semantic_anchor: String,
     pub message: String,
 }
@@ -248,8 +253,16 @@ pub struct GateAttestation {
     pub execution_lock_digest: String,
     pub runner_release_digest: String,
     pub workspace_descriptor_digest: String,
+    pub baseline_digest: String,
+    pub workspace_attestation_digest: String,
+    pub execution_evidence_digest: String,
     pub sandbox_provider_id: String,
     pub sandbox_policy_digest: String,
+    pub workload_issuer: String,
+    pub workload_audience: String,
+    pub workflow: String,
+    pub run_identity: String,
+    pub environment_identity: String,
     pub semantic_result_digest: [u8; 32],
     pub completeness: Completeness,
     pub decision: GateDecision,
@@ -259,8 +272,12 @@ pub struct GateAttestation {
 }
 
 impl GateAttestation {
-    pub fn canonical_payload(&self) -> Vec<u8> {
-        let mut payload = b"erf-gate-attestation-v0\0".to_vec();
+    /// Digest of the complete normalized GateDecision/ExecutionEvidence
+    /// identity. A semantic-result digest alone is insufficient because
+    /// completeness, decision, exceptions and execution context can change
+    /// while the finding set remains unchanged.
+    pub fn subject_digest(&self) -> [u8; 32] {
+        let mut payload = b"erf-gate-decision-v1\0".to_vec();
         for value in [
             &self.repository,
             &self.commit,
@@ -269,30 +286,117 @@ impl GateAttestation {
             &self.execution_lock_digest,
             &self.runner_release_digest,
             &self.workspace_descriptor_digest,
+            &self.baseline_digest,
+            &self.workspace_attestation_digest,
+            &self.execution_evidence_digest,
             &self.sandbox_provider_id,
             &self.sandbox_policy_digest,
+            &self.workload_issuer,
+            &self.workload_audience,
+            &self.workflow,
+            &self.run_identity,
+            &self.environment_identity,
         ] {
             append_attestation_string(&mut payload, value);
         }
         payload.extend_from_slice(&self.semantic_result_digest);
-        payload.push(match self.decision { GateDecision::Pass => 0, GateDecision::Fail => 1, GateDecision::Inconclusive => 2 });
-        for value in [self.completeness.planned, self.completeness.accounted, self.completeness.failed, self.completeness.missing, self.completeness.observation_errors] {
-            payload.extend_from_slice(&(value as u64).to_be_bytes());
-        }
+        payload.extend_from_slice(&(self.completeness.planned as u64).to_be_bytes());
+        payload.extend_from_slice(&(self.completeness.accounted as u64).to_be_bytes());
+        payload.extend_from_slice(&(self.completeness.failed as u64).to_be_bytes());
+        payload.extend_from_slice(&(self.completeness.missing as u64).to_be_bytes());
+        payload.extend_from_slice(&(self.completeness.observation_errors as u64).to_be_bytes());
         payload.push(self.completeness.complete as u8);
+        payload.push(match self.decision {
+            GateDecision::Pass => 0,
+            GateDecision::Fail => 1,
+            GateDecision::Inconclusive => 2,
+        });
         let mut exceptions = self.exception_grant_digests.clone();
         exceptions.sort();
         payload.extend_from_slice(&(exceptions.len() as u64).to_be_bytes());
-        for value in exceptions { append_attestation_string(&mut payload, &value); }
+        for exception in exceptions {
+            append_attestation_string(&mut payload, &exception);
+        }
         payload.extend_from_slice(&self.issued_at_epoch_secs.to_be_bytes());
         payload.extend_from_slice(&self.expires_at_epoch_secs.to_be_bytes());
-        payload
+        Sha256::digest(payload).into()
+    }
+
+    pub fn canonical_payload(&self) -> Vec<u8> {
+        let mut exceptions = self.exception_grant_digests.clone();
+        exceptions.sort();
+        let materials = [
+            ("erf://policy", &self.policy_digest),
+            ("erf://rule-bundle", &self.rule_bundle_digest),
+            ("erf://execution-lock", &self.execution_lock_digest),
+            ("erf://runner-release", &self.runner_release_digest),
+            ("erf://workspace-descriptor", &self.workspace_descriptor_digest),
+            ("erf://baseline", &self.baseline_digest),
+            ("erf://workspace-attestation", &self.workspace_attestation_digest),
+            ("erf://execution-evidence", &self.execution_evidence_digest),
+            ("erf://sandbox-policy", &self.sandbox_policy_digest),
+        ]
+        .into_iter()
+        .map(|(name, digest)| json!({ "name": name, "digest": { "sha256": digest } }))
+        .chain(exceptions.iter().map(|digest| {
+            json!({ "name": "erf://exception-grant", "digest": { "sha256": digest } })
+        }))
+        .collect::<Vec<_>>();
+        let decision = match self.decision {
+            GateDecision::Pass => "PASS",
+            GateDecision::Fail => "FAIL",
+            GateDecision::Inconclusive => "INCONCLUSIVE",
+        };
+        let statement = json!({
+            "_type": erf_trust::IN_TOTO_STATEMENT_TYPE,
+            "subject": [{
+                "name": "erf://gate-decision",
+                "digest": { "sha256": hex_digest(&self.subject_digest()) },
+            }],
+            "predicateType": "https://rulefactory.io/attestations/gate/v0",
+            "predicate": {
+                "schemaVersion": "gate/v0",
+                "repository": self.repository,
+                "commit": self.commit,
+                "baselineDigest": self.baseline_digest,
+                "workspaceAttestationDigest": self.workspace_attestation_digest,
+                "executionEvidenceDigest": self.execution_evidence_digest,
+                "materials": materials,
+                "runner": {
+                    "releaseDigest": self.runner_release_digest,
+                    "sandboxProviderId": self.sandbox_provider_id,
+                    "sandboxPolicyDigest": self.sandbox_policy_digest,
+                },
+                "canonicalFindingSetVersion": CANONICAL_SET_VERSION,
+                "semanticResultDigest": hex_digest(&self.semantic_result_digest),
+                "completeness": {
+                    "planned": self.completeness.planned,
+                    "accounted": self.completeness.accounted,
+                    "failed": self.completeness.failed,
+                    "missing": self.completeness.missing,
+                    "observationErrors": self.completeness.observation_errors,
+                    "complete": self.completeness.complete,
+                },
+                "decision": decision,
+                "exceptionGrantDigests": exceptions,
+                "invocation": {
+                    "workloadIssuer": self.workload_issuer,
+                    "workloadAudience": self.workload_audience,
+                    "workflow": self.workflow,
+                    "runIdentity": self.run_identity,
+                    "environment": self.environment_identity,
+                },
+                "issuedAtEpochSecs": self.issued_at_epoch_secs,
+                "expiresAtEpochSecs": self.expires_at_epoch_secs,
+            },
+        });
+        serde_json::to_vec(&statement).expect("GateAttestation is JSON-serializable")
     }
 
     pub fn sign_with(&self, key_id: impl Into<String>, signer: impl FnOnce(&[u8]) -> Vec<u8>) -> erf_trust::SignedAsset {
         let payload = self.canonical_payload();
-        let signing_bytes = erf_trust::pae(erf_trust::DSSE_PAYLOAD_TYPE, &payload);
-        erf_trust::SignedAsset { payload_type: erf_trust::DSSE_PAYLOAD_TYPE.into(), payload, key_id: key_id.into(), signature: signer(&signing_bytes) }
+        let signing_bytes = erf_trust::pae(erf_trust::IN_TOTO_STATEMENT_PAYLOAD_TYPE, &payload);
+        erf_trust::SignedAsset { payload_type: erf_trust::IN_TOTO_STATEMENT_PAYLOAD_TYPE.into(), payload, key_id: key_id.into(), signature: signer(&signing_bytes) }
     }
 
     pub fn verify_signed(&self, asset: &erf_trust::SignedAsset, store: &erf_trust::TrustStore, role: &str, now_epoch_secs: u64) -> Result<[u8; 32], String> {
@@ -301,7 +405,9 @@ impl GateAttestation {
             return Err("gate attestation is outside its validity interval".into());
         }
         if asset.payload != self.canonical_payload() { return Err("gate attestation payload does not match statement".into()); }
-        store.verify(asset, role).map_err(|error| error.to_string())
+        store.verify_with_payload_type(asset, role, erf_trust::IN_TOTO_STATEMENT_PAYLOAD_TYPE)
+            .map_err(|error| error.to_string())?;
+        Ok(self.subject_digest())
     }
 
     pub fn verify_signed_with_metadata(&self, asset: &erf_trust::SignedAsset, store: &erf_trust::TrustStore, role: &str, metadata: &erf_trust::TrustMetadata, now_epoch_secs: u64) -> Result<[u8; 32], String> {
@@ -310,7 +416,9 @@ impl GateAttestation {
             return Err("gate attestation is outside its validity interval".into());
         }
         if asset.payload != self.canonical_payload() { return Err("gate attestation payload does not match statement".into()); }
-        store.verify_with_metadata(asset, role, metadata, now_epoch_secs).map_err(|error| error.to_string())
+        store.verify_with_metadata_and_payload_type(asset, role, metadata, now_epoch_secs, erf_trust::IN_TOTO_STATEMENT_PAYLOAD_TYPE)
+            .map_err(|error| error.to_string())?;
+        Ok(self.subject_digest())
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -323,14 +431,35 @@ impl GateAttestation {
             ("execution_lock_digest", &self.execution_lock_digest),
             ("runner_release_digest", &self.runner_release_digest),
             ("workspace_descriptor_digest", &self.workspace_descriptor_digest),
+            ("baseline_digest", &self.baseline_digest),
+            ("workspace_attestation_digest", &self.workspace_attestation_digest),
+            ("execution_evidence_digest", &self.execution_evidence_digest),
             ("sandbox_policy_digest", &self.sandbox_policy_digest),
         ] {
             if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
                 return Err(format!("gate attestation has invalid {name}"));
             }
         }
+        for (name, value) in [
+            ("repository", &self.repository),
+            ("commit", &self.commit),
+            ("sandbox_provider_id", &self.sandbox_provider_id),
+            ("workload_issuer", &self.workload_issuer),
+            ("workload_audience", &self.workload_audience),
+            ("workflow", &self.workflow),
+            ("run_identity", &self.run_identity),
+            ("environment_identity", &self.environment_identity),
+        ] {
+            if value.trim().is_empty() || value.chars().any(char::is_control) {
+                return Err(format!("gate attestation has empty or invalid {name}"));
+            }
+        }
         Ok(())
     }
+}
+
+fn hex_digest(digest: &[u8; 32]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn append_attestation_string(payload: &mut Vec<u8>, value: &str) {
@@ -373,6 +502,59 @@ pub fn preview_with_policy_and_baseline_and_exceptions(
     exceptions: &BTreeSet<String>,
     policy: Option<&GatePolicy>,
 ) -> GatePreview {
+    preview_with_policy_and_baseline_and_exceptions_and_delivery(
+        planned_ids,
+        statuses,
+        observations,
+        baseline,
+        exceptions,
+        policy,
+        None,
+    )
+}
+
+/// Computes a preview whose semantic identity is optionally bound to the
+/// immutable delivery descriptor. The ordinary finding-set API remains
+/// unchanged for local and legacy callers; the standard delivery path passes
+/// the descriptor digest so Gate, unified-result and scan-output share one
+/// identity.
+pub fn preview_with_policy_and_baseline_and_exceptions_and_delivery(
+    planned_ids: &[String],
+    statuses: &[pb::UnitStatus],
+    observations: &[pb::BackendObservation],
+    baseline: Option<&Baseline>,
+    exceptions: &BTreeSet<String>,
+    policy: Option<&GatePolicy>,
+    delivery_descriptor_digest: Option<&str>,
+) -> GatePreview {
+    preview_with_policy_and_baseline_and_exceptions_and_delivery_and_observation_errors(
+        planned_ids,
+        statuses,
+        observations,
+        baseline,
+        exceptions,
+        policy,
+        delivery_descriptor_digest,
+        0,
+    )
+}
+
+/// Computes a preview while carrying structured observation errors discovered
+/// before Backend execution (for example Resolver facts that are required by
+/// the selected backend but unresolved in SAFE_STATIC mode). Those errors are
+/// additive to malformed BackendObservation errors and always keep the result
+/// INCONCLUSIVE.
+#[allow(clippy::too_many_arguments)]
+pub fn preview_with_policy_and_baseline_and_exceptions_and_delivery_and_observation_errors(
+    planned_ids: &[String],
+    statuses: &[pb::UnitStatus],
+    observations: &[pb::BackendObservation],
+    baseline: Option<&Baseline>,
+    exceptions: &BTreeSet<String>,
+    policy: Option<&GatePolicy>,
+    delivery_descriptor_digest: Option<&str>,
+    pre_execution_observation_errors: usize,
+) -> GatePreview {
     let planned: BTreeSet<&str> = planned_ids.iter().map(String::as_str).collect();
     let mut accounted = BTreeSet::new();
     let mut failed = 0;
@@ -384,7 +566,7 @@ pub fn preview_with_policy_and_baseline_and_exceptions(
     }
     let missing = planned.len().saturating_sub(accounted.len());
     let mut findings = Vec::new();
-    let mut observation_errors = 0;
+    let mut observation_errors = pre_execution_observation_errors;
     for observation in observations {
         match normalize(observation) { Ok(f) => findings.push(f), Err(_) => observation_errors += 1 }
     }
@@ -397,13 +579,13 @@ pub fn preview_with_policy_and_baseline_and_exceptions(
         baseline: if baseline.map(|b| b.finding_fingerprints.contains(&finding.fingerprint)).unwrap_or(false) { BaselineState::Historical } else { BaselineState::New },
         exception: if exceptions.contains(&finding.fingerprint) { ExceptionDecision::Exempted } else { ExceptionDecision::NotApplicable },
     }).collect::<Vec<_>>();
-    let semantic_result_digest = semantic_result_digest(&findings);
+    let semantic_result_digest = semantic_result_digest(&findings, delivery_descriptor_digest);
     let has_unexempted_new = assessments.iter().zip(findings.iter()).any(|(assessment, finding)| {
         assessment.baseline == BaselineState::New
             && assessment.exception == ExceptionDecision::NotApplicable
             && policy.map(|p| p.blocking_rule_ids.is_empty() || p.blocking_rule_ids.contains(&finding.rule_id)).unwrap_or(true)
     });
-    let decision = if !complete || findings.is_empty() { GateDecision::Inconclusive }
+    let decision = if !complete { GateDecision::Inconclusive }
         else if has_unexempted_new { GateDecision::Fail }
         else { GateDecision::Pass };
     let input_summary = format!("findings={}, planned={}, accounted={}, failed={}, missing={}, observation_errors={}", findings.len(), completeness.planned, completeness.accounted, completeness.failed, completeness.missing, completeness.observation_errors);
@@ -413,7 +595,7 @@ pub fn preview_with_policy_and_baseline_and_exceptions(
 /// Digest of the canonical semantic finding set. Presentation fields such as
 /// message are deliberately excluded, so renderer wording cannot change the
 /// semantic identity of a scan result.
-fn semantic_result_digest(findings: &[Finding]) -> [u8; 32] {
+fn semantic_result_digest(findings: &[Finding], delivery_descriptor_digest: Option<&str>) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(CANONICAL_SET_VERSION.as_bytes());
     hasher.update([0]);
@@ -427,40 +609,48 @@ fn semantic_result_digest(findings: &[Finding]) -> [u8; 32] {
         hasher.update(finding.semantic_anchor.as_bytes());
         hasher.update([0]);
     }
+    if let Some(delivery_descriptor_digest) = delivery_descriptor_digest {
+        hasher.update(b"delivery-descriptor");
+        hasher.update([0]);
+        hasher.update((delivery_descriptor_digest.len() as u64).to_be_bytes());
+        hasher.update(delivery_descriptor_digest.as_bytes());
+    }
     hasher.finalize().into()
 }
 
 fn normalize(observation: &pb::BackendObservation) -> Result<Finding, &'static str> {
     if observation.rule_id.is_empty() { return Err("missing rule identity"); }
     let location = observation.location.as_ref().ok_or("missing location")?;
-    let (location_kind, path, anchor) = match location.kind.as_ref() {
+    let (location_kind, path, line, column, anchor) = match location.kind.as_ref() {
         Some(pb::observation_location::Kind::SourceSpan(span)) => {
             validate_repo_path(&span.path)?;
-            if span.blob_sha256.len() != 32 || span.end_byte < span.start_byte { return Err("invalid source span identity"); }
-            (FindingLocationKind::SourceSpan, span.path.clone(), format!("source-span|{}|{}|{}", span.path, span.start_byte, span.end_byte))
+            if span.blob_sha256.len() != 32 || span.end_byte < span.start_byte || span.line == 0 || span.column == 0 {
+                return Err("invalid source span identity");
+            }
+            (FindingLocationKind::SourceSpan, span.path.clone(), Some(span.line), Some(span.column), format!("source-span|{}|{}|{}", span.path, span.start_byte, span.end_byte))
         }
         Some(pb::observation_location::Kind::Symbol(symbol)) => {
             validate_atom(&symbol.owner)?;
             validate_atom(&symbol.name)?;
             validate_atom(&symbol.signature)?;
-            (FindingLocationKind::Symbol, symbol.owner.clone(), format!("symbol|{}|{}|{}", symbol.owner, symbol.name, symbol.signature))
+            (FindingLocationKind::Symbol, symbol.owner.clone(), None, None, format!("symbol|{}|{}|{}", symbol.owner, symbol.name, symbol.signature))
         }
         Some(pb::observation_location::Kind::BytecodeMember(member)) => {
             validate_atom(&member.class_fqn)?;
             validate_atom(&member.member)?;
             validate_atom(&member.member_descriptor)?;
-            (FindingLocationKind::BytecodeMember, member.class_fqn.clone(), format!("bytecode-member|{}|{}|{}", member.class_fqn, member.member, member.member_descriptor))
+            (FindingLocationKind::BytecodeMember, member.class_fqn.clone(), None, None, format!("bytecode-member|{}|{}|{}", member.class_fqn, member.member, member.member_descriptor))
         }
         Some(pb::observation_location::Kind::File(file)) => {
             validate_repo_path(&file.path)?;
             if file.blob_sha256.len() != 32 { return Err("invalid file identity"); }
-            (FindingLocationKind::File, file.path.clone(), format!("file|{}", file.path))
+            (FindingLocationKind::File, file.path.clone(), None, None, format!("file|{}", file.path))
         }
         None => return Err("unsupported or missing location"),
     };
     let mut identity = Vec::new(); identity.extend_from_slice(FINGERPRINT_VERSION.as_bytes()); identity.push(0); identity.extend_from_slice(observation.rule_id.as_bytes()); identity.push(0); identity.extend_from_slice(anchor.as_bytes());
     let fingerprint = format!("{}:{:x}", FINGERPRINT_VERSION, Sha256::digest(identity));
-    Ok(Finding { fingerprint_version: FINGERPRINT_VERSION, fingerprint, rule_id: observation.rule_id.clone(), location_kind, path, semantic_anchor: anchor, message: observation.message.clone() })
+    Ok(Finding { fingerprint_version: FINGERPRINT_VERSION, fingerprint, rule_id: observation.rule_id.clone(), location_kind, path, line, column, semantic_anchor: anchor, message: observation.message.clone() })
 }
 
 fn validate_repo_path(path: &str) -> Result<(), &'static str> {
@@ -487,6 +677,12 @@ mod tests {
     fn status(id: &str, outcome: pb::UnitOutcome) -> pb::UnitStatus { pb::UnitStatus { unit_id: id.into(), outcome: outcome as i32, reason_code: 0, detail: String::new() } }
     #[test] fn stable_finding_and_complete_nonempty_is_fail() { let p = preview(&["u1".into()], &[status("u1", pb::UnitOutcome::Executed)], &[obs("src/A.java")]); assert_eq!(p.decision, GateDecision::Fail); assert!(p.completeness.complete); assert_eq!(p.findings[0].fingerprint_version, FINGERPRINT_VERSION); }
     #[test] fn zero_findings_is_not_pass_and_missing_is_inconclusive() { let p = preview(&["u1".into()], &[], &[]); assert_eq!(p.decision, GateDecision::Inconclusive); assert!(!p.completeness.complete); }
+    #[test] fn complete_zero_findings_is_pass() {
+        let p = preview(&["u1".into()], &[status("u1", pb::UnitOutcome::Executed)], &[]);
+        assert_eq!(p.decision, GateDecision::Pass);
+        assert!(p.completeness.complete);
+        assert!(p.findings.is_empty());
+    }
     #[test] fn invalid_observation_is_not_a_finding() { let p = preview(&["u1".into()], &[status("u1", pb::UnitOutcome::Executed)], &[obs("../A.java")]); assert!(p.findings.is_empty()); assert_eq!(p.completeness.observation_errors, 1); assert_eq!(p.decision, GateDecision::Inconclusive); }
     #[test] fn historical_finding_passes_only_when_exactly_baselined() {
         let initial = preview(&["u1".into()], &[status("u1", pb::UnitOutcome::Executed)], &[obs("src/A.java")]);
@@ -512,6 +708,22 @@ mod tests {
         assert_eq!(first.semantic_result_digest, second.semantic_result_digest);
         let repeated = preview(&["u1".into()], &[status("u1", pb::UnitOutcome::Executed)], &[obs("src/A.java")]);
         assert_eq!(first.semantic_result_digest, repeated.semantic_result_digest);
+    }
+    #[test] fn delivery_descriptor_identity_changes_semantic_digest() {
+        let planned = ["u1".into()];
+        let statuses = [status("u1", pb::UnitOutcome::Executed)];
+        let observations = [obs("src/A.java")];
+        let plain = preview(&planned, &statuses, &observations);
+        let delivery = preview_with_policy_and_baseline_and_exceptions_and_delivery(
+            &planned,
+            &statuses,
+            &observations,
+            None,
+            &BTreeSet::new(),
+            None,
+            Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        );
+        assert_ne!(plain.semantic_result_digest, delivery.semantic_result_digest);
     }
     #[test] fn all_typed_locations_have_deterministic_fingerprints() {
         let observations = vec![
@@ -603,7 +815,7 @@ mod tests {
         use ed25519_dalek::{Signer, SigningKey};
         let attestation = GateAttestation {
             repository: "org/repo".into(), commit: "abc123".into(), policy_digest: "f".repeat(64), rule_bundle_digest: "a".repeat(64), execution_lock_digest: "b".repeat(64),
-            runner_release_digest: "c".repeat(64), workspace_descriptor_digest: "d".repeat(64), sandbox_provider_id: "rootless-oci-docker-v0".into(), sandbox_policy_digest: "e".repeat(64),
+            runner_release_digest: "c".repeat(64), workspace_descriptor_digest: "d".repeat(64), baseline_digest: "0".repeat(64), workspace_attestation_digest: "1".repeat(64), execution_evidence_digest: "2".repeat(64), sandbox_provider_id: "rootless-oci-docker-v0".into(), sandbox_policy_digest: "e".repeat(64), workload_issuer: "https://issuer.example".into(), workload_audience: "erf-gate".into(), workflow: "ci".into(), run_identity: "run-1".into(), environment_identity: "linux/amd64".into(),
             semantic_result_digest: [3; 32], completeness: Completeness { planned: 2, accounted: 2, failed: 0, missing: 0, observation_errors: 0, complete: true },
             decision: GateDecision::Pass, exception_grant_digests: vec!["g".repeat(64), "f".repeat(64)], issued_at_epoch_secs: 10, expires_at_epoch_secs: 20,
         };
@@ -612,6 +824,10 @@ mod tests {
         let mut store = erf_trust::TrustStore::default();
         store.insert_key("gate-key", key.verifying_key()).unwrap();
         store.authorize_role("gate-signing", "gate-key").unwrap();
+        let statement: serde_json::Value = serde_json::from_slice(&asset.payload).unwrap();
+        assert_eq!(statement["_type"], erf_trust::IN_TOTO_STATEMENT_TYPE);
+        assert_eq!(statement["predicateType"], "https://rulefactory.io/attestations/gate/v0");
+        assert_eq!(statement["predicate"]["decision"], "PASS");
         assert!(attestation.verify_signed(&asset, &store, "gate-signing", 19).is_ok());
         assert!(!String::from_utf8_lossy(&asset.payload).contains("source/Secret.java"));
         assert!(attestation.verify_signed(&asset, &store, "gate-signing", 20).is_err());

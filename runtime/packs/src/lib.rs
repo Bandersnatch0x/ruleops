@@ -75,6 +75,11 @@ impl OciPackVerifier {
         }
     }
 
+    pub fn with_compatibility_identity(mut self, identity: impl Into<String>) -> Self {
+        self.expected_compatibility_identity = identity.into();
+        self
+    }
+
     pub fn verify_and_measure(
         &self,
         release: &OciPackRelease,

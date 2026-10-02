@@ -120,6 +120,13 @@ message AnalysisUnit {
   // WorkspaceDescriptor). The host refines execution per file batch; it must
   // not add, drop or merge units (ADR-0036).
   repeated string files = 3;
+  // ATTESTED_BUILD_EXPORT context copied from the WorkspaceDescriptor. The
+  // adapter must validate the accompanying digests before using these paths.
+  repeated string classpath_entries = 4;
+  repeated string build_output_roots = 5;
+  string invocation_identity = 6;
+  bytes classpath_sha256 = 7;
+  bytes build_output_sha256 = 8;
 }
 
 // The runtime asks the host to refine the assigned units deterministically.

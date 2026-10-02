@@ -44,5 +44,6 @@ repository writes, source upload, or protected-branch enforcement.
 ## Verification
 
 Run `scripts/phase4-pilot-report.sh .scratch/phase4-pilot-report-<run>` and
-inspect the generated `phase4-pilot-report.md`, `shadow/phase4-shadow-pilot.md`,
+inspect the generated `phase4-pilot-report.md`, the run-scoped
+`shadow-<run-id>/phase4-shadow-pilot.md` and `shadow-<run-id>/synthetic-shadow-report.md`,
 and authority evidence. The full `bash scripts/check.sh` gate remains required.

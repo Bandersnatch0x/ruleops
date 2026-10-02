@@ -6,17 +6,43 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat <<'EOF'
 usage:
+  rf init --repo-root PATH [--non-interactive] [OPTIONS]
+  rf doctor --repo-root PATH [--format text|json] [--scan-probe COMMAND]
+  rf config validate --repo-root PATH [--config FILE]
+  rf config show --repo-root PATH [--config FILE] [--format text|json] [OPTIONS]
+  rf registry list rules|standards --server URL [--cursor-json JSON_STRING] [--limit N] [--timeout-ms N]
+  rf registry show rules|standards ID --version VERSION --expected-digest SHA256 --server URL [--timeout-ms N]
   rf standard validate FILE...
   rf rule validate FILE...
   rf rule generate INTENT.yaml OUTPUT_DIR
   rf rule test CANDIDATE_DIR OUTPUT_DIR
   rf coverage analyze OUTPUT_DIR
   rf pilot report OUTPUT_DIR
-  rf scan --repo-root PATH --host COMMAND (--rule-id ID | --candidate DIR) [OPTIONS]
+  rf pilot delivery-check OUTPUT_DIR
+  rf pilot baseline OBSERVER_OPTIONS...
+  rf pilot observe OBSERVER_OPTIONS...
+  rf pilot feedback OBSERVER_OPTIONS...
+  rf pilot governance OBSERVER_OPTIONS...
+  rf pilot window-report OBSERVER_OPTIONS...
+  rf pilot evidence package INPUT OUTPUT
+  rf pilot evidence adjudicate PACKAGE OUTPUT [OWNER]
+  rf decision evaluate INPUT_DIGEST SIGNAL NOW OUTPUT [OPTIONS]
+  rf center check OUTPUT_DIR
+  rf explain FINDING.json [--rule-meta FILE] [--result FILE --authority-trust FILE] [--assessment FILE] [--format text|json] [--output FILE]
+  rf feedback draft FINDING.json --classification CLASS --reason TEXT --actor ACTOR [--output FILE]
+  rf exception request FINDING.json --scope GLOB --reason TEXT --actor ACTOR [--output FILE]
+  rf feedback submit REQUEST.json --server URL [--timeout-ms N] [--output FILE]
+  rf exception submit REQUEST.json --server URL [--timeout-ms N] [--output FILE]
+  rf submission status --server URL (--request-id DIGEST | --artifact-digest DIGEST) [--timeout-ms N] [--output FILE]
+  rf status contract-check OUTPUT_DIR
+  rf status deployment-check OUTPUT_DIR
+  rf scan --repo-root PATH (--rule-id ID | --candidate DIR | --delivery-descriptor FILE) [--runtime-home DIR] [--host COMMAND] [--resolver COMMAND] [--format text|json|sarif] [--progress text|json|none] [--output FILE] [OPTIONS]
 
-The current V0.1 CLI delegates to the verified repository entrypoints.
-Release promotion/revocation, gate authority, feedback submission, and
-exception requests are not enabled by this local slice.
+The current CLI is a thin client: it delegates scanning to rf-runner and
+creates digest-only feedback/exception request artifacts, and can explicitly
+submit those artifacts to a selected RuleOps Server. Release promotion,
+revocation, exception approval, and gate authority remain outside the client;
+a submission receipt means received-only, never approved or Gate PASS.
 EOF
 }
 
@@ -24,6 +50,31 @@ die_usage() {
   echo "error: $*" >&2
   usage >&2
   exit 2
+}
+
+is_development_checkout() {
+  [ -f "$repo_root/Cargo.toml" ] && { [ -d "$repo_root/.git" ] || [ -f "$repo_root/.git" ]; }
+}
+
+missing_runtime_release() {
+  echo "RUNTIME_RELEASE_MISSING: $1; install the packaged rf release or run this launcher from a development checkout" >&2
+  exit 2
+}
+
+run_project_config() {
+  if [ -x "$repo_root/bin/erf-project-config" ]; then
+    exec "$repo_root/bin/erf-project-config" "$@"
+  fi
+  is_development_checkout || missing_runtime_release "bin/erf-project-config"
+  exec cargo run --quiet -p erf-project-config -- "$@"
+}
+
+run_rf_cli() {
+  if [ -x "$repo_root/bin/rf-cli" ]; then
+    exec "$repo_root/bin/rf-cli" "$@"
+  fi
+  is_development_checkout || missing_runtime_release "bin/rf-cli"
+  exec cargo run --quiet -p rf-cli -- "$@"
 }
 
 [ $# -gt 0 ] || { usage >&2; exit 2; }
@@ -35,6 +86,27 @@ fi
 area="$1"
 shift
 case "$area" in
+  init)
+    run_project_config init "$@"
+    ;;
+  doctor)
+    run_project_config doctor "$@"
+    ;;
+  config)
+    action="${1:-}"
+    shift || true
+    case "$action" in
+      validate|show)
+        run_project_config "$action" "$@"
+        ;;
+      *)
+        die_usage "supported config commands are validate and show"
+        ;;
+    esac
+    ;;
+  registry)
+    exec cargo run --quiet -p erf-thin-client -- registry "$@"
+    ;;
   standard)
     [ "${1:-}" = "validate" ] || die_usage "supported standard command is validate"
     shift
@@ -69,16 +141,141 @@ case "$area" in
     exec "$repo_root/scripts/phase4-coverage-ledger.sh" "$1"
     ;;
   pilot)
-    [ "${1:-}" = "report" ] || die_usage "supported pilot command is report"
+    action="${1:-}"
+    shift || true
+    case "$action" in
+      report)
+        [ $# -eq 1 ] || die_usage "pilot report requires OUTPUT_DIR"
+        exec "$repo_root/scripts/phase4-pilot-report.sh" "$1"
+        ;;
+      delivery-check)
+        [ $# -eq 1 ] || die_usage "pilot delivery-check requires OUTPUT_DIR"
+        exec "$repo_root/scripts/pilot-delivery-check.sh" "$1"
+        ;;
+      baseline)
+        exec cargo run --quiet -p erf-pilot-observer -- baseline "$@"
+        ;;
+      observe)
+        exec cargo run --quiet -p erf-pilot-observer -- run "$@"
+        ;;
+      feedback)
+        exec cargo run --quiet -p erf-pilot-observer -- feedback "$@"
+        ;;
+      governance)
+        exec cargo run --quiet -p erf-pilot-observer -- governance "$@"
+        ;;
+      window-report)
+        exec cargo run --quiet -p erf-pilot-observer -- report "$@"
+        ;;
+      evidence)
+        exec cargo run --quiet -p erf-pilot-evidence -- "$@"
+        ;;
+      *)
+        die_usage "unsupported pilot command: ${action:-<missing>}"
+        ;;
+    esac
+    ;;
+  decision)
+    action="${1:-}"
+    shift || true
+    case "$action" in
+      evaluate)
+        exec cargo run --quiet -p erf-fast-decision -- evaluate "$@"
+        ;;
+      *)
+        die_usage "supported decision command is evaluate"
+        ;;
+    esac
+    ;;
+  center)
+    [ "${1:-}" = "check" ] || die_usage "supported center command is check"
     shift
-    [ $# -eq 1 ] || die_usage "pilot report requires OUTPUT_DIR"
-    exec "$repo_root/scripts/phase4-pilot-report.sh" "$1"
+    [ $# -eq 1 ] || die_usage "center check requires OUTPUT_DIR"
+    exec "$repo_root/scripts/ruleops-center-check.sh" "$1"
+    ;;
+  status)
+    action="${1:-}"
+    shift
+    case "$action" in
+      contract-check)
+        [ $# -eq 1 ] || die_usage "status contract-check requires OUTPUT_DIR"
+        exec "$repo_root/scripts/status-publication-check.sh" "$1"
+        ;;
+      deployment-check)
+        [ $# -eq 1 ] || die_usage "status deployment-check requires OUTPUT_DIR"
+        exec "$repo_root/scripts/status-adapter-deployment-check.sh" "$1"
+        ;;
+      *)
+        die_usage "supported status commands are contract-check and deployment-check"
+        ;;
+    esac
     ;;
   scan)
-    exec cargo run --quiet -p rf-cli -- scan "$@"
+    scan_repo_root=""
+    scan_args=("$@")
+    scan_index=0
+    while [ "$scan_index" -lt "$#" ]; do
+      case "${scan_args[$scan_index]}" in
+        --repo-root)
+          scan_index=$((scan_index + 1))
+          scan_repo_root="${scan_args[$scan_index]:-}"
+          ;;
+      esac
+      scan_index=$((scan_index + 1))
+    done
+    [ -n "$scan_repo_root" ] || die_usage "scan requires --repo-root before configuration preflight"
+    scan_config="$scan_repo_root/.ruleops/config.yaml"
+    export RULEOPS_RUNTIME_HOME="${RULEOPS_RUNTIME_HOME:-$repo_root}"
+    run_rf_cli scan --project-config "$scan_config" "$@"
     ;;
-  release|gate|feedback|exception)
-    die_usage "$area command is not enabled in the local V0.1 slice"
+  explain)
+    [ $# -ge 1 ] || die_usage "explain requires FINDING.json"
+    exec cargo run --quiet -p erf-thin-client -- explain "$@"
+    ;;
+  feedback)
+    action="${1:-}"
+    shift
+    case "$action" in
+      draft)
+        exec cargo run --quiet -p erf-thin-client -- feedback-draft "$@"
+        ;;
+      submit)
+        exec cargo run --quiet -p erf-thin-client -- feedback-submit "$@"
+        ;;
+      *)
+        die_usage "supported feedback commands are draft and submit"
+        ;;
+    esac
+    ;;
+  exception)
+    action="${1:-}"
+    shift
+    case "$action" in
+      request)
+        exec cargo run --quiet -p erf-thin-client -- exception-request "$@"
+        ;;
+      submit)
+        exec cargo run --quiet -p erf-thin-client -- exception-submit "$@"
+        ;;
+      *)
+        die_usage "supported exception commands are request and submit"
+        ;;
+    esac
+    ;;
+  submission)
+    action="${1:-}"
+    shift
+    case "$action" in
+      status)
+        exec cargo run --quiet -p erf-thin-client -- submission-status "$@"
+        ;;
+      *)
+        die_usage "supported submission commands are status"
+        ;;
+    esac
+    ;;
+  release|gate)
+    die_usage "$area command is not enabled in this thin client"
     ;;
   *)
     die_usage "unknown command area: $area"

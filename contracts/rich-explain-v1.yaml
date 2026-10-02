@@ -1,0 +1,62 @@
+apiVersion: rulefactory.io/v1
+kind: RichExplainContract
+metadata:
+  id: rich-explain-v1
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  authority: EXPLAIN_ONLY
+  disclosure: DIGEST_ONLY
+  sourceUpload: none
+  findingUpload: none
+  input:
+    finding: FindingView
+    ruleMetadata:
+      kind: RuleExplanationMetadata
+      schemaVersion: rule-explanation-metadata-v1
+      required: [apiVersion, kind, schemaVersion, ruleId, ruleVersion, severity, status, rationale, remediation, standardId, standardVersion, bindingDigest, digest]
+      unknownFields: reject
+      selfDigestRequired: true
+    authorityContext:
+      kind: AuthorityContext
+      required: [apiVersion, kind, gateDecision, authority, ruleId, bindingDigest, findingFingerprint]
+      unknownFields: reject
+      optionalFields: [proof]
+      authorityValues: [TRUSTED_CI, LOCAL_UNATTESTED]
+      trustedCiRequires: [proof, DSSESignature, AuthorityTrust, freshTrustMetadata]
+      proof:
+        required: [payloadType, payloadHex, keyId, signatureHex, role, issuedAtEpochSecs, expiresAtEpochSecs]
+        payloadType: application/vnd.erf.asset.v0
+        role: gate-signing
+      optional: true
+    assessment:
+      kind: FindingAssessmentView
+      required: [apiVersion, kind, baseline, exception]
+      unknownFields: reject
+      optional: true
+  output:
+    kind: RichExplanation
+    schemaVersion: rich-explanation-v1
+    authoritativeRequires: [metadataPresent, statusActive, ruleIdentityMatch, bindingDigestMatch, fingerprintMatch]
+    provisionalWhenMetadataAbsent: true
+    authorityLabels: [TRUSTED_CI, LOCAL_UNATTESTED, INCONCLUSIVE]
+    severity: [advisory, warning, blocking]
+    baseline: [NEW, HISTORICAL]
+    exception: [NOT_APPLICABLE, EXEMPTED]
+  refusal:
+    kind: RichExplanationRefusal
+    failClosed: true
+    reasons: [METADATA_MISSING, METADATA_EXPIRED, METADATA_REVOKED, DIGEST_MISMATCH, RULE_IDENTITY_MISMATCH]
+    nextStepRequired: true
+  exitCodes:
+    authoritativeOrProvisional: 0
+    refused: 3
+    inputInvalid: 2
+  boundaries:
+    canProduceGateDecision: false
+    canApproveException: false
+    canChangeTrustState: false
+    canRetry: false
+    canWriteScm: false
+    canUploadSource: false

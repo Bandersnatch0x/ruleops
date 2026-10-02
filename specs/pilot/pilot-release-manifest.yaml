@@ -1,0 +1,40 @@
+apiVersion: rulefactory.io/v1
+kind: PilotReleaseManifest
+metadata:
+  id: erf-java-shadow-mvp-v0
+  version: 0.1.0
+  owner: platform-engineering
+
+spec:
+  status: READY_FOR_SHADOW_WINDOW
+  releaseType: SHADOW_ONLY_MVP
+  authority: SHADOW
+  contract: specs/pilot/pilot-success-contract.yaml
+  observationPlan: specs/pilot/pilot-observation-plan.yaml
+  sampleManifest: specs/pilot/live-java-repositories.yaml
+  scope:
+    language: java
+    standardsInventory: 100
+    candidateRuleIntents: 20
+    repositories: 3
+  entrypoints:
+    preflight: scripts/pilot-delivery-check.sh OUT_DIR
+    localSimulation: scripts/pilot-local-simulation.sh OUT_DIR
+    syntheticShadow: scripts/phase4-shadow-pilot.sh OUT_DIR
+    liveShadow: scripts/pilot-live-observation.sh OUT_DIR
+    windowReport: rf pilot window-report OBSERVER_OPTIONS...
+  finalGate:
+    command: bash scripts/check.sh
+    required: true
+  quality:
+    currentOutcome: INCONCLUSIVE_UNTIL_FORMAL_WINDOW
+    requiredInputs:
+      - latency-baseline
+      - resource-baseline
+      - human-precision-recall-adjudication
+  safety:
+    disclosure: DIGEST_ONLY
+    sourceUpload: denied
+    repositoryWrites: denied
+    scmStatusPublication: denied
+    protectedBranchAuthority: denied

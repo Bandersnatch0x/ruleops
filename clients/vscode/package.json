@@ -1,0 +1,54 @@
+{
+  "name": "erf-thin-client",
+  "displayName": "ERF Thin Client",
+  "description": "Digest-only Finding 导航/解释/反馈草稿/例外申请的 IDE 薄客户端；不复制 Runtime/Factory/Server/Gate 权威。",
+  "version": "0.1.0",
+  "publisher": "ruleops",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "erf.showFinding", "title": "ERF: 显示 Finding", "category": "ERF" },
+      { "command": "erf.navigateToLocation", "title": "ERF: 跳转到 Finding 位置", "category": "ERF" },
+      { "command": "erf.explainFinding", "title": "ERF: 解释 Finding", "category": "ERF" },
+      { "command": "erf.draftFeedback", "title": "ERF: 起草反馈（PROPOSED）", "category": "ERF" },
+      { "command": "erf.requestException", "title": "ERF: 申请例外（REQUESTED）", "category": "ERF" },
+      { "command": "erf.submitFeedback", "title": "ERF: 提交反馈到 Server（RECEIVED_ONLY）", "category": "ERF" },
+      { "command": "erf.submitException", "title": "ERF: 提交例外到 Server（RECEIVED_ONLY）", "category": "ERF" },
+      { "command": "erf.submissionStatus", "title": "ERF: 查询提交状态", "category": "ERF" }
+    ],
+    "configuration": {
+      "title": "ERF Thin Client",
+      "properties": {
+        "erf.rfPath": {
+          "type": "string",
+          "default": "rf",
+          "description": "rf 启动器的路径；插件仅通过 rf 复用 Runner/Thin Client seam，不复制任何 Runtime 逻辑。"
+        },
+        "erf.serverEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "可选的 RuleOps Server endpoint（如 https://host:port）。为空时禁用提交动作；不自动发现。"
+        },
+        "erf.telemetryEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否允许 telemetry；默认关闭，隐私优先。"
+        },
+        "erf.requestTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "提交/状态查询的超时（毫秒）。"
+        }
+      }
+    }
+  }
+}

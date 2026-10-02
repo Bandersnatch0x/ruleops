@@ -1,0 +1,17 @@
+[package]
+name = "erf-pilot-evidence"
+version = "0.1.0"
+edition = "2021"
+description = "Digest-only PilotEvidencePackage and PilotAdjudication boundary"
+
+[dependencies]
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_pilot_evidence"
+path = "src/lib.rs"
+
+[[bin]]
+name = "erf-pilot-evidence"
+path = "src/main.rs"

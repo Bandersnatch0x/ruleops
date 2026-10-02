@@ -6,14 +6,19 @@ description = "Trusted CI coordinator from real runner scans through TrustedCont
 
 [dependencies]
 erf-bootstrap = { path = "../bootstrap" }
+erf-incremental-baseline = { path = "../incremental-baseline" }
 erf-conformance = { path = "../conformance" }
+erf-verification-worker = { path = "../verification-worker" }
 erf-packs = { path = "../packs" }
+erf-sandbox = { path = "../sandbox" }
 erf-status = { path = "../status" }
 erf-trust = { path = "../trust" }
+erf-trust-state = { path = "../trust-state" }
 erf-trusted-context = { path = "../trusted-context" }
 erf-unified-result = { path = "../unified-result" }
 rf-gate = { path = "../gate" }
 rf-runner = { path = "../rf-runner" }
+sha2 = "0.10"
 thiserror = "2"
 
 [lib]

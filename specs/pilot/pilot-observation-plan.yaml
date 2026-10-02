@@ -1,0 +1,46 @@
+apiVersion: rulefactory.io/v1
+kind: PilotObservationPlan
+metadata:
+  id: pilot-observation-plan-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  status: REGISTERED
+  contract: pilot-success-contract-v0
+  authority: SHADOW
+  window:
+    start: 2026-10-01T00:00:00Z
+    end: 2026-10-31T23:59:59Z
+    boundary: inclusive
+    timezone: UTC
+  sample:
+    manifest: specs/pilot/live-java-repositories.yaml
+    repositoryCount: 3
+    commitPolicy: default-branch-commit-only
+    replacement: denied
+  cadence:
+    policy: default-branch-change-or-daily-catchup
+    catchupTimezone: UTC
+    deduplication: repository-commit-rule-bundle
+  modes:
+    - id: LOCAL_SIMULATION
+      purpose: validate-observation-mechanics
+      source: local-clone-with-synthetic-commits
+      eligibleForLiveOutcome: false
+    - id: SYNTHETIC_SHADOW
+      purpose: qualify-runner-to-trusted-ci-handoff
+      source: internal-controlled-fixture-repositories
+      eligibleForLiveOutcome: false
+    - id: LIVE_SHADOW
+      purpose: collect-registered-pilot-evidence
+      source: read-only-public-default-branch
+      eligibleForLiveOutcome: true
+  evidence:
+    journal: .scratch/pilot-observation/metrics.journal
+    reports: .scratch/pilot-observation/reports
+    disclosure: DIGEST_ONLY
+    sourceUpload: denied
+    repositoryWrites: denied
+    scmStatusPublication: denied
+    protectedBranchAuthority: denied

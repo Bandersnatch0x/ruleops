@@ -5,9 +5,17 @@ edition = "2021"
 autobins = false
 
 [dependencies]
+erf-affected-scope = { path = "../affected-scope" }
+erf-bundle-cache = { path = "../bundle-cache" }
+erf-bundle-delivery = { path = "../bundle-delivery" }
 erf-contracts = { path = "../../contracts/rust" }
+erf-incremental-baseline = { path = "../incremental-baseline" }
 erf-host-client = { path = "../host-client" }
+erf-packs = { path = "../packs" }
+erf-rule-bundle = { path = "../rule-bundle" }
 erf-resolver-client = { path = "../resolver-client" }
+erf-scan-plan = { path = "../scan-plan" }
+erf-git-scope = { path = "../git-scope" }
 rf-gate = { path = "../gate" }
 erf-trust = { path = "../trust" }
 erf-sandbox = { path = "../sandbox" }

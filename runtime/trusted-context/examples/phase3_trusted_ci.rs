@@ -1,10 +1,11 @@
 use ed25519_dalek::{Signer, SigningKey};
 use erf_bootstrap::{RunnerBootstrap, RunnerMeasurement, RunnerRelease, LINUX_AMD64, RUNNER_RELEASE_ASSET_TYPE, RUNNER_RELEASE_SIGNING_ROLE};
-use erf_conformance::{run_acceptance, ConformanceEvidence, SuiteConfig, SuiteReport, CONFORMANCE_SIGNING_ROLE, TRUSTED_PLATFORM};
+use erf_conformance::{run_acceptance, ConformanceEvidence, SuiteConfig, SuiteReport, VERIFICATION_SIGNING_ROLE, TRUSTED_PLATFORM};
 use erf_packs::{OciPackRelease, OciPackVerifier, PackMeasurement, BACKEND_RUNTIME_PACK_ASSET_TYPE, LINUX_AMD64 as PACK_LINUX_AMD64, RUNTIME_PACK_SIGNING_ROLE, WORKSPACE_RESOLVER_PACK_ASSET_TYPE};
 use erf_status::{PublishOutcome, PublishedState, StatusPublisher, StatusPublisherContext, StatusPublishError};
 use erf_trust::{ArtifactStatement, SignedAsset, TrustMetadata, TrustStore, DSSE_PAYLOAD_TYPE};
-use erf_trusted_context::{TrustedContextError, TrustedContextExpectations, TrustedContextInput, TrustedContextVerifier, EXECUTION_LOCK_SIGNING_ROLE, GATE_SIGNING_ROLE};
+use erf_trusted_context::{GateInputIdentity, TrustedContextError, TrustedContextExpectations, TrustedContextInput, TrustedContextVerifier, EXECUTION_LOCK_SIGNING_ROLE, GATE_SIGNING_ROLE};
+use erf_verification_worker::sign_verified_evidence;
 use rf_gate::{Completeness, GateAttestation, GateDecision};
 use rf_runner::{ExecutionLock, SignedExecutionLock};
 use sha2::{Digest, Sha256};
@@ -158,6 +159,7 @@ fn build_fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
 
     let mut suite_config = SuiteConfig::default();
     suite_config.host_program = env::var("ERF_FAKE_HOST").unwrap_or_else(|_| "target/debug/erf-fake-host".into());
+    suite_config.resolver_program = env::var("ERF_FAKE_RESOLVER").unwrap_or_else(|_| "target/debug/erf-fake-resolver".into());
     suite_config.cancel_probe_delay_ms = 20;
     let report = run_acceptance(&suite_config);
     if !report.all_passed() {
@@ -166,8 +168,8 @@ fn build_fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
 
     let gate_key = SigningKey::from_bytes(&[51; 32]);
     let evidence_key = SigningKey::from_bytes(&[52; 32]);
-    let evidence = ConformanceEvidence::from_report(&report, hex_digest(&runner.artifact_digest), hex_digest(&backend.manifest_digest), hex_digest(&resolver.manifest_digest), SANDBOX_PROVIDER, "e".repeat(64), TRUSTED_PLATFORM)?;
-    let signed_evidence = evidence.sign_with("evidence-key", |bytes| evidence_key.sign(bytes).to_bytes().to_vec())?;
+    let evidence = ConformanceEvidence::from_report(&report, hex_digest(&report.suite_digest()), "b".repeat(64), hex_digest(&runner.artifact_digest), hex_digest(&backend.manifest_digest), hex_digest(&resolver.manifest_digest), SANDBOX_PROVIDER, "e".repeat(64), SANDBOX_PROVIDER, "1".repeat(64), TRUSTED_PLATFORM)?;
+    let signed_evidence = sign_verified_evidence(&evidence, "evidence-key", |bytes| evidence_key.sign(bytes).to_bytes().to_vec())?;
 
     let mut lock = ExecutionLock {
         rule_bundle_digest: "a".repeat(64),
@@ -176,6 +178,8 @@ fn build_fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
         resolver_pack_digest: hex_digest(&resolver.manifest_digest),
         sandbox_provider_id: SANDBOX_PROVIDER.into(),
         sandbox_policy_digest: "e".repeat(64),
+        resolver_sandbox_provider_id: SANDBOX_PROVIDER.into(),
+        resolver_sandbox_policy_digest: "1".repeat(64),
         conformance_suite_digest: hex_digest(&report.suite_digest()),
         resolver_id: RESOLVER_ID.into(),
         resolver_version: RESOLVER_VERSION.into(),
@@ -200,7 +204,7 @@ fn build_fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
     let signed_gate = sign_gate(&gate, &gate_key);
     let mut trust_store = TrustStore::default();
     trust_store.insert_key("evidence-key", evidence_key.verifying_key())?;
-    trust_store.authorize_role(CONFORMANCE_SIGNING_ROLE, "evidence-key")?;
+    trust_store.authorize_role(VERIFICATION_SIGNING_ROLE, "evidence-key")?;
     trust_store.insert_key("gate-key", gate_key.verifying_key())?;
     trust_store.authorize_role(GATE_SIGNING_ROLE, "gate-key")?;
 
@@ -249,8 +253,16 @@ fn gate_for(lock: &ExecutionLock, decision: GateDecision, complete: bool, issued
         execution_lock_digest: lock.lock_digest.clone(),
         runner_release_digest: lock.runner_release_digest.clone(),
         workspace_descriptor_digest: "1".repeat(64),
+        baseline_digest: "0".repeat(64),
+        workspace_attestation_digest: "1".repeat(64),
+        execution_evidence_digest: "2".repeat(64),
         sandbox_provider_id: lock.sandbox_provider_id.clone(),
         sandbox_policy_digest: lock.sandbox_policy_digest.clone(),
+        workload_issuer: "https://issuer.example".into(),
+        workload_audience: "erf-gate".into(),
+        workflow: "ci".into(),
+        run_identity: "run-1".into(),
+        environment_identity: "linux/amd64".into(),
         semantic_result_digest: [9; 32],
         completeness: if complete { Completeness { planned: 1, accounted: 1, failed: 0, missing: 0, observation_errors: 0, complete: true } } else { Completeness { planned: 1, accounted: 0, failed: 0, missing: 1, observation_errors: 0, complete: false } },
         decision,
@@ -275,6 +287,16 @@ fn input<'a>(fixture: &'a Fixture, lock: Option<&'a SignedExecutionLock>, runner
         conformance_metadata,
         gate_attestation: gate.unwrap_or(&fixture.gate),
         signed_gate_attestation: &fixture.signed_gate,
+        gate_input: GateInputIdentity {
+            baseline_digest: Box::leak("0".repeat(64).into_boxed_str()),
+            workspace_attestation_digest: Box::leak("1".repeat(64).into_boxed_str()),
+            execution_evidence_digest: Box::leak("2".repeat(64).into_boxed_str()),
+            workload_issuer: "https://issuer.example",
+            workload_audience: "erf-gate",
+            workflow: "ci",
+            run_identity: "run-1",
+            environment_identity: "linux/amd64",
+        },
         gate_metadata,
         trust_store: &fixture.trust_store,
         now_epoch_secs: 150,

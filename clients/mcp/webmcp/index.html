@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERF · 本地只读查看</title>
+<style>
+:root {
+  color-scheme: light;
+  --primary: #175c50; --primary-hover: #114b42; --primary-pressed: #0b3932;
+  --on-primary: #ffffff; --surface: #ffffff; --canvas: #f4f6f5;
+  --surface-muted: #edf2f0; --on-surface: #172b26; --muted: #4d625b;
+  --border: #82968f; --divider: #d4dfda; --focus: #925100;
+  --error: #a12622; --error-surface: #fff1ef;
+  --z-base: 0; --z-focus: 1; --z-skip: 2;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px; line-height: 1.625; color: var(--on-surface); background: var(--canvas);
+}
+* { box-sizing: border-box; }
+body { max-width: 76ch; margin: 0 auto; padding: 32px 16px 48px; overflow-wrap: anywhere; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 24px; line-height: 1.25; letter-spacing: -.025em; }
+h2 { font-size: 24px; line-height: 1.5; }
+h3 { font-size: 18px; }
+p + p { margin-top: 8px; }
+a { color: var(--primary); }
+code, pre, .data { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; }
+code { font-size: 14px; }
+.muted, .hint { color: var(--muted); }
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; font-size: 14px; font-weight: 600; }
+.brand svg { width: 32px; height: 32px; color: var(--primary); flex: none; }
+header { padding-bottom: 24px; }
+.intro { margin-top: 12px; color: var(--muted); }
+.boundary { padding: 16px; background: var(--surface-muted); border: 1px solid var(--divider); border-radius: 8px; margin-top: 24px; font-size: 14px; }
+#webmcp { display: inline-block; font-size: 14px; font-weight: 600; border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-top: 16px; background: var(--surface); }
+section { position: relative; z-index: var(--z-base); background: var(--surface); border: 1px solid var(--divider); border-radius: 12px; padding: 24px 16px; }
+section + section { margin-top: 24px; }
+.section-note { margin-top: 4px; color: var(--muted); font-size: 14px; }
+form { display: grid; gap: 24px; margin-top: 24px; }
+.field, #fields { display: grid; gap: 8px; min-width: 0; }
+#fields { gap: 16px; }
+label { font-weight: 600; }
+label span { color: var(--muted); font-size: 14px; font-weight: 400; }
+input, select, button { width: 100%; min-width: 0; min-height: 48px; font: inherit; border-radius: 6px; border: 1px solid var(--border); padding: 8px 12px; }
+input, select { color: var(--on-surface); background: var(--surface); }
+input:hover, select:hover { border-color: var(--primary); }
+input[aria-invalid="true"] { border-color: var(--error); background: var(--error-surface); }
+.hint, .field-error { font-size: 14px; }
+.field-error, .error { color: var(--error); }
+.field-error:empty { display: none; }
+button { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; cursor: pointer; }
+button:hover:not(:disabled) { background: var(--primary-hover); }
+button:active:not(:disabled) { background: var(--primary-pressed); }
+button:disabled, select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; position: relative; z-index: var(--z-focus); }
+.skip-link { position: absolute; left: 16px; top: 8px; padding: 8px 16px; background: var(--surface); z-index: var(--z-skip); transform: translateY(-160%); }
+.skip-link:focus { transform: translateY(0); position: absolute; z-index: var(--z-skip); }
+#status { min-height: 3.25em; margin-top: 16px; font-size: 14px; white-space: pre-wrap; }
+progress { width: 100%; height: 8px; accent-color: var(--primary); display: block; }
+progress[hidden] { display: block; visibility: hidden; }
+#summary { margin-top: 24px; }
+.empty { padding: 24px 16px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; }
+.empty p:first-child { font-size: 18px; font-weight: 600; }
+.result-meta { padding-bottom: 16px; font-size: 14px; color: var(--muted); }
+details { border-top: 1px solid var(--divider); margin-top: 24px; }
+summary { padding: 16px 0; min-height: 48px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--primary); }
+summary:hover { color: var(--primary-hover); text-decoration: underline; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; margin: 0; font-size: 14px; background: var(--surface-muted); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; }
+caption { text-align: left; font-weight: 600; font-size: 16px; padding: 8px 0 16px; }
+th, td { text-align: left; vertical-align: top; padding: 12px 8px; border-bottom: 1px solid var(--divider); overflow-wrap: anywhere; }
+th { background: var(--surface-muted); font-weight: 600; }
+td:first-child, td:nth-child(2) { font-family: ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; }
+dt { font-size: 14px; color: var(--muted); margin-top: 16px; }
+dd { margin: 4px 0 0; white-space: pre-wrap; }
+footer { font-size: 12px; color: var(--muted); margin-top: 24px; }
+@media (min-width: 640px) { body { padding-top: 48px; } h1 { font-size: 32px; } section { padding: 32px; } button { width: auto; justify-self: start; min-width: 176px; } }
+@media (prefers-reduced-motion: no-preference) { button { transition: opacity 180ms ease-out; } button:active { transition-timing-function: ease-in; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">跳到工具与结果</a>
+<header>
+  <div class="brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="6" stroke="currentColor" stroke-width="2"/><path d="M10 10h12M10 16h8M10 22h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Enterprise Rule Factory</span></div>
+  <h1>本地结果，清晰可查。</h1>
+  <p class="intro">查看环境诊断、配置与扫描结果。所有判定均来自 CLI，此页只负责呈现。</p>
+  <p id="webmcp" role="status">正在检测 WebMCP…</p>
+  <div class="boundary"><strong>只读 / 仅本地 / digest-only</strong><p>不产生 Gate/SCM 权威。doctor 诊断成功不代表 Gate PASS。</p></div>
+</header>
+<main id="main" tabindex="-1">
+  <section aria-labelledby="tool-heading">
+    <h2 id="tool-heading">调用工具</h2>
+    <p class="section-note">选择只读工具，填写参数后查看 CLI 原始结果。</p>
+    <form id="form" novalidate>
+      <div class="field"><label for="tool">只读工具</label><select id="tool" aria-describedby="description" disabled></select><p id="description" class="hint"></p></div>
+      <div id="fields"></div>
+      <button id="run" type="submit" disabled>调用并查看</button>
+    </form>
+    <p id="status" role="status" aria-live="polite" aria-atomic="true">正在加载工具…</p>
+    <progress id="progress" aria-label="正在等待 CLI 返回结果" hidden></progress>
+  </section>
+  <section id="results" aria-labelledby="result-heading" aria-busy="false">
+    <h2 id="result-heading">调用结果</h2>
+    <p class="section-note">先读摘要，需要核对时展开原始 JSON。</p>
+    <div id="summary"><div class="empty"><p>等待首次调用</p><p class="muted">可先选择 doctor，查看本地环境与配置诊断。</p></div></div>
+    <details><summary>原始 JSON（含 isError 与退出码）</summary><pre id="json">暂无结果</pre></details>
+  </section>
+</main>
+<footer>ERF 本地只读查看器 · 不发布、不写回，不替代 Gate 或 SCM 决策。</footer>
+<script src="/app.js"></script>
+</body>
+</html>

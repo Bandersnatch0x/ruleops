@@ -18,6 +18,7 @@
     <module>control-plane/factory</module>
     <module>control-plane/verification</module>
     <module>control-plane/ontology</module>
+    <module>control-plane/server</module>
   </modules>
 
   <properties>

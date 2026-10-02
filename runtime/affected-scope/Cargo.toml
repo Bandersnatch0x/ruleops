@@ -1,0 +1,14 @@
+[package]
+name = "erf-affected-scope"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic Java affected-scope closure over Git ChangedSet"
+
+[dependencies]
+erf-git-scope = { path = "../git-scope" }
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_affected_scope"
+path = "src/lib.rs"

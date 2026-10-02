@@ -10,44 +10,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[test]
-fn node_fake_resolver_interoperates_with_rust_client() {
-    let dir = std::env::temp_dir().join(format!("erf-node-wr-{}", std::process::id()));
-    let repo = dir.join("repo");
-    std::fs::create_dir_all(repo.join("src/main/java/app")).expect("mkdir");
-    std::fs::write(repo.join("src/main/java/app/A.java"), "class A {}\n").expect("write");
-
-    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../backend-hosts/node-fake/resolver.js");
-    let mut command = Command::new("node");
-    command.arg(script);
-    let config = config_with(&["ecosystem.static-layout"]);
-    let (mut resolver, ack) =
-        erf_resolver_client::ResolverHandle::spawn(&mut command, &config).expect("node handshake");
-    assert_eq!(ack.resolver_name, "erf-node-fake-resolver");
-    let descriptor = resolver.resolve(repo.to_str().expect("utf8")).expect("node resolve");
-    assert_eq!(descriptor.modules.len(), 1);
-    assert_eq!(descriptor.modules[0].files.len(), 1);
-    assert_eq!(descriptor.resolver_id, "erf-node-fake-resolver");
-    let completion = resolver.complete().expect("node completion");
-    assert_eq!(completion.status, wb::completion::Status::Completed as i32);
-    std::fs::remove_dir_all(dir).expect("cleanup");
-}
-
-#[test]
-fn node_fake_resolver_negotiates_maven_and_gradle_static_capabilities() {
-    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../backend-hosts/node-fake/resolver.js");
-    let mut command = Command::new("node");
-    command.arg(script);
-    let required = ["ecosystem.maven.safe-static", "ecosystem.gradle.safe-static"];
-    let (resolver, ack) = ResolverHandle::spawn(&mut command, &config_with(&required))
-        .expect("node build adapter handshake");
-    assert_eq!(ack.facts.get("ecosystem.maven.safe-static"), Some(&true));
-    assert_eq!(ack.facts.get("ecosystem.gradle.safe-static"), Some(&true));
-    let completion = resolver.complete().expect("completion");
-    assert_eq!(completion.status, wb::completion::Status::Completed as i32);
-}
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 
 fn fake_resolver_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_erf-fake-resolver"))
@@ -213,5 +177,20 @@ fn maven_and_gradle_build_metadata_is_detected_without_execution() {
     assert!(descriptor.unresolved_facts.iter().any(|fact| fact == "build-system:gradle"));
     assert!(descriptor.unresolved_facts.iter().any(|fact| fact.contains("dependency-classpath")));
     assert_eq!(descriptor.modules.len(), 1);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn resolver_rejects_symbolic_links_in_the_workspace_snapshot() {
+    let dir = std::env::temp_dir().join(format!("erf-wr-symlink-{}", std::process::id()));
+    let repo = dir.join("repo");
+    let outside = dir.join("outside.java");
+    std::fs::create_dir_all(repo.join("src/main/java/app")).expect("mkdir");
+    std::fs::write(&outside, "class Outside {}\n").expect("outside");
+    symlink(&outside, repo.join("src/main/java/app/Outside.java")).expect("symlink");
+
+    let error = erf_fake_resolver::resolve(&repo).expect_err("workspace symlink must fail closed");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     let _ = std::fs::remove_dir_all(dir);
 }

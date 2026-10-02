@@ -1,0 +1,13 @@
+[package]
+name = "erf-git-scope"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic Git ChangedSet resolution for incremental scan planning"
+
+[dependencies]
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_git_scope"
+path = "src/lib.rs"

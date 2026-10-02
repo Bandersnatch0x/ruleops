@@ -56,7 +56,15 @@ fn main() {
                 let _ = send(&mut writer, &wb::WrEnvelope { correlation_id, payload: Some(wb::wr_envelope::Payload::HelloAck(wb::HelloAck { protocol_major: 0, protocol_minor: 1, resolver_name: kind.resolver_id().into(), resolver_version: env!("CARGO_PKG_VERSION").into(), facts: available, accepted_limits })) });
             }
             Some(wb::wr_envelope::Payload::Resolve(request)) if acknowledged => {
-                match resolve(std::path::Path::new(&request.repo_root), kind) {
+                let requested_root = std::path::Path::new(&request.repo_root);
+                let mounted_root = if requested_root == std::path::Path::new("/workspace") {
+                    std::env::var_os("ERF_REPO_ROOT")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|| requested_root.to_path_buf())
+                } else {
+                    requested_root.to_path_buf()
+                };
+                match resolve(&mounted_root, kind) {
                     Ok(descriptor) => { let _ = send(&mut writer, &wb::WrEnvelope { correlation_id, payload: Some(wb::wr_envelope::Payload::ResolveResponse(wb::ResolveResponse { workspace_descriptor: Some(descriptor) })) }); }
                     Err(error) => { let _ = send(&mut writer, &wb::WrEnvelope { correlation_id, payload: Some(wb::wr_envelope::Payload::Error(wb::ProtocolError { code: wb::protocol_error::Code::RepoRootUnreadable as i32, detail: error.to_string() })) }); }
                 }

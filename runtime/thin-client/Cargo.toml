@@ -1,0 +1,23 @@
+[package]
+name = "erf-thin-client"
+version = "0.1.0"
+edition = "2021"
+description = "Digest-only CLI and IDE client request boundary"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+erf-trust = { path = "../trust" }
+
+[lib]
+name = "erf_thin_client"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rf-client"
+path = "src/main.rs"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }

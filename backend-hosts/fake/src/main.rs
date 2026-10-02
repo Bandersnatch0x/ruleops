@@ -10,6 +10,7 @@
 //! - `FAKE_BAD_CORRELATION=1`  — answers Hello with a mismatched correlation id
 //! - `FAKE_CRASH_ON_EXECUTE=1` — exits during execute without Completion
 //! - `FAKE_FAIL_UNIT=<id>` — emits a failed UnitStatus for one unit
+//! - `FAKE_MAX_FRAME_BYTES=<n>` — receiver frame cap (default: 16 MiB)
 //!
 //! Deterministic cancellation: with `FAKE_DELAY_MS` set, the fake sleeps
 //! before each unit's first event and then checks for a pending CancelRequest;
@@ -21,8 +22,8 @@
 //! between events to detect cooperative cancellation.
 
 use erf_contracts::backend::v0 as pb;
-use erf_fake_host::canned_capabilities;
-use erf_framing::{FrameReader, FrameWriter};
+use erf_fake_host::capabilities_for_runtime_backend;
+use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
 use std::io::Write;
 use std::process::exit;
@@ -46,12 +47,15 @@ fn main() {
     let bad_correlation = std::env::var("FAKE_BAD_CORRELATION").is_ok();
     let crash_on_execute = std::env::var("FAKE_CRASH_ON_EXECUTE").is_ok();
     let fail_unit = std::env::var("FAKE_FAIL_UNIT").ok();
+    let max_frame_bytes = std::env::var("FAKE_MAX_FRAME_BYTES")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(erf_framing::DEFAULT_MAX_FRAME_BYTES);
 
     let (tx, rx) = channel::<Inbound>();
     let _reader = std::thread::spawn(move || {
         let stdin = std::io::stdin();
-        let mut reader =
-            FrameReader::new(stdin.lock(), erf_framing::DEFAULT_MAX_FRAME_BYTES);
+        let mut reader = FrameReader::new(stdin.lock(), max_frame_bytes);
         loop {
             match reader.read_frame() {
                 Ok(bytes) => {
@@ -59,8 +63,12 @@ fn main() {
                         break;
                     }
                 }
-                Err(_) => {
+                Err(FrameError::Eof) => {
                     let _ = tx.send(Inbound::Eof);
+                    break;
+                }
+                Err(error) => {
+                    let _ = tx.send(Inbound::FramingError(error));
                     break;
                 }
             }
@@ -97,6 +105,17 @@ fn main() {
                     return;
                 }
             }
+            Ok(Inbound::FramingError(error)) => {
+                let code = match &error {
+                    FrameError::Oversized { .. } => pb::protocol_error::Code::OversizedFrame,
+                    FrameError::UnexpectedEof { .. }
+                    | FrameError::MalformedProtobuf(_)
+                    | FrameError::Eof => pb::protocol_error::Code::MalformedFrame,
+                    FrameError::Io(_) => pb::protocol_error::Code::Internal,
+                };
+                let _ = session.fail(code, error.to_string());
+                exit(1);
+            }
             Ok(Inbound::Eof) | Err(RecvError) => {
                 // stdin half-closed by the runtime: normal session end.
                 let total = session.units_reported_total;
@@ -110,6 +129,7 @@ fn main() {
 enum Inbound {
     Frame(Vec<u8>),
     Eof,
+    FramingError(FrameError),
 }
 
 struct Session<'a> {
@@ -169,7 +189,7 @@ impl<'a> Session<'a> {
                     correlation_id: correlation,
                     payload: Some(pb::host_envelope::Payload::DescribeResponse(
                         pb::DescribeResponse {
-                            capabilities: Some(canned_capabilities()),
+                            capabilities: Some(capabilities_for_runtime_backend()),
                         },
                     )),
                 })
@@ -231,7 +251,7 @@ impl<'a> Session<'a> {
                 ),
             );
         }
-        let facts = &canned_capabilities().facts;
+        let facts = &capabilities_for_runtime_backend().facts;
         let missing: Vec<String> = hello
             .required_capabilities
             .iter()
@@ -254,7 +274,7 @@ impl<'a> Session<'a> {
                 protocol_minor: 1,
                 host_name: "erf-fake-host".into(),
                 host_version: env!("CARGO_PKG_VERSION").into(),
-                capabilities: Some(canned_capabilities()),
+                capabilities: Some(capabilities_for_runtime_backend()),
                 accepted_limits: hello.limits,
             })),
         })
@@ -375,6 +395,17 @@ impl<'a> Session<'a> {
                         );
                         return false;
                     }
+                }
+                Ok(Inbound::FramingError(error)) => {
+                    let code = match &error {
+                        FrameError::Oversized { .. } => pb::protocol_error::Code::OversizedFrame,
+                        FrameError::UnexpectedEof { .. }
+                        | FrameError::MalformedProtobuf(_)
+                        | FrameError::Eof => pb::protocol_error::Code::MalformedFrame,
+                        FrameError::Io(_) => pb::protocol_error::Code::Internal,
+                    };
+                    let _ = self.fail(code, error.to_string());
+                    return false;
                 }
                 Ok(Inbound::Eof) | Err(TryRecvError::Disconnected) => return false,
                 Err(TryRecvError::Empty) => return false,

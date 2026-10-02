@@ -1,0 +1,65 @@
+apiVersion: rulefactory.io/v1
+kind: StatusPublicationContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Define the credential-free publication artifact emitted after an independent
+  Status Publisher verifies a GateAttestation; this contract does not call an SCM.
+
+publication:
+  schemaVersion: status-publication-v1
+  required:
+    - apiVersion
+    - kind
+    - schemaVersion
+    - status
+    - repository
+    - commit
+    - policyDigest
+    - attestationSubject
+    - decision
+    - state
+    - runSequence
+    - issuedAtEpochSecs
+    - expiresAtEpochSecs
+    - publicationDigest
+    - externalAdapterRequired
+    - scmWritten
+  status: READY_FOR_ADAPTER
+  digest: sha256(canonical-content-without-publicationDigest)
+  immutable: true
+
+decisionMapping:
+  PASS:
+    state: success
+  FAIL:
+    state: failure
+  INCONCLUSIVE:
+    state: action-required
+  neutral: forbidden
+
+identity:
+  key:
+    - repository
+    - commit
+    - policyDigest
+    - attestationSubject
+  runSequenceMonotonic: true
+  sameDigestAndSequence: idempotent
+  oldSequence: reject
+  crossCommit: reject
+
+freshness:
+  signedGateAttestationRequired: true
+  issuedAtBeforeExpiresAt: true
+  expiredOrNotYetValid: reject
+  olderIssuedAtForNewSequence: reject
+
+adapterBoundary:
+  externalAdapterRequired: true
+  scmCredentialsInArtifact: false
+  scmWritten: false
+  runnerMayWriteScm: false
+  thinClientMayWriteScm: false
+  productionConnector: deploymentBoundary

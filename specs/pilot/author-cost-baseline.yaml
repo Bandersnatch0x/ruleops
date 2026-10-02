@@ -1,0 +1,82 @@
+apiVersion: rulefactory.io/v1
+kind: AuthorCostBaseline
+metadata:
+  id: author-cost-baseline-v0
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  status: INCONCLUSIVE
+  authority: SHADOW
+  metric:
+    id: author-active-time
+    unit: minutes
+    baselinePath: manual
+    comparisonPath: template
+    definition: >-
+      Human active time from receiving the frozen RuleIntent to producing an
+      equivalent validated rule artifact and its required fixtures. Machine
+      wait time and non-scoped interruptions are not author-active-time.
+  method:
+    design: paired-within-rule
+    frozenInput: >-
+      The same RuleIntent, examples, source scope, severity and validation
+      boundary must be used in both paths.
+    manualPath:
+      startEvent: author-receives-frozen-rule-intent
+      endEvent: hand-written-rule-artifact-and-fixtures-pass-validation
+      record: activeMinutes-and-evidence-reference
+    templatePath:
+      startEvent: author-receives-frozen-rule-intent
+      endEvent: template-generated-candidate-and-fixtures-pass-validation
+      record: activeMinutes-machineElapsedSeconds-and-evidence-reference
+    timingRule: >-
+      Record active minutes for the author only; record compiler or verifier
+      elapsed time separately and never substitute it for author-active-time.
+    calculations:
+      perRuleDeltaMinutes: manualActiveMinutes-minus-templateActiveMinutes
+      perRuleRelativeReductionPercent: >-
+        (manualActiveMinutes-templateActiveMinutes) /
+        manualActiveMinutes * 100
+      summaryMedianReductionPercent: >-
+        (medianManualActiveMinutes-medianTemplateActiveMinutes) /
+        medianManualActiveMinutes * 100
+    runMetadata: >-
+      A measured record must identify the run and author, record UTC start and
+      completion times, preserve path order, and include measurement notes.
+    missingRunMetadata: INCONCLUSIVE
+    missingData: INCONCLUSIVE
+    threshold:
+      contract: specs/pilot/pilot-success-contract.yaml
+      rule: median-template-active-time-at-most-80-percent-of-median-manual-active-time
+      doNotRetuneAfterMeasurement: true
+  sample:
+    selection: >-
+      Three fixed Java RuleIntents, one per selected Phase 0 template, measured
+      with the same authoring and validation boundary.
+    ruleCount: 3
+    rules:
+      - id: corp.java.no-system-exit
+        standard: SEC-JAVA-017
+        scenario: direct-system-exit
+        targetKind: method-call
+        template: SymbolRule
+        intent: specs/rule-intent/corp.java.no-system-exit.yaml
+      - id: corp.java.no-clone-method
+        standard: SEC-JAVA-024
+        scenario: no-clone-method
+        targetKind: structural-node
+        template: StructuralRule
+        intent: specs/rule-intent/corp.java.no-clone-method.yaml
+      - id: corp.java.avoid-duplicate-literals
+        standard: SEC-JAVA-018
+        scenario: avoid-duplicate-literals
+        targetKind: existing-rule
+        template: ExistingRule
+        intent: specs/rule-intent/corp.java.avoid-duplicate-literals.yaml
+  boundaries:
+    authority: SHADOW
+    sourceUpload: none
+    scmMutation: none
+    missingDataBehavior: no-data-or-invalid-data-is-not-a-pass
+    humanAdjudication: HUMAN_INPUT_REQUIRED

@@ -91,6 +91,7 @@ fn java_host_negotiates_describes_and_executes_pmd() {
             unit_id: "corp.java.no-system-exit::A.java".into(),
             language: "java".into(),
             files: vec!["src/main/java/A.java".into(), "src/main/java/B.java".into()],
+            ..Default::default()
         }])
         .expect("plan");
     assert_eq!(plan.planned.len(), 1);
@@ -169,6 +170,7 @@ fn java_host_negotiates_and_executes_spotbugs_bytecode() {
         unit_id: "spotbugs.dm-exit::Bad.class".into(),
         language: "java".into(),
         files: vec!["target/classes/Bad.class".into()],
+        ..Default::default()
     }])
     .expect("plan");
     let mut stream = host
@@ -239,11 +241,13 @@ fn java_host_cooperative_cancel_accounts_units() {
             unit_id: "u1".into(),
             language: "java".into(),
             files: vec!["src/main/java/A.java".into()],
+            ..Default::default()
         },
         pb::AnalysisUnit {
             unit_id: "u2".into(),
             language: "java".into(),
             files: vec!["src/main/java/B.java".into()],
+            ..Default::default()
         },
     ])
     .expect("plan");

@@ -20,7 +20,7 @@ public final class JavaHostMain {
                 System.getenv().getOrDefault("ERF_SUPPORTED_MAJOR", "0"));
         long maxFrameBytes = Long.parseLong(
                 System.getenv().getOrDefault("ERF_MAX_FRAME_BYTES", "16777216"));
-        long delayMs = Long.parseLong(
+        Long.parseLong(
                 System.getenv().getOrDefault("ERF_DELAY_MS", "0"));
 
         Framing framing = new Framing(System.in, System.out, maxFrameBytes);
@@ -37,7 +37,7 @@ public final class JavaHostMain {
         } else {
             throw new IllegalArgumentException("unsupported ERF_BACKEND: " + backend);
         }
-        JavaBackendHost host = new JavaBackendHost(framing, supportedMajor, adapter, delayMs);
+        JavaBackendHost host = new JavaBackendHost(framing, supportedMajor, adapter);
 
         Thread reader = new Thread(host::readLoop, "erf-host-reader");
         reader.setDaemon(true);

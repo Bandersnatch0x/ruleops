@@ -1,0 +1,80 @@
+apiVersion: rulefactory.io/v1
+kind: StatusAdapterDeploymentContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Freeze the minimum deployment descriptor and receipt semantics for a future
+  external SCM Status Adapter. This contract contains no secret material and
+  does not perform a network call.
+
+deployment:
+  schemaVersion: status-adapter-deployment-v1
+  kind: StatusAdapterDeployment
+  required:
+    - apiVersion
+    - kind
+    - schemaVersion
+    - status
+    - provider
+    - endpoint
+    - credentialRef
+    - permissionScope
+    - publicationDigest
+    - requestId
+    - idempotencyKey
+    - externalConnectorRequired
+    - scmWritten
+    - deploymentDigest
+  status: READY_FOR_EXTERNAL_CONNECTOR
+  digest: sha256(canonical-content-without-deploymentDigest)
+  immutable: true
+
+target:
+  provider: lower-case-provider-identifier
+  endpoint:
+    scheme: https
+    credentialsInUrl: false
+    query: forbidden
+    fragment: forbidden
+  credentialRef:
+    form: secretref://opaque/path
+    secretBytes: forbidden
+    privateKey: forbidden
+    tokenValue: forbidden
+  permissionScope:
+    exact: [status:write]
+    broadRepositoryAdmin: forbidden
+
+publicationBinding:
+  source: StatusPublication
+  publicationDigestOnly: true
+  publicationMustBeFresh: true
+  repositoryCommitPolicySubjectBound: true
+  oldSequence: reject
+  crossTarget: reject
+
+delivery:
+  requestIdentity:
+    - requestId
+    - idempotencyKey
+    - deploymentDigest
+  outcomes:
+    accepted: ACCEPTED
+    replay: IDEMPOTENT
+    validationOrAuthorityFailure: REJECTED
+    transportOrAvailabilityUnknown: UNKNOWN
+  receipt:
+    status: RECEIVED_ONLY
+    scmWritten: false
+    sourceOrFullFinding: forbidden
+    receiptDigest: sha256(canonical-content-without-receiptDigest)
+  retries: caller-governed
+  silentRetry: forbidden
+
+deploymentBoundary:
+  externalConnectorRequired: true
+  localRuntimeNetworkCall: forbidden
+  scmCredentialsInArtifact: false
+  productionTlsAndSecretStore: external-deployment-responsibility
+  protectedBranchAuthority: separate-governance-decision

@@ -47,14 +47,12 @@ final class JavaBackendHost {
     private final BackendAdapter adapter;
     private final Map<String, AnalysisUnit> plannedUnits =
             new HashMap<>();
-    private final long delayMs;
     private long unitsReportedTotal;
 
-    JavaBackendHost(Framing framing, int supportedMajor, BackendAdapter adapter, long delayMs) {
+    JavaBackendHost(Framing framing, int supportedMajor, BackendAdapter adapter) {
         this.framing = framing;
         this.supportedMajor = supportedMajor;
         this.adapter = adapter;
-        this.delayMs = delayMs;
     }
 
     /** Reader loop: runs on its own thread until stdin hits EOF. */

@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
-pub const PILOT_METRICS_VERSION: &str = "pilot-metrics-v0";
-pub const PILOT_METRICS_JOURNAL_VERSION: &str = "pilot-metrics-journal-v0";
+pub const PILOT_METRICS_VERSION: &str = "pilot-metrics-v1";
+pub const PILOT_METRICS_JOURNAL_VERSION: &str = "pilot-metrics-journal-v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegressionOutcome {
@@ -30,11 +30,33 @@ pub enum MetricRecordKind {
     Governance,
 }
 
+/// Distinguishes synthetic local commit sequences from the registered
+/// read-only external repository observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObservationMode {
+    LocalSimulation,
+    SyntheticShadow,
+    LiveShadow,
+}
+
+impl ObservationMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalSimulation => "LOCAL_SIMULATION",
+            Self::SyntheticShadow => "SYNTHETIC_SHADOW",
+            Self::LiveShadow => "LIVE_SHADOW",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunMeasurement {
     pub measurement_id: String,
+    pub run_identity_digest: [u8; 32],
+    pub mode: ObservationMode,
     pub repository_digest: [u8; 32],
     pub commit_digest: [u8; 32],
+    pub rule_bundle_digest: [u8; 32],
     pub unified_result_digest: [u8; 32],
     pub trust: ResultTrust,
     pub decision: GateDecision,
@@ -52,8 +74,11 @@ impl RunMeasurement {
         payload.push(0);
         payload.push(metric_kind_byte(MetricRecordKind::Run));
         append_string(&mut payload, &self.measurement_id);
+        payload.extend_from_slice(&self.run_identity_digest);
+        payload.push(observation_mode_byte(self.mode));
         payload.extend_from_slice(&self.repository_digest);
         payload.extend_from_slice(&self.commit_digest);
+        payload.extend_from_slice(&self.rule_bundle_digest);
         payload.extend_from_slice(&self.unified_result_digest);
         payload.push(match self.trust { ResultTrust::LocalUnattested => 0, ResultTrust::Trusted => 1 });
         payload.push(gate_decision_byte(self.decision));
@@ -217,6 +242,31 @@ impl PilotMetricsLedger {
         reason: &str,
         operation_sequence: u64,
     ) -> Result<MetricOutcome<RunMeasurement>, MetricsError> {
+        self.record_result_with_mode(
+            measurement_id,
+            ObservationMode::LiveShadow,
+            result,
+            latency_millis,
+            peak_memory_bytes,
+            observed_at_epoch_secs,
+            actor,
+            reason,
+            operation_sequence,
+        )
+    }
+
+    pub fn record_result_with_mode(
+        &mut self,
+        measurement_id: &str,
+        mode: ObservationMode,
+        result: &UnifiedResult,
+        latency_millis: u64,
+        peak_memory_bytes: u64,
+        observed_at_epoch_secs: u64,
+        actor: &str,
+        reason: &str,
+        operation_sequence: u64,
+    ) -> Result<MetricOutcome<RunMeasurement>, MetricsError> {
         result.validate()?;
         validate_text("measurement_id", measurement_id)?;
         validate_text("actor", actor)?;
@@ -225,8 +275,11 @@ impl PilotMetricsLedger {
         if peak_memory_bytes == 0 { return Err(MetricsError::InvalidMeasurement("peak_memory_bytes")); }
         let measurement = RunMeasurement {
             measurement_id: measurement_id.into(),
+            run_identity_digest: digest_text(measurement_id),
+            mode,
             repository_digest: digest_text(&result.inputs.repository),
             commit_digest: digest_text(&result.inputs.commit),
+            rule_bundle_digest: digest_identity(&result.inputs.rule_bundle_digest),
             unified_result_digest: Sha256::digest(result.canonical_payload()).into(),
             trust: result.trust,
             decision: result.decision,
@@ -497,6 +550,9 @@ fn validate_text(name: &'static str, value: &str) -> Result<(), MetricsError> {
 
 fn validate_run_measurement(measurement: &RunMeasurement) -> Result<(), MetricsError> {
     validate_text("measurement_id", &measurement.measurement_id)?;
+    if measurement.run_identity_digest != digest_text(&measurement.measurement_id) {
+        return Err(MetricsError::InvalidMeasurement("run_identity_digest"));
+    }
     if measurement.latency_millis == 0 { return Err(MetricsError::InvalidMeasurement("latency_millis")); }
     if measurement.peak_memory_bytes == 0 { return Err(MetricsError::InvalidMeasurement("peak_memory_bytes")); }
     if measurement.decision == GateDecision::Pass && !measurement.complete {
@@ -576,8 +632,11 @@ fn append_journal_record(bytes: &mut Vec<u8>, kind: MetricRecordKind, record: &J
     match (kind, record) {
         (MetricRecordKind::Run, JournalRecord::Run(record)) => {
             append_string(bytes, &record.measurement_id);
+            bytes.extend_from_slice(&record.run_identity_digest);
+            bytes.push(observation_mode_byte(record.mode));
             bytes.extend_from_slice(&record.repository_digest);
             bytes.extend_from_slice(&record.commit_digest);
+            bytes.extend_from_slice(&record.rule_bundle_digest);
             bytes.extend_from_slice(&record.unified_result_digest);
             bytes.push(match record.trust { ResultTrust::LocalUnattested => 0, ResultTrust::Trusted => 1 });
             bytes.push(gate_decision_byte(record.decision));
@@ -609,8 +668,11 @@ fn read_journal_record(cursor: &mut JournalCursor<'_>, kind: MetricRecordKind) -
     match kind {
         MetricRecordKind::Run => Ok(JournalRecord::Run(RunMeasurement {
             measurement_id: cursor.string()?,
+            run_identity_digest: cursor.digest()?,
+            mode: observation_mode_from_byte(cursor.byte()?)?,
             repository_digest: cursor.digest()?,
             commit_digest: cursor.digest()?,
+            rule_bundle_digest: cursor.digest()?,
             unified_result_digest: cursor.digest()?,
             trust: result_trust_from_byte(cursor.byte()?)?,
             decision: gate_decision_from_byte(cursor.byte()?)?,
@@ -647,6 +709,44 @@ fn metric_kind_from_byte(value: u8) -> Result<MetricRecordKind, MetricsError> {
         1 => Ok(MetricRecordKind::Feedback),
         2 => Ok(MetricRecordKind::Governance),
         _ => Err(MetricsError::InvalidJournal("record kind")),
+    }
+}
+
+fn observation_mode_byte(mode: ObservationMode) -> u8 {
+    match mode {
+        ObservationMode::LocalSimulation => 0,
+        ObservationMode::SyntheticShadow => 1,
+        ObservationMode::LiveShadow => 2,
+    }
+}
+
+fn observation_mode_from_byte(value: u8) -> Result<ObservationMode, MetricsError> {
+    match value {
+        0 => Ok(ObservationMode::LocalSimulation),
+        1 => Ok(ObservationMode::SyntheticShadow),
+        2 => Ok(ObservationMode::LiveShadow),
+        _ => Err(MetricsError::InvalidJournal("observation mode")),
+    }
+}
+
+fn digest_identity(value: &str) -> [u8; 32] {
+    if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        let mut digest = [0; 32];
+        for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+            digest[index] = (hex_nibble(chunk[0]) << 4) | hex_nibble(chunk[1]);
+        }
+        digest
+    } else {
+        digest_text(value)
+    }
+}
+
+fn hex_nibble(value: u8) -> u8 {
+    match value {
+        b'0'..=b'9' => value - b'0',
+        b'a'..=b'f' => value - b'a' + 10,
+        b'A'..=b'F' => value - b'A' + 10,
+        _ => unreachable!("digest_identity only accepts hexadecimal input"),
     }
 }
 
@@ -769,6 +869,8 @@ mod tests {
             rule_id: "corp.rule".into(),
             location_kind: FindingLocationKind::SourceSpan,
             path: "src/A.java".into(),
+            line: Some(1),
+            column: Some(1),
             semantic_anchor: "source-span|src/A.java|1|2".into(),
             message: "finding".into(),
         };
@@ -896,6 +998,31 @@ mod tests {
         assert_eq!(restored.snapshot(), ledger.snapshot());
         assert_eq!(restored.audit_log(), ledger.audit_log());
         assert_eq!(restored.export_journal().unwrap(), journal);
+    }
+
+    #[test]
+    fn observation_mode_is_digest_bound_and_journal_roundtrips() {
+        let result = trusted_pass();
+        let mut ledger = PilotMetricsLedger::new();
+        ledger.record_result_with_mode("local", ObservationMode::LocalSimulation, &result, 7, 9, 100, "runner", "local", 1).unwrap();
+        ledger.record_result_with_mode("synthetic", ObservationMode::SyntheticShadow, &result, 7, 9, 100, "runner", "synthetic", 2).unwrap();
+        ledger.record_result_with_mode("live", ObservationMode::LiveShadow, &result, 7, 9, 100, "runner", "live", 3).unwrap();
+
+        assert_ne!(ledger.run_trend()[0].digest(), ledger.run_trend()[1].digest());
+        assert_ne!(ledger.run_trend()[1].digest(), ledger.run_trend()[2].digest());
+        assert_eq!(ledger.run_trend()[0].rule_bundle_digest, [0xaa; 32]);
+        assert_eq!(ledger.run_trend()[0].run_identity_digest, digest_text("local"));
+        let restored = PilotMetricsLedger::from_journal(&ledger.export_journal().unwrap()).unwrap();
+        assert_eq!(restored.run_trend()[0].mode, ObservationMode::LocalSimulation);
+        assert_eq!(restored.run_trend()[1].mode, ObservationMode::SyntheticShadow);
+        assert_eq!(restored.run_trend()[2].mode, ObservationMode::LiveShadow);
+    }
+
+    #[test]
+    fn observation_mode_names_are_stable() {
+        assert_eq!(ObservationMode::LocalSimulation.as_str(), "LOCAL_SIMULATION");
+        assert_eq!(ObservationMode::SyntheticShadow.as_str(), "SYNTHETIC_SHADOW");
+        assert_eq!(ObservationMode::LiveShadow.as_str(), "LIVE_SHADOW");
     }
 
     #[test]

@@ -185,6 +185,9 @@ impl UnifiedResult {
         attestation_subject: [u8; 32],
         audit: AuditTrail,
     ) -> Result<Self, ResultError> {
+        if attestation_subject != attestation.subject_digest() {
+            return Err(ResultError::AttestationMismatch("GateDecision subject"));
+        }
         if attestation.repository != inputs.repository || attestation.commit != inputs.commit {
             return Err(ResultError::AttestationMismatch("repository or commit"));
         }
@@ -363,6 +366,8 @@ mod tests {
             rule_id: "corp.rule".into(),
             location_kind: FindingLocationKind::SourceSpan,
             path: "src/A.java".into(),
+            line: Some(1),
+            column: Some(1),
             semantic_anchor: "source-span|src/A.java|1|2".into(),
             message: "finding".into(),
         };
@@ -434,8 +439,16 @@ mod tests {
             execution_lock_digest: "b".repeat(64),
             runner_release_digest: "c".repeat(64),
             workspace_descriptor_digest: "d".repeat(64),
+            baseline_digest: "0".repeat(64),
+            workspace_attestation_digest: "1".repeat(64),
+            execution_evidence_digest: "2".repeat(64),
             sandbox_provider_id: "rootless-oci-docker-v0".into(),
             sandbox_policy_digest: "e".repeat(64),
+            workload_issuer: "https://issuer.example".into(),
+            workload_audience: "erf-gate".into(),
+            workflow: "ci".into(),
+            run_identity: "run-1".into(),
+            environment_identity: "linux/amd64".into(),
             semantic_result_digest: [7; 32],
             completeness: preview.completeness.clone(),
             decision: GateDecision::Pass,
@@ -443,12 +456,12 @@ mod tests {
             issued_at_epoch_secs: 10,
             expires_at_epoch_secs: 20,
         };
-        let result = UnifiedResult::from_trusted_preview(inputs(), &preview, &attestation, [8; 32], audit()).unwrap();
+        let result = UnifiedResult::from_trusted_preview(inputs(), &preview, &attestation, attestation.subject_digest(), audit()).unwrap();
         assert_eq!(result.trust, ResultTrust::Trusted);
         assert_eq!(result.status, ResultStatus::Success);
         let mut changed = attestation.clone();
         changed.policy_digest = "0".repeat(64);
-        assert!(matches!(UnifiedResult::from_trusted_preview(inputs(), &preview, &changed, [8; 32], audit()), Err(ResultError::AttestationMismatch("bound identity"))));
+        assert!(matches!(UnifiedResult::from_trusted_preview(inputs(), &preview, &changed, changed.subject_digest(), audit()), Err(ResultError::AttestationMismatch("bound identity"))));
     }
 
     #[test]

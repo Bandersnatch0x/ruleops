@@ -10,6 +10,7 @@ fn cancel_check_against_java_host() {
             "/home/kali/文档/ruleops/backend-hosts/java/target/erf-java-host-0.1.0-shaded.jar".to_string(),
         ],
         cancel_probe_delay_ms: 200,
+        resolver_program: "target/debug/erf-fake-resolver".to_string(),
         ..Default::default()
     };
     let report = erf_conformance::run_suite(&config);

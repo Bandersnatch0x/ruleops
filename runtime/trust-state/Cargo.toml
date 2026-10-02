@@ -6,7 +6,11 @@ description = "Bounded atomic persistence for offline ERF trust checkpoint state
 
 [dependencies]
 erf-trust = { path = "../trust" }
+libc = "0.2"
 thiserror = "2"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2.1", features = ["std"] }
 
 [lib]
 name = "erf_trust_state"

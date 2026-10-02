@@ -87,6 +87,7 @@ impl RuleReleaseRegistry {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn admit(
         &mut self,
         release: SignedRuleRelease,

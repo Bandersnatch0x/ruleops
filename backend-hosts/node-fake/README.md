@@ -10,9 +10,10 @@ Run it through the conformance suite with:
 ```text
 cargo run -p erf-conformance -- --host node \
   --host-arg backend-hosts/node-fake/host.js \
+  --resolver node --resolver-arg backend-hosts/node-fake/resolver.js \
   --cancel-window-ms 150
 ```
 
-Run `node backend-hosts/node-fake/resolver.js` with the Rust resolver client to
-exercise `ecosystem.static-layout`; it emits SAFE_STATIC descriptors with
-SHA-256 file bindings.
+The resolver is dependency-free and SAFE_STATIC only: it reads Java source
+files and emits descriptors with SHA-256 file bindings; it never executes a
+project build script.

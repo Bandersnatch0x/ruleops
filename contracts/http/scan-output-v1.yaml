@@ -1,0 +1,149 @@
+apiVersion: rulefactory.io/v1
+kind: ScanOutputContract
+version: 1.0.0
+status: pilot-ready
+
+purpose: >-
+  Project one real rf-runner execution into human-readable text, closed JSON,
+  and SARIF without uploading source, full engine reports, Gate authority, or
+  SCM credentials.
+
+result:
+  kind: ScanResult
+  schemaVersion: scan-output-v1
+  gateDecision: [PASS, FAIL, INCONCLUSIVE]
+  authority: [LOCAL_UNATTESTED, TRUSTED]
+  status: [PASS, FAIL, INCONCLUSIVE, LOCAL_UNATTESTED]
+  required:
+    - apiVersion
+    - kind
+    - schemaVersion
+    - status
+    - gateDecision
+    - authority
+    - completeness
+    - effectiveConfigDigest
+    - workspaceDescriptorDigest
+    - resolvedWorkspaceDescriptorDigest
+    - configScanPlanDigest
+    - semanticResultDigest
+    - findingRecords
+    - diagnostics
+    - progress
+    - resultDigest
+  resultDigest:
+    algorithm: SHA-256
+    excludes:
+      - wallClockStageDuration
+  projectIdentity:
+    requiredByThinClient:
+      - effectiveConfigDigest
+      - workspaceDescriptorDigest
+      - resolvedWorkspaceDescriptorDigest
+      - configScanPlanDigest
+    source: reviewed .ruleops/config.yaml plus deterministic WorkspaceDescriptor projection
+    workspaceDescriptorDigest: config-derived projection used to freeze scope identity
+    resolvedWorkspaceDescriptorDigest: digest of the actual WorkspaceDescriptor returned by the Resolver and consumed by the Runner
+    binding: both identities are emitted so configuration scope and runtime resolution can be compared
+    sourceContent: forbidden
+
+  artifact:
+    artifactPath: repository-local path is present when --output is used
+    sourceContent: forbidden
+
+  deliveryIdentity:
+    emittedWhen: bundleDeliveryIsConfigured
+    fields:
+      - bundleDigest
+      - bundleDeliveryDescriptorDigest
+      - bundleCompatibilityIdentity
+      - bundlePlatform
+    binding:
+      - bundleDigest is the digest of the canonical RuleBundle payload consumed by the Runner
+      - bundleDeliveryDescriptorDigest is the digest of the closed delivery descriptor
+      - bundleCompatibilityIdentity and bundlePlatform are execution-context identities
+    sourceContent: forbidden
+
+findingView:
+  kind: FindingView
+  schemaVersion: finding-view-v1
+  sourceUploadDefault: false
+  fullFindingUploadDefault: false
+  location:
+    path: repositoryRelativeAllowlisted
+    line: positiveInteger
+    column: positiveInteger
+  identity:
+    findingId: stableSemanticFingerprint
+    findingDigest: digestOnlyPresentationView
+
+findingRecord:
+  required:
+    - findingId
+    - ruleId
+    - fingerprint
+    - findingDigest
+    - message
+    - location
+  locationKinds:
+    - SOURCE_SPAN
+    - SYMBOL
+    - BYTECODE_MEMBER
+    - FILE
+  sourceContent: forbidden
+
+diagnostic:
+  required:
+    - code
+    - stage
+    - message
+    - retry
+    - nextStep
+  detail: digestOnly
+
+progress:
+  kind: ScanProgress
+  stages:
+    - resolve
+    - affected-scope
+    - compile
+    - backend
+    - cache
+    - gate
+  eventFields:
+    - stage
+    - outcome
+    - elapsedNanos
+    - inputDigest
+  failureTerminalEvent: maps pre-stage diagnostic categories to gate while
+    retaining the precise diagnostic stage in diagnostics[].stage
+  sourceContent: forbidden
+
+formats:
+  text: stable legacy lines plus structured human summary
+  json: closed ScanResult or ScanFailure object
+  sarif: SARIF 2.1.0 result projection with ERF properties; failures use an
+    empty-results invocation with structured diagnostics
+  machineProgress: JSONL on stderr
+
+exitCodes:
+  complete: 0
+  inputOrContractError: 2
+  incompleteOrRuntimeFailure: 3
+  trustFailure: 4
+
+privacy:
+  forbiddenFields:
+    - source
+    - sourceCode
+    - sourceContent
+    - sourceSnippet
+    - fullFinding
+    - findings
+    - credentials
+
+nonGoals:
+  - localGateAuthority
+  - gateMutation
+  - scmPublication
+  - sourceUpload
