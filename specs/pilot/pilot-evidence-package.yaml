@@ -2,7 +2,7 @@ apiVersion: rulefactory.io/v1
 kind: PilotEvidencePackage
 metadata:
   id: pilot-evidence-package-v1
-  version: 1.0.0
+  version: 1.1.0
   owner: platform-engineering
 
 spec:
@@ -16,7 +16,7 @@ spec:
     replacement: forbidden
   observationWindow:
     required: [start, end]
-    approved: 2026-10-01T00:00:00Z/2026-10-31T23:59:59Z
+    approved: 2026-10-02T00:00:00Z/2026-10-08T23:59:59Z
     boundary: inclusive
     timezone: UTC
     recordWindowsMustMatchPackage: true

@@ -13,7 +13,7 @@ cd "$repo_root"
 
 [ -f "$contract" ] || { echo "PilotSuccessContract missing: $contract" >&2; exit 1; }
 rg -q '^  id: pilot-success-contract-v0$' "$contract"
-rg -q '^  version: 1.0.0$' "$contract"
+rg -q '^  version: 1.1.0$' "$contract"
 status_count="$(rg -c '^  status: (PENDING_HUMAN_APPROVAL|APPROVED)$' "$contract" || true)"
 status_count="${status_count:-0}"
 [ "$status_count" -eq 1 ] || {
@@ -98,7 +98,7 @@ cat > "$out_dir/pilot-success-contract.md" <<EOF
 # Pilot Success Contract Boundary Evidence
 
 - Contract: $contract_arg
-- Version: pilot-success-contract-v0 / 1.0.0
+- Version: pilot-success-contract-v0 / 1.1.0
 - Status: $status
 - Authority: Shadow-only
 - Scope: 100 Standard inventory, 20 candidate RuleIntents, 3 Shadow repositories

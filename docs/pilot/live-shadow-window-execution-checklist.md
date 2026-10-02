@@ -1,4 +1,4 @@
-# LIVE_SHADOW 观察窗口执行清单（窗口：2026-10-01 → 2026-10-31）
+# LIVE_SHADOW 观察窗口执行清单（窗口：2026-10-02 → 2026-10-08）
 
 > **内部流程提示**：本清单只面向 Pilot 观察员、质量裁决人和治理负责人，不是规则作者或
 > 普通扫描使用说明。日常使用请先看 `docs/pilot/operator-quickstart.md`；不要为了运行普通
@@ -9,7 +9,7 @@
 > 「唯一下一步行动」，也是 goals-and-success-metrics 的本月里程碑。
 >
 > 纪律铁律：`LOCAL_SIMULATION` / `SYNTHETIC_SHADOW` 结果 **不得**充当产品结论；
-> 缺任一人工输入时报告**必须**保持 INCONCLUSIVE；测量开始后**不得**软化阈值或重写基线；
+> 无已知 FAIL 且缺必需证据时报告才是 INCONCLUSIVE；已知 FAIL 优先 NO_GO；测量开始后**不得**软化阈值或重写基线；
 > 代理**严禁**伪造作者工时、质量裁决或运行证据（见 memory `v12-machine-frontier-exhausted`）。
 
 ## 0. 角色
@@ -21,8 +21,9 @@
 | 质量裁决人 | precision/recall/false-positive-regression 的人工配对复核 |
 | 观察窗口责任人 | 每次运行的 journal 采集、窗口报告聚合 |
 
-## 1. 窗口前跑道（2026-09-24 → 09-30）
+## 1. 窗口前跑道（2026-10-01，须早于 2026-10-02T00:00:00Z）
 
+- [ ] 治理批准、实现验收、人员/基线就绪全部须早于 `2026-10-02T00:00:00Z`；任一未满足则新版不得激活，不得追溯或自动顺延，见 ADR-0176。
 - [ ] 交付门禁全绿并留证：`bash scripts/check.sh`（最新阶段输出和完整日志入 `.scratch/gate/`；人工取证另存唯一目录）。
 - [ ] Shadow 预检全绿：`./rf pilot delivery-check .scratch/pilot-delivery-check`。
 - [ ] 三个登记仓库冻结、不换，锚定 pinned commit（`specs/pilot/live-java-repositories.yaml`）；
@@ -38,7 +39,7 @@
 
 判据：`.scratch/` 证据链齐全，且没有任何「仅因缺埋点/缺基线」而 INCONCLUSIVE 的项。
 
-## 2. 窗口内采集（2026-10-01 → 10-31，模式恒 LIVE_SHADOW）
+## 2. 窗口内采集（2026-10-02 → 10-08，UTC inclusive，模式恒 LIVE_SHADOW）
 
 - [ ] 每次运行以 LIVE_SHADOW 模式产 digest-only 观测：`./rf pilot observe ...`（不写 SCM、不上传源码）。
 - [ ] 作者主动时间：对三类模板路径（SymbolRule / StructuralRule / ExistingRule）各配对采集
@@ -58,7 +59,7 @@
       要求 requiredMetrics 全部 `completeness: COMPLETE`，窗口/样本 digest 与合同匹配。
 - [ ] 聚合优先级：`FAIL > INCONCLUSIVE > PASS`（任一必需指标 FAIL 即整体 NO_GO）。
 
-## 4. 裁决与毕业（窗口结束后）
+## 4. 裁决与毕业（2026-10-08T23:59:59Z 结束后）
 
 - [ ] 人工裁决：`./rf pilot evidence adjudicate PACKAGE OUTPUT --contract-digest HEX --sample-digest HEX`
       → 产出 `PilotAdjudication`：全 PASS 且包完整 = `GO`；已知失败 = `NO_GO`；缺失/冲突/无效 = `INCONCLUSIVE`。
@@ -68,7 +69,7 @@
 
 ## 5. 停止条件
 
-- 若窗口内真实作者/质量裁决人无法到位 → 报告保持 INCONCLUSIVE，**停止**，回到 product-scope-audit
+- 若窗口内真实作者/质量裁决人无法到位 → 无已知 FAIL 且缺必需证据时报告为 INCONCLUSIVE，已知 FAIL 则为 NO_GO；**停止**，回到 product-scope-audit
   的「narrow」分支（收缩为可离线复跑的 Completeness/三态 Gate 演示资产，对外只宣称工程闭环）。
 - 不得用预演/合成数据顶替真值以凑 GO。
 

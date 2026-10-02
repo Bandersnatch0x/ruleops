@@ -19,6 +19,6 @@ and never modified remotely. The ERF scan used the pinned commit and produced
 complete, repeatable Shadow evidence. No SCM credential, repository write,
 source upload, or protected-branch status publication is part of this run.
 
-This sample is now ready for the approved 2026-10-01 through 2026-10-31
-observation window. The current scan results are preflight evidence, not live
-pilot outcome metrics.
+样本继续用于 2026-10-02T00:00:00Z 至 2026-10-08T23:59:59Z（UTC inclusive）
+的合同 1.1.0 窗口；治理批准、实现验收、人员/基线就绪均须在起点前完成，
+否则不得激活或追溯生效（ADR-0176）。现有扫描仍是预检证据，不是 live pilot 结果。

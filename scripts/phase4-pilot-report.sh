@@ -77,9 +77,11 @@ cat > "$out_dir/phase4-pilot-report.md" <<EOF
   applicable but its product outcome is forced to \`INCONCLUSIVE\`.
 - Rule qualification: twenty governed Java RuleIntent paths pass authoring,
   fixture, EvidenceBundle, and deterministic recompilation checks.
-- Pilot Success Contract: APPROVED for the registered 2026-10-01 through
-  2026-10-31 window; this report does not treat pre-window rehearsals as live
-  outcome measurements.
+- Pilot Success Contract: APPROVED for the registered 2026-10-02 through
+  2026-10-08 window; this report does not treat pre-window rehearsals as live
+  outcome measurements. Governance approval, implementation acceptance, and
+  personnel/baseline readiness must all precede 2026-10-02T00:00:00Z; no
+  retrospective activation is permitted (ADR-0176).
 - Production enforcement: disabled. Local and test evidence remain distinct
   from a protected-branch authority decision.
 

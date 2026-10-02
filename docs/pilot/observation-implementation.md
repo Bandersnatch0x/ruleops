@@ -1,6 +1,6 @@
 # Pilot Observation Implementation
 
-状态：工程 MVP 已具备可复跑的观测闭环；2026-10-01 前不宣称 live pilot outcome。
+状态：工程 MVP 已具备可复跑的观测闭环；2026-10-02T00:00:00Z 前不宣称 live pilot outcome；新窗激活须满足 ADR-0176 的全部事前条件。
 
 ## 已落地能力
 

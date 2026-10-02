@@ -10,8 +10,8 @@ contract="specs/pilot/pilot-success-contract.yaml"
 sample="specs/pilot/live-java-repositories.yaml"
 contract_digest="$(sha256sum "$contract" | awk '{print $1}')"
 sample_digest="$(sha256sum "$sample" | awk '{print $1}')"
-window_start=1790812800
-window_end=1793491199
+window_start=1790899200
+window_end=1791503999
 input="$out_dir/evidence.input"
 package="$out_dir/evidence.package"
 adjudication="$out_dir/adjudication.txt"
@@ -25,7 +25,7 @@ metrics=(
 {
   echo 'format=erf-pilot-evidence-input-v1'
   echo 'contract-id=pilot-success-contract-v0'
-  echo 'contract-version=1.0.0'
+  echo 'contract-version=1.1.0'
   echo "contract-digest=$contract_digest"
   echo "window-start=$window_start"
   echo "window-end=$window_end"
@@ -40,7 +40,7 @@ metrics=(
 } > "$input"
 
 cargo test -q -p erf-pilot-evidence --all-targets > "$out_dir/cargo-test.log" 2>&1
-rg -q 'test result: ok\. 6 passed; 0 failed; 0 ignored' "$out_dir/cargo-test.log"
+rg -q 'test result: ok\. 9 passed; 0 failed; 0 ignored' "$out_dir/cargo-test.log"
 rg -q 'PilotEvidencePackage' runtime/pilot-evidence/src/lib.rs docs/adr/0157-pilot-evidence-package-and-adjudication-runtime-boundary.md
 rg -q 'FAIL.*INCONCLUSIVE.*PASS' specs/pilot/pilot-evidence-package.yaml runtime/pilot-evidence/src/lib.rs
 rg -q 'contract_digest|sample_digest|artifact_digest|PilotAdjudication' runtime/pilot-evidence/src/lib.rs
@@ -140,8 +140,8 @@ set -e
 [ "$malformed_rc" -eq 3 ]
 rg -q '^decision=INCONCLUSIVE$' "$out_dir/malformed.adjudication"
 
-sed -e 's/^window-start=.*/window-start=1790812801/' \
-  -e 's/\t1790812800\t/\t1790812801\t/g' "$input" > "$out_dir/wrong-window.input"
+sed -e 's/^window-start=.*/window-start=1790899201/' \
+  -e 's/\t1790899200\t/\t1790899201\t/g' "$input" > "$out_dir/wrong-window.input"
 set +e
 ./rf pilot evidence package "$out_dir/wrong-window.input" "$out_dir/wrong-window.package" \
   --contract-digest "$contract_digest" --sample-digest "$sample_digest" \

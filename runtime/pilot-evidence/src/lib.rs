@@ -15,9 +15,9 @@ pub const INPUT_FORMAT: &str = "erf-pilot-evidence-input-v1";
 pub const ADJUDICATION_FORMAT: &str = "erf-pilot-adjudication-v1";
 pub const DECISION_OWNER: &str = "platform-engineering";
 pub const APPROVED_CONTRACT_ID: &str = "pilot-success-contract-v0";
-pub const APPROVED_CONTRACT_VERSION: &str = "1.0.0";
-pub const APPROVED_WINDOW_START_EPOCH_SECS: u64 = 1_790_812_800;
-pub const APPROVED_WINDOW_END_EPOCH_SECS: u64 = 1_793_491_199;
+pub const APPROVED_CONTRACT_VERSION: &str = "1.1.0";
+pub const APPROVED_WINDOW_START_EPOCH_SECS: u64 = 1_790_899_200;
+pub const APPROVED_WINDOW_END_EPOCH_SECS: u64 = 1_791_503_999;
 
 pub const REQUIRED_METRICS: [&str; 11] = [
     "author-active-time",
@@ -687,8 +687,8 @@ mod tests {
             .map(|(index, metric_id)| EvidenceRecord {
                 metric_id: (*metric_id).into(),
                 provenance: format!("artifact-{index}"),
-                window_start: APPROVED_WINDOW_START_EPOCH_SECS,
-                window_end: APPROVED_WINDOW_END_EPOCH_SECS,
+                window_start: 1_790_899_200,
+                window_end: 1_791_503_999,
                 completeness,
                 artifact_digest: digest(index as u8 + 1),
                 status,
@@ -699,10 +699,10 @@ mod tests {
     fn package(status: EvidenceStatus, completeness: EvidenceCompleteness) -> PilotEvidencePackage {
         let mut package = PilotEvidencePackage::new(
             "pilot-success-contract-v0",
-            "1.0.0",
+            "1.1.0",
             digest(7),
-            APPROVED_WINDOW_START_EPOCH_SECS,
-            APPROVED_WINDOW_END_EPOCH_SECS,
+            1_790_899_200,
+            1_791_503_999,
             digest(8),
             records(status, completeness),
         );
@@ -724,6 +724,7 @@ mod tests {
         let mut package = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
         package.records[0].status = EvidenceStatus::Fail;
         package.records[1].status = EvidenceStatus::Inconclusive;
+        package.records.pop();
         package.seal().unwrap();
         assert_eq!(package.validate().unwrap(), EvidenceStatus::Fail);
         assert_eq!(package.adjudicate_against(DECISION_OWNER, "known failure", digest(7), digest(8)).unwrap().decision(), PilotAdjudicationDecision::NoGo);
@@ -768,5 +769,68 @@ mod tests {
         let restored = parse_package(&text).unwrap();
         assert_eq!(restored, package);
         assert_eq!(restored.validate().unwrap(), EvidenceStatus::Pass);
+    }
+
+    #[test]
+    fn approved_values_match_independent_contract_and_yaml_oracles() {
+        assert_eq!(APPROVED_CONTRACT_ID, "pilot-success-contract-v0");
+        assert_eq!(APPROVED_CONTRACT_VERSION, "1.1.0");
+        assert_eq!(APPROVED_WINDOW_START_EPOCH_SECS, 1_790_899_200);
+        assert_eq!(APPROVED_WINDOW_END_EPOCH_SECS, 1_791_503_999);
+        assert_eq!(APPROVED_WINDOW_END_EPOCH_SECS - APPROVED_WINDOW_START_EPOCH_SECS + 1, 604_800);
+        let contract = include_str!("../../../specs/pilot/pilot-success-contract.yaml");
+        let plan = include_str!("../../../specs/pilot/pilot-observation-plan.yaml");
+        let evidence = include_str!("../../../specs/pilot/pilot-evidence-package.yaml");
+        for yaml in [contract, plan, evidence] {
+            assert!(yaml.contains("  version: 1.1.0\n"));
+        }
+        assert!(contract.contains("  id: pilot-success-contract-v0\n"));
+        assert!(contract.contains("    start: \"2026-10-02\"\n    end: \"2026-10-08\""));
+        assert!(plan.contains("  contract: pilot-success-contract-v0\n"));
+        assert!(plan.contains("    start: 2026-10-02T00:00:00Z\n    end: 2026-10-08T23:59:59Z"));
+        assert!(evidence.contains("    approved: 2026-10-02T00:00:00Z/2026-10-08T23:59:59Z\n"));
+        for yaml in [plan, evidence] {
+            assert!(yaml.contains("    boundary: inclusive\n    timezone: UTC\n"));
+        }
+        assert!(evidence.contains("  format: erf-pilot-evidence-package-v1\n"));
+        assert_eq!(package(EvidenceStatus::Pass, EvidenceCompleteness::Complete)
+            .validate_against(digest(7), digest(8)), Ok(EvidenceStatus::Pass));
+    }
+
+    #[test]
+    fn old_contract_version_and_window_are_rejected_on_both_entry_paths() {
+        for (version, start, end, expected) in [
+            ("1.0.0", 1_790_899_200, 1_791_503_999, EvidenceError::ApprovedContractMetadataMismatch),
+            ("1.1.0", 1_790_812_800, 1_793_491_199, EvidenceError::ApprovedWindowMismatch),
+            ("1.0.0", 1_790_812_800, 1_793_491_199, EvidenceError::ApprovedContractMetadataMismatch),
+        ] {
+            let mut old = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+            old.contract_version = version.into();
+            old.window_start = start;
+            old.window_end = end;
+            for record in &mut old.records {
+                record.window_start = start;
+                record.window_end = end;
+            }
+            // A self-consistent historical package is still not a current approved package.
+            old.seal().unwrap();
+            assert_eq!(old.validate_bindings(digest(7), digest(8)).as_ref().err(), Some(&expected));
+            assert_eq!(old.adjudicate_against(DECISION_OWNER, "historical fixture", digest(7), digest(8)), Err(expected));
+        }
+    }
+
+    #[test]
+    fn evidence_record_window_must_equal_the_package_window() {
+        for change_start in [true, false] {
+            let mut mismatched = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+            if change_start {
+                mismatched.records[0].window_start = 1_790_899_201;
+            } else {
+                mismatched.records[0].window_end = 1_791_503_998;
+            }
+            let expected = EvidenceError::WindowMismatch("author-active-time".into());
+            assert_eq!(mismatched.validate_bindings(digest(7), digest(8)).as_ref().err(), Some(&expected));
+            assert_eq!(mismatched.seal(), Err(expected));
+        }
     }
 }

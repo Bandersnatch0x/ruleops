@@ -121,7 +121,7 @@ cat > "$out_dir/live-shadow.md" <<EOF
 - Registered sample: $registered_sample
 - Registered commit identities are recorded in observed-commits.tsv.
 
-This is a pre-window rehearsal when run before 2026-10-01. The report remains
+This is a pre-window rehearsal when run before 2026-10-02T00:00:00Z. The report remains
 INCONCLUSIVE until the registered window supplies operational baselines and
 human quality adjudication.
 EOF
