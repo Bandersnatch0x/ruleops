@@ -20,7 +20,7 @@ sources:
 preflight，**不得充当 live pilot outcome**；缺测项记 `待测`，不填 0、不填估计值。
 
 状态口径：`已实测` = 仓库内有固定样本与可复算命令；`待测` = 机制就绪、缺真实输入；
-`边界` = 机制存在但当前权限/范围受限，如实登记。
+`边界` = 机制存在但当前权限/范围受限，如实登记；`Defer` = 仅保留内部兼容面，不作公开分发承诺。
 
 ## 1. 客户价值（对客户实际业务能力与满意度的提升）
 
@@ -46,7 +46,8 @@ preflight，**不得充当 live pilot outcome**；缺测项记 `待测`，不填
 | 模板路径 | `phase0-template-selection.yaml:31` | 3 类：ExistingRule 13 / StructuralRule 6 / SymbolRule 1 | 已实测 |
 | Rule 成熟度谱 | 白皮书 §13 | 当前全部 `SHADOW`，未晋级 `BLOCKING` | 边界 |
 | 受益范围声明 | 白皮书 §24 | Java 起，可扩语言与引擎（声明，非实测） | 声明 |
-| 分发形态 | 白皮书 §34 | RuleOps Server + rf-runner + IDE/CLI 薄客户端 | 已实测 |
+| 已交付执行路径 | `docs/pilot/operator-quickstart.md`、`docs/pilot/competition-evidence-index.md` | rf-runner / `./rf` 本地扫描与证据执行路径；不代表 Server/IDE 公开分发已验收 | 已实测（限定本地执行） |
+| 内部兼容面 | 白皮书公开范围说明、`clients/vscode/README.md`、`clients/intellij/README.md` | RuleOps Server 与 IDE/CLI 薄客户端仅供内部兼容维护，不作公开分发承诺；真实 IDE 验收未证实 | Defer |
 
 ## 3. 项目价值（提效与里程碑）
 
@@ -61,5 +62,6 @@ preflight，**不得充当 live pilot outcome**；缺测项记 `待测`，不填
 
 - preflight 数字来自窗口前只读演练，`authority = SHADOW`，不授予 protected-branch 权力。
 - 当前 checkout 显式禁用 release/gate/promote 与 SCM 回写（ADR-0167）；扫描权威恒为 `LOCAL_UNATTESTED` / `SHADOW`。
-- 效率类 KPI（author-active-time）与质量类 KPI（precision/recall）缺人工输入时报告恒为 `INCONCLUSIVE`，不得用机器耗时或预演数据顶替。
+- 效率类 KPI（author-active-time）与质量类 KPI（precision/recall）不得用机器耗时或预演数据顶替人工输入；仅无已知 `FAIL` 且缺必需证据时报告为 `INCONCLUSIVE`，已知必需指标 `FAIL` 优先 `NO_GO`（ADR-0157、`specs/pilot/pilot-evidence-package.yaml`）。
 - 推广范围与长期演进为路线声明，不是已交付事实。
+- 日期落窗不等于治理已激活：ADR-0176 的七天批准目标不证明全部事前条件已满足；当前材料未证实正式短窗激活，须由负责人核对起点前的治理批准、实现验收及人员/基线就绪证据，不得追溯补造或把本周采集直接列为正式短窗成果。
