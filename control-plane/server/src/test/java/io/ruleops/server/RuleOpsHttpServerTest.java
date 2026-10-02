@@ -709,6 +709,166 @@ class RuleOpsHttpServerTest {
     }
 
     @Test
+    void implicitJobsRejectUnmappableRuleIdsWithoutWriting() throws Exception {
+        List<String> payloads = List.of("{}", "{\"ruleId\":null}", "{\"ruleId\":42}",
+                "{\"ruleId\":true}", "{\"ruleId\":[]}", "{\"ruleId\":{}}", "{\"ruleId\":\"\"}",
+                "{\"ruleId\":\"   \"}", "{\"ruleId\":\"a/b\"}", "{\"ruleId\":\"a\\nb\"}",
+                "{\"ruleId\":\"a\\u0000b\"}", "{\"ruleId\":\"a\\u007fb\"}");
+        for (String path : List.of("/factory-jobs", "/verification-jobs")) {
+            for (int i = 0; i < payloads.size(); i++) {
+                HttpResponse<String> response = post(path, "rejected-" + i, "1.0.0",
+                        payloads.get(i), path + "-reject-" + i);
+                assertEquals(404, response.statusCode(), path + " " + payloads.get(i));
+                assertEquals("NOT_FOUND", JSON.readTree(response.body()).get("code").asText());
+            }
+            assertEquals(0, JSON.readTree(get(path).body()).get("items").size());
+        }
+        assertEquals(0, JSON.readTree(get("/audit").body()).get("events").size());
+    }
+
+    @Test
+    void compatibleJobsReplayAcrossGenerateAndEvaluationsAndKeepVersionedReads() throws Exception {
+        for (String action : List.of("generate", "evaluations")) {
+            String collection = action.equals("generate") ? "/factory-jobs" : "/verification-jobs";
+            String explicit = "/rules/parent/" + action;
+            String payload = "{\"ruleId\":\"parent\",\"template\":\"SymbolRule\"}";
+            String operation = action + "-v1";
+            HttpResponse<String> created = post(collection, "job", "1.0.0", payload, operation);
+            assertEquals(201, created.statusCode());
+            JsonNode resource = JSON.readTree(created.body()).get("resource");
+            assertEquals(collection.substring(1), resource.get("type").asText());
+            assertEquals("job", resource.get("id").asText());
+            assertEquals("1.0.0", resource.get("version").asText());
+            assertEquals("ACCEPTED", resource.get("state").asText());
+            assertEquals(JSON.readTree(payload), resource.get("payload"));
+            HttpResponse<String> replay = post(explicit, "job", "1.0.0", payload, operation);
+            assertEquals(200, replay.statusCode());
+            assertTrue(JSON.readTree(replay.body()).get("replayed").asBoolean());
+            assertEquals(resource, JSON.readTree(replay.body()).get("resource"));
+            assertEquals(resource, JSON.readTree(get(collection + "/job?version=1.0.0").body()).get("resource"));
+
+            HttpResponse<String> second = post(explicit, "job", "2.0.0", payload, action + "-v2");
+            assertEquals(201, second.statusCode());
+            HttpResponse<String> reverse = post(collection, "job", "2.0.0", payload, action + "-v2");
+            assertEquals(200, reverse.statusCode());
+            assertEquals(JSON.readTree(second.body()).get("resource"), JSON.readTree(reverse.body()).get("resource"));
+            assertEquals(2, JSON.readTree(get(collection).body()).get("items").size());
+            HttpResponse<String> ambiguous = get(collection + "/job");
+            assertEquals(409, ambiguous.statusCode());
+            assertEquals("RESOURCE_VERSION_REQUIRED", JSON.readTree(ambiguous.body()).get("code").asText());
+
+            String changed = "{\"ruleId\":\"parent\",\"template\":\"Changed\"}";
+            HttpResponse<String> keyConflict = post(explicit, "job", "1.0.0", changed, operation);
+            assertEquals(409, keyConflict.statusCode());
+            assertEquals("IDEMPOTENCY_CONFLICT", JSON.readTree(keyConflict.body()).get("code").asText());
+            HttpResponse<String> identityConflict = post(explicit, "job", "1.0.0", changed, operation + "-new");
+            assertEquals(409, identityConflict.statusCode());
+            assertEquals("IMMUTABLE_CONFLICT", JSON.readTree(identityConflict.body()).get("code").asText());
+        }
+        assertEquals(4, JSON.readTree(get("/audit").body()).get("events").size());
+    }
+
+    @Test
+    void explicitRuleActionsKeepTheirExistingRuleIdChecks() throws Exception {
+        for (String action : List.of("generate", "evaluations")) {
+            for (String payload : List.of("{}", "{\"ruleId\":\"different\"}")) {
+                HttpResponse<String> rejected = post("/rules/parent/" + action, action, "1.0.0", payload, action);
+                assertEquals(400, rejected.statusCode());
+                assertEquals("PATH_ID_MISMATCH", JSON.readTree(rejected.body()).get("code").asText());
+            }
+            // Explicit actions already compare asText(), without requiring a registered Rule.
+            assertEquals(201, post("/rules/42/" + action, action, "1.0.0",
+                    "{\"ruleId\":42}", action).statusCode());
+        }
+        assertEquals(2, JSON.readTree(get("/audit").body()).get("events").size());
+    }
+
+    @Test
+    void compatibleJobsCanMigrateEncodedRulePathSegments() throws Exception {
+        String ruleId = " parent ?#%汉 ";
+        String payload = JSON.createObjectNode().put("ruleId", ruleId).toString();
+        for (String action : List.of("generate", "evaluations")) {
+            String collection = action.equals("generate") ? "/factory-jobs" : "/verification-jobs";
+            HttpResponse<String> created = post(collection, action, "1.0.0", payload, action);
+            assertEquals(201, created.statusCode());
+            String explicit = new URI(null, null, "/rules/" + ruleId + "/" + action, null).toASCIIString();
+            HttpResponse<String> replay = post(explicit, action, "1.0.0", payload, action);
+            assertEquals(200, replay.statusCode());
+            assertEquals(JSON.readTree(created.body()).get("resource"), JSON.readTree(replay.body()).get("resource"));
+        }
+    }
+
+    @Test
+    void coverageCompatibilityDoesNotRequireRuleId() throws Exception {
+        String payload = "{\"standardId\":\"SEC-JAVA-017\"}";
+        HttpResponse<String> created = post("/coverage", "coverage", "1.0.0", payload, "coverage");
+        assertEquals(201, created.statusCode());
+        HttpResponse<String> replay = post("/coverage/analyze", "coverage", "1.0.0", payload, "coverage");
+        assertEquals(200, replay.statusCode());
+        JsonNode resource = JSON.readTree(created.body()).get("resource");
+        assertEquals("ACCEPTED", resource.get("state").asText());
+        assertEquals(resource, JSON.readTree(replay.body()).get("resource"));
+        assertEquals(resource, JSON.readTree(get("/coverage/coverage?version=1.0.0").body()).get("resource"));
+        assertEquals(1, JSON.readTree(get("/coverage").body()).get("items").size());
+        assertEquals(1, JSON.readTree(get("/audit").body()).get("events").size());
+    }
+
+    @Test
+    void historicalJobsAndCoverageSurviveRecoveryAndExplicitReplay(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path path = dir.resolve("implicit-jobs.jsonl");
+        List<RuleOpsStore.ResourceType> types = List.of(RuleOpsStore.ResourceType.COVERAGE,
+                RuleOpsStore.ResourceType.FACTORY_JOB, RuleOpsStore.ResourceType.VERIFICATION_JOB);
+        try (RuleOpsJournal journal = new FileRuleOpsJournal(path)) {
+            RuleOpsStore store = new RuleOpsStore(journal);
+            for (RuleOpsStore.ResourceType type : types) {
+                // The pre-change implicit routes used this same store.create chain.
+                store.create(type, "mapped", "1.0.0", JSON.readTree("{\"ruleId\":\"parent\"}"),
+                        type.wireName(), "test-operator", "contract test");
+                if (type != RuleOpsStore.ResourceType.COVERAGE) {
+                    store.create(type, "unmapped", "1.0.0", JSON.readTree("{}"),
+                            type.wireName() + "-unmapped", "test-operator", "contract test");
+                }
+            }
+        }
+        byte[] before = java.nio.file.Files.readAllBytes(path);
+        server.close();
+        try (RuleOpsJournal journal = new FileRuleOpsJournal(path)) {
+            server = RuleOpsHttpServer.loopback(0, new RuleOpsStore(journal));
+            server.start();
+            for (RuleOpsStore.ResourceType type : types) {
+                String collection = "/" + type.wireName();
+                String explicit = switch (type) {
+                    case COVERAGE -> "/coverage/analyze";
+                    case FACTORY_JOB -> "/rules/parent/generate";
+                    case VERIFICATION_JOB -> "/rules/parent/evaluations";
+                    default -> throw new AssertionError(type);
+                };
+                HttpResponse<String> fetched = get(collection + "/mapped?version=1.0.0");
+                assertEquals(200, fetched.statusCode());
+                JsonNode resource = JSON.readTree(fetched.body()).get("resource");
+                assertEquals("ACCEPTED", resource.get("state").asText());
+                HttpResponse<String> replay = post(explicit, "mapped", "1.0.0",
+                        resource.get("payload").toString(), type.wireName());
+                assertEquals(200, replay.statusCode());
+                assertTrue(JSON.readTree(replay.body()).get("replayed").asBoolean());
+                assertEquals(resource, JSON.readTree(replay.body()).get("resource"));
+                if (type != RuleOpsStore.ResourceType.COVERAGE) {
+                    HttpResponse<String> historical = get(collection + "/unmapped?version=1.0.0");
+                    assertEquals(200, historical.statusCode());
+                    assertEquals(JSON.readTree("{}"), JSON.readTree(historical.body()).get("resource").get("payload"));
+                    assertEquals(404, post(collection, "unmapped", "1.0.0", "{}",
+                            type.wireName() + "-unmapped").statusCode());
+                }
+                assertEquals(type == RuleOpsStore.ResourceType.COVERAGE ? 1 : 2,
+                        JSON.readTree(get(collection).body()).get("items").size());
+            }
+            assertEquals(5, JSON.readTree(get("/audit").body()).get("events").size());
+            assertTrue(Arrays.equals(before, java.nio.file.Files.readAllBytes(path)));
+        }
+    }
+
+    @Test
     void registryReadsAreClosedDigestOnlyVersionedAndReadOnly() throws Exception {
         for (String type : List.of("rules", "standards")) {
             assertEquals(201, post("/" + type, "asset", "1.0.0",

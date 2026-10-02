@@ -361,8 +361,17 @@ public final class RuleOpsHttpServer implements AutoCloseable {
         if (type == RuleOpsStore.ResourceType.FEEDBACK || type == RuleOpsStore.ResourceType.EXCEPTION) {
             validateGovernanceRequest(envelope, type, headers);
         }
+        JsonNode bodyRuleId = envelope.payload().get("ruleId");
+        if (requiredRuleId == null && (type == RuleOpsStore.ResourceType.FACTORY_JOB
+                || type == RuleOpsStore.ResourceType.VERIFICATION_JOB)) {
+            // Keep implicit compatibility only when the payload maps to one explicit rule action path.
+            if (bodyRuleId == null || !bodyRuleId.isTextual() || bodyRuleId.asText().isBlank()
+                    || bodyRuleId.asText().contains("/")
+                    || bodyRuleId.asText().chars().anyMatch(Character::isISOControl)) {
+                throw new ApiException(404, "NOT_FOUND", "API resource is not writable");
+            }
+        }
         if (pathId != null && requiredRuleId != null) {
-            JsonNode bodyRuleId = envelope.payload().get("ruleId");
             if (bodyRuleId == null || !pathId.equals(bodyRuleId.asText())) {
                 throw new ApiException(400, "PATH_ID_MISMATCH", "payload.ruleId must match the URL rule identity");
             }
