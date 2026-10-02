@@ -28,7 +28,7 @@ preflight，**不得充当 live pilot outcome**；缺测项记 `待测`，不填
 | --- | --- | --- | --- |
 | 规范资产总量 | `specs/standard/SEC-JAVA-017..116.yaml` | 100 条 Standard | 已实测 |
 | 可机器检查的候选场景 | `specs/coverage/SEC-JAVA-017..036.yaml` | 20 条 Scenario | 已实测 |
-| 覆盖分类 | `specs/pilot/phase0-template-selection.yaml:16` | 14 已有规则 / 6 须新写 / 1 语义待澄清(blocked) / 1 不可机器检测 | 已实测 |
+| 覆盖分类 | `specs/pilot/phase0-template-selection.yaml:16` | 14 已有规则 / 6 须新写 / 0 语义待澄清(blocked) / 0 不可机器检测 | 已实测 |
 | 三态 Gate + Completeness | `specs/pilot/live-java-repositories.yaml` | preflight 3/3 仓库 `complete`，Gate `FAIL`（发现违规） | 已实测(preflight) |
 | 真实仓库违规发现 | 同上 | word-wrap 7 / markedj 4 / keycloak-cas 4 findings，重复扫描 2 次一致 | 已实测(preflight) |
 | 新增 vs 历史债务趋势 | `pilot-metrics-baseline.yaml:21-34` | 机制就绪，无窗口数据 | 待测 |
@@ -52,8 +52,8 @@ preflight，**不得充当 live pilot outcome**；缺测项记 `待测`，不填
 
 | KPI | 证据来源 | 现值 | 状态 |
 | --- | --- | --- | --- |
-| 规则作者提效（Time-to-Rule） | `specs/pilot/author-cost-baseline.yaml`、`docs/pilot/author-cost-baseline.md` | 工具与空记录就绪，无真实作者工时 | 待测 |
-| 可复现构建 | `.scratch/reproducible-java-build/` | 6 个 JAR byte-identical，5 项 PASS | 已实测 |
+| 规则作者提效（Author Active Time） | `specs/pilot/author-cost-baseline.yaml`、`docs/pilot/author-cost-baseline.md` | 工具与空记录就绪，无真实作者工时 | 待测 |
+| 可复现构建 | `docs/pilot/competition-evidence-index.md` | 6 个 JAR byte-identical，5 项 PASS | 已实测 |
 | 工程规模 | `runtime/*`、`control-plane/*`、`scripts/*` | Rust 40+ crates / Java 6 模块 / 50+ 检查脚本 | 已实测 |
 | Verification / Evidence | ADR-0070、`specs/pilot/pilot-evidence-package.yaml` | 独立验证 + 证据包封存机制就绪 | 已实测 |
 
