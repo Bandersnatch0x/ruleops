@@ -269,6 +269,7 @@ def stale_descriptor(value):
     # This case is about descriptor expiry being refused (3). The optional registryPin
     # binds the whole descriptor digest, so leaving it attached would make the mutation
     # read as pin/descriptor tampering (2) and mask the expiry path.
+    # The independent pin-descriptor-mismatch case covers that binding check.
     value.pop("registryPin", None)
     value["descriptor"].update({"expiresAtEpochSecs": 2})
 write("stale-cache.json", stale_descriptor)
@@ -298,7 +299,7 @@ run_failure() {
         echo "$name expected exit $expected, got $rc" >&2
         exit 1
     }
-    python3 - "$delivery_dir/failure-$name.json" "$delivery_dir/failure-$name.stderr" "$repo_dir" <<'PY'
+    python3 - "$delivery_dir/failure-$name.json" "$delivery_dir/failure-$name.stderr" "$repo_dir" "$name" <<'PY'
 import json
 import pathlib
 import sys
@@ -306,6 +307,8 @@ import sys
 failure = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 stderr = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
 assert failure["kind"] == "ScanFailure"
+if sys.argv[4] == "pin-descriptor-mismatch":
+    assert failure["diagnostics"][0]["code"] == "DELIVERY_INVALID"
 assert failure["diagnostics"][0]["detailDigest"].startswith("sha256:")
 assert "detail" not in failure["diagnostics"][0]
 assert sys.argv[3] not in json.dumps(failure)
