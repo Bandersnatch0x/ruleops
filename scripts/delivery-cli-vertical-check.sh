@@ -265,7 +265,17 @@ def write(name, mutate):
 write("invalid-unknown.json", lambda value: value.update({"futureField": True}))
 write("invalid-platform.json", lambda value: value.update({"expectedPlatform": "linux/arm64"}))
 write("trust-failure.json", lambda value: value["verification"]["evidence"].update({"signatureValid": False}))
-write("stale-cache.json", lambda value: value["descriptor"].update({"expiresAtEpochSecs": 2}))
+def stale_descriptor(value):
+    # This case is about descriptor expiry being refused (3). The optional registryPin
+    # binds the whole descriptor digest, so leaving it attached would make the mutation
+    # read as pin/descriptor tampering (2) and mask the expiry path.
+    value.pop("registryPin", None)
+    value["descriptor"].update({"expiresAtEpochSecs": 2})
+write("stale-cache.json", stale_descriptor)
+def pin_descriptor_mismatch(value):
+    # registryPin deliberately left describing the untampered descriptor.
+    value["descriptor"].update({"expiresAtEpochSecs": 2})
+write("pin-descriptor-mismatch.json", pin_descriptor_mismatch)
 write("offline-cache-miss.json", lambda value: value.update({"profile": "enterpriseAirGapped", "cacheRoot": ".ruleops/missing-cache"}))
 write("connected-fetch-failure.json", lambda value: value.update({"cacheRoot": ".ruleops/missing-cache"}))
 def tamper_oci(value):
@@ -308,6 +318,7 @@ run_failure invalid-unknown 2
 run_failure invalid-platform 2
 run_failure trust-failure 4
 run_failure stale-cache 3
+run_failure pin-descriptor-mismatch 2
 run_failure offline-cache-miss 3 --execution-mode offline
 run_failure connected-fetch-failure 3
 run_failure invalid-oci-layout 2
