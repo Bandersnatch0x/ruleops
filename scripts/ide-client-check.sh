@@ -119,7 +119,14 @@ run_or_fail() {
           'map-init=init|--repo-root|src|--language|java' \
           'map-decision-evaluate=decision|evaluate' \
           'scan-classify-2=INVALID_INPUT' \
-          'scan-classify-4=TRUST_FAILED'; do
+          'scan-classify-4=TRUST_FAILED' \
+          's5-scan-rule-id=scan|--repo-root|src|--rule-id|corp.java.smoke' \
+          's5-scan-candidate=scan|--repo-root|src|--candidate|src/cand' \
+          's5-scan-descriptor=scan|--repo-root|src|--delivery-descriptor|desc file.json' \
+          's5-scan-paired=scan|--repo-root|src|--rule-id|r|--base|abc|--head|def' \
+          's5-cursor-json="\"p\\u0000a\\u0000\\\"quoted\\\"\\\\path 中文\"' \
+          's5-mapped-doctor=doctor|--format|json' \
+          's5-mapped-registry-show=registry|show|standards|corp.std.x|--version|2.0.0'; do
           grep -Fq "$needle" "$PARITY_VSCODE" || failures+=("parity output missing required line: $needle")
         done
         # scan-render 行必须显式拒绝把 exit=0 说成 PASS（阶段 4 工作台语义）。

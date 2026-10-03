@@ -122,3 +122,35 @@ SDK 宿主测试：`src/test/java/io/ruleops/ide/ErfHostTest.java`，需可用�
 验证范围是纯核与宿主绑定替身/状态绑定；真实 IDE 安装、真实企业 endpoint 与发布资产仍待负责人提供，不能由这些测试代替。
 
 IntelliJ 设置：ERF → Registry connection profile FILE（默认空）；持久字段 `connectionProfile` 只含路径。离线纯核和真实状态绑定定向测试：`bash clients/intellij/selftest/run-stage3.sh`（需要 JDK 21，输出在 `clients/intellij/build/stage3-selftest/`）。`ErfHostTest` 另需真实 SDK/test application；语法解析不是 SDK 编译或真实 IDE 验收。
+
+## 阶段 4/5：统一命令面、扫描工作台与当前状态
+
+### 真实功能（离线测试已建立证据）
+
+- **32 项命令面**：`ThinClientCore.buildMappedArgs`/`commandPrefix` 与 VS Code 端消费同一份 `clients/ide-command-map.json` params，机械展开 argv（枚举/digest/number/csv/bool 校验 fail closed，identity 字段由 UI 显式收集）。
+- **扫描工作台**：`buildScanArgs` 三路线互斥（`--rule-id` / `--candidate` / `--delivery-descriptor`）、base/head 成对；`renderScanReport` 按 ScanResult/ScanFailure 契约渲染，**绝不把 exit=0 显示为 PASS**。
+- **registry 三命令**：`ErfRegistry` 绑定 `registry list`（NUL cursor JSON 编码为单个 `--cursor-json` argv）、`registry show`（独立 pin 全字段绑定）、`registry sync rules`（SYNC_RULES_ONLY）。profile 仅 FILE 路径；连接/工作区切换使 pin 与 descriptor 失效。
+- **负例与边界**（阶段 5 新增 `Stage5SelfTest`，54 项断言）：buildScanArgs 路线冲突/缺路线/base-head 不成对、buildMappedArgs 必填缺失/枚举非法/digest 形状/控制字符、NUL cursor JSON 转义且 argv 无裸控制字符、分页回显不一致拒绝、PIN digest/identity mismatch、release JSON schema 非法、endpoint 带鉴权信息拒绝、status UNKNOWN 回执 authority 矛盾拒绝（`STATUS_AUTHORITY_GUARD`）、schema 非法 receipt 拒绝、location 路径越界、scan 垃圾输出 fail closed。已挂入 `run-stage3.sh` 自测链。
+
+### 限制（不可用项清单与原因）
+
+- **Gradle 离线构建不可用**：`gradle --offline buildPlugin` 无法解析 `org.jetbrains.intellij:1.17.4`（插件仓库缺依赖；阶段 2/5 两次确认）→ 插件 zip 打包 **INCONCLUSIVE**，须人工在离线镜像下解析后复现。
+- **SDK 宿主测试未运行**：`ErfHostTest` 需要真实 IntelliJ SDK test application；当前仅有纯核自测 + Java 语法解析（非 SDK 类型检查）。
+- **真实 IDE 行为**：工具窗/表单真实交互、多项目窗口、长任务取消（`Task.Backgroundable` 真实中断）、重启恢复、真实网络断连——均只能人工验收（见 `docs/` 阶段 5 人工验收清单）。
+- **状态查询 authority 校验差异**：Java 核对 status=UNKNOWN 强制 authority=UNKNOWN（`STATUS_AUTHORITY_GUARD`）；JS 核只要求 authority ∈ {UNKNOWN, RECEIVED_ONLY}。属已知分歧，已记入阶段 5 报告。
+
+### 复现步骤
+
+```bash
+# 定向自测（离线零依赖，含阶段 5 Stage5SelfTest）
+source ~/.local/opt/erf-env.sh
+bash clients/intellij/selftest/run-stage3.sh
+
+# 跨端 parity（真实 rf 输出喂两端核，diff 必须为 0）
+bash scripts/ide-client-check.sh .scratch/ide-client-check
+
+# 插件打包（INCONCLUSIVE：须人工提供离线镜像）
+gradle buildPlugin   # 产出 build/distributions/*.zip 后 Install Plugin from Disk…
+```
+
+真实 IDE 人工验收清单（多 workspace、断网、NUL cursor、多页、PIN mismatch、取消长任务、恶意路径、重启恢复、UNKNOWN 回执、键盘/主题/缩放等）见 `docs/` 阶段 5 人工验收清单；清单中每项标注“离线已测/待人工”，未建立证据的项不得声称通过。

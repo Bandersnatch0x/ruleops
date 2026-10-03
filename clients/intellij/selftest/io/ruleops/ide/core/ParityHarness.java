@@ -55,6 +55,7 @@ public final class ParityHarness {
             "parse-authority_status=" + orEmpty(parsed.get("authority_status")),
             "parse-authoritative=" + orEmpty(parsed.get("authoritative"))));
         lines.addAll(mapBatteryLines());
+        lines.addAll(stage5BatteryLines());
         lines.add("scan-classify-0=" + ThinClientCore.classifyScanExit(0));
         lines.add("scan-classify-2=" + ThinClientCore.classifyScanExit(2));
         lines.add("scan-classify-3=" + ThinClientCore.classifyScanExit(3));
@@ -90,8 +91,7 @@ public final class ParityHarness {
     private static String oneLine(String text) { return text.replace("\n", "\\n"); }
 
     /** 与 parity-harness.js#mapBatteryLines 一一对应，顺序与取值必须相同。 */
-    static List<String> mapBatteryLines() {
-        List<String> out = new ArrayList<>();
+    static List<String> mapBatteryLines() {        List<String> out = new ArrayList<>();
         out.add("map-init=" + String.join("|", ThinClientCore.buildMappedArgs(
             "rf init --repo-root PATH [--non-interactive] [OPTIONS]",
             List.of(
@@ -128,6 +128,59 @@ public final class ParityHarness {
             parIdentity("actor", "--actor")),
             m("journal", "src/j.jsonl", "measurementId", "m1", "classification", "scope", "actor", "alice"))));
         return out;
+    }
+
+    /** 阶段 5 battery：与 parity-harness.js#stage5BatteryLines 一一对应，顺序与取值必须相同。 */
+    static List<String> stage5BatteryLines() {
+        List<ThinClientCore.Param> scanParams = List.of(
+            new ThinClientCore.Param("repoRoot", "path", "--repo-root", true, List.of(), false, false, false, false),
+            new ThinClientCore.Param("route", "enum", null, true, List.of("rule-id", "candidate", "delivery-descriptor"), false, false, false, true),
+            new ThinClientCore.Param("ruleId", "text", "--rule-id", false, List.of(), false, false, false, false),
+            new ThinClientCore.Param("candidate", "dir", "--candidate", false, List.of(), false, false, false, false),
+            new ThinClientCore.Param("deliveryDescriptor", "file", "--delivery-descriptor", false, List.of(), false, false, false, false),
+            new ThinClientCore.Param("base", "text", "--base", false, List.of(), false, false, false, false),
+            new ThinClientCore.Param("head", "text", "--head", false, List.of(), false, false, false, false));
+        String scanTemplate = "rf scan --repo-root PATH (--rule-id RULE_ID | --candidate DIR | --delivery-descriptor FILE) [OPTIONS]";
+        String cursor = "p\0a\0\"quoted\"\\path 中文";
+        List<String> cursorArgs = ThinClientCore.buildRegistryListArgs("rules", "", "/profiles/p.json", 5000, 10, cursor);
+        String cursorJson = cursorArgs.get(cursorArgs.indexOf("--cursor-json") + 1);
+        String doctorTemplate = "rf doctor [--format FORMAT] [--scan-probe CMD] [OPTIONS]";
+        List<ThinClientCore.Param> doctorParams = List.of(
+            new ThinClientCore.Param("format", "enum", "--format", false, List.of("text", "json"), false, false, false, false),
+            new ThinClientCore.Param("scanProbe", "text", "--scan-probe", false, List.of(), false, false, false, false));
+        List<ThinClientCore.Param> showParams = List.of(
+            new ThinClientCore.Param("resource", "enum", null, true, List.of("rules", "standards"), false, false, false, false),
+            new ThinClientCore.Param("id", "text", null, true, List.of(), false, false, false, false),
+            new ThinClientCore.Param("version", "text", "--version", true, List.of(), false, false, false, false),
+            new ThinClientCore.Param("expectedDigest", "digest", "--expected-digest", true, List.of(), false, false, false, false));
+        String showTemplate = "rf registry show rules|standards ID --version VERSION --expected-digest SHA256 (--server URL | --connection-profile FILE) [--timeout-ms N]";
+        return List.of(
+            "s5-scan-rule-id=" + String.join("|", ThinClientCore.buildScanArgs(scanTemplate, scanParams,
+                m("route", "rule-id", "ruleId", "corp.java.smoke", "repoRoot", "src"))),
+            "s5-scan-candidate=" + String.join("|", ThinClientCore.buildScanArgs(scanTemplate, scanParams,
+                m("route", "candidate", "candidate", "src/cand", "repoRoot", "src"))),
+            "s5-scan-descriptor=" + String.join("|", ThinClientCore.buildScanArgs(scanTemplate, scanParams,
+                m("route", "delivery-descriptor", "deliveryDescriptor", "desc file.json", "repoRoot", "src"))),
+            "s5-scan-paired=" + String.join("|", ThinClientCore.buildScanArgs(scanTemplate, scanParams,
+                m("route", "rule-id", "ruleId", "r", "repoRoot", "src", "base", "abc", "head", "def"))),
+            "s5-cursor-json=" + quoteJson(cursorJson),
+            "s5-mapped-doctor=" + String.join("|", ThinClientCore.buildMappedArgs(doctorTemplate, doctorParams, m("format", "json"))),
+            "s5-mapped-registry-show=" + String.join("|", ThinClientCore.buildMappedArgs(showTemplate, showParams,
+                m("resource", "standards", "id", "corp.std.x", "version", "2.0.0", "expectedDigest", "sha256:" + "c".repeat(64)))));
+    }
+
+    /** 与 JSON.stringify 一致的 JSON 字符串编码（含 NUL \u0000 转义），零依赖实现。 */
+    private static String quoteJson(String raw) {
+        StringBuilder sb = new StringBuilder("\"");
+        for (char c : raw.toCharArray()) {
+            if (c == '\\' || c == '"') sb.append('\\').append(c);
+            else if (c == '\n') sb.append("\\n");
+            else if (c == '\r') sb.append("\\r");
+            else if (c == '\t') sb.append("\\t");
+            else if (c < 32) sb.append(String.format("\\u%04x", (int) c));
+            else sb.append(c);
+        }
+        return sb.append('"').toString();
     }
 
     static Map<String, Object> scanFailFixture() {

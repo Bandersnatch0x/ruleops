@@ -86,3 +86,36 @@ Activity Bar 的 ERF 入口提供分组任务树与轻量场景表单，原 8 �
 验证范围是纯核与宿主绑定替身/状态绑定；真实 IDE 安装、真实企业 endpoint 与发布资产仍待负责人提供，不能由这些测试代替。
 
 VS Code 设置名：`erf.connectionProfile`（默认空）。定向命令：`node --test clients/vscode/test/core.test.js clients/vscode/test/sidebar.test.js clients/vscode/test/registry.test.js`。
+
+## 阶段 4/5：统一命令面、扫描工作台与当前状态
+
+### 真实功能（离线测试已建立证据）
+
+- **32 项命令面**：树视图与场景面板均从 `clients/ide-command-map.json` 派生；16 个场景可执行（`SCENARIOS`），其余命令节点显式标记“不可用 · 待后续阶段”，不执行命令模板。argv 由 generic builder 按 map params 机械展开（枚举/digest/number/csv/bool 类型校验 fail closed）。
+- **扫描工作台**（`erf.scan`）：三路线互斥（`--rule-id` / `--candidate` / `--delivery-descriptor`）、base/head 成对校验、stderr progress 行透出；exit=0/2/3/4 全部按 ScanResult/ScanFailure 契约渲染，**绝不把 exit=0 显示为 PASS**，以 status/gateDecision/authority 为准。
+- **registry 三命令**：`registry list rules|standards`（分页 cursor 保持不透明、JSON 编码为单个 `--cursor-json` argv，NUL 不拆参数）、`registry show`（独立 pin 全字段绑定核对）、`registry sync rules`（外部签名 descriptor + 显式 repo-root）。连接 profile 仅 FILE 路径。
+- **负例与边界**（阶段 5 新增 `test/stage5-negatives.test.js`，11 项）：NUL cursor 往返、分页回显不一致拒绝、PIN digest/identity mismatch、缺独立 pin、release JSON schema 非法、endpoint 带鉴权信息/查询串/哈希拒绝、submission status UNKNOWN 回执 fail closed、schema 非法 receipt 拒绝、FindingView 路径越界（`..\`/绝对/控制字符）、写文件失败不产出请求且表单保留、scan 垃圾输出绝不渲染 PASS、delivery-descriptor 路线端到端、limit 非法不调用 rf。
+
+### 限制（不可用项清单与原因）
+
+- **Gradle `org.jetbrains.intellij:1.17.4` 离线不可解析**（`gradle --offline buildPlugin` 失败：插件仓库缺依赖，与阶段 2 结论一致）→ IntelliJ 插件打包 INCONCLUSIVE。
+- **VSIX 打包**：`npx --no-install @vscode/vsce`（4.0.0）离线可用，可产出 VSIX（见复现步骤）；但**真实 VS Code 安装后的交互验收未完成**，属人工步骤。
+- **真实 IDE 行为**：多 workspace 实际切换、键盘导航/主题/缩放、长任务取消后的真实进程状态、重启恢复、真实网络断连——均只能人工验收（见 `docs/agents/` 下阶段 5 人工验收清单）。
+- **状态查询 authority 校验差异**：Java 核对 status=UNKNOWN 强制 authority=UNKNOWN（`STATUS_AUTHORITY_GUARD`）；JS 核只要求 authority ∈ {UNKNOWN, RECEIVED_ONLY}。两端各自渲染、不在 parity harness 内，属已知分歧。
+
+### 复现步骤
+
+```bash
+# 定向测试（离线零依赖）
+node --test clients/vscode/test/*.test.js
+
+# 跨端 parity（真实 rf 输出喂两端核，diff 必须为 0）
+bash scripts/ide-client-check.sh .scratch/ide-client-check
+
+# VSIX 离线打包（vsce 4.0.0 已验证可用）
+node clients/vscode/scripts/prepare-resources.js
+cd clients/vscode && npx --no-install @vscode/vsce package --out ../../.scratch/vsix/erf-thin-client-0.1.0.vsix
+code --install-extension ../../.scratch/vsix/erf-thin-client-0.1.0.vsix   # 真实 IDE 人工验收起点
+```
+
+真实 IDE 人工验收清单（多 workspace、断网、NUL cursor、多页、PIN mismatch、取消长任务、恶意路径、重启恢复、UNKNOWN 回执、键盘/主题/缩放等）见 `docs/` 阶段 5 人工验收清单；清单中每项标注“离线已测/待人工”，未建立证据的项不得声称通过。

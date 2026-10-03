@@ -76,6 +76,36 @@ function scanFixtureFailure() {
 }
 const oneLine = text => String(text).replace(/\n/g, '\\n');
 
+// ---- 阶段 5 battery：scan 三路线 argv + registry 分页 cursor + mapped 代表样本 ----
+// 与 IntelliJ ParityHarness.stage5BatteryLines 一一对应，顺序与取值必须相同。
+function stage5BatteryLines() {
+  const scanCmd = {
+    commandId: 'rf.scan',
+    commandTemplate: 'rf scan --repo-root PATH (--rule-id RULE_ID | --candidate DIR | --delivery-descriptor FILE) [OPTIONS]',
+    params: [
+      P('repoRoot', 'path', '--repo-root', true), P('route', 'enum', null, true, ['rule-id', 'candidate', 'delivery-descriptor'], false, false, false, true),
+      P('ruleId', 'text', '--rule-id', false), P('candidate', 'dir', '--candidate', false), P('deliveryDescriptor', 'file', '--delivery-descriptor', false),
+      P('base', 'text', '--base', false), P('head', 'text', '--head', false),
+    ],
+  };
+  const scan = values => core.buildScanArgs(scanCmd, values).join('|');
+  const cursor = 'p\0a\0"quoted"\\path 中文';
+  return [
+    's5-scan-rule-id=' + scan({ route: 'rule-id', ruleId: 'corp.java.smoke', repoRoot: 'src' }),
+    's5-scan-candidate=' + scan({ route: 'candidate', candidate: 'src/cand', repoRoot: 'src' }),
+    's5-scan-descriptor=' + scan({ route: 'delivery-descriptor', deliveryDescriptor: 'desc file.json', repoRoot: 'src' }),
+    's5-scan-paired=' + scan({ route: 'rule-id', ruleId: 'r', repoRoot: 'src', base: 'abc', head: 'def' }),
+    's5-cursor-json=' + JSON.stringify(core.buildRegistryListArgs('rules', { connectionProfile: '/profiles/p.json', timeoutMs: 5000, limit: 10, cursor }).find(a => a.startsWith('"'))),
+    's5-mapped-doctor=' + core.buildMappedArgs({ commandId: 'battery', commandTemplate: 'rf doctor [--format FORMAT] [--scan-probe CMD] [OPTIONS]', params: [
+      P('format', 'enum', '--format', false, ['text', 'json']), P('scanProbe', 'text', '--scan-probe', false),
+    ] }, { format: 'json' }).join('|'),
+    's5-mapped-registry-show=' + core.buildMappedArgs({ commandId: 'battery', commandTemplate: 'rf registry show rules|standards ID --version VERSION --expected-digest SHA256 (--server URL | --connection-profile FILE) [--timeout-ms N]', params: [
+      P('resource', 'enum', null, true, ['rules', 'standards']), P('id', 'text', null, true),
+      P('version', 'text', '--version', true), P('expectedDigest', 'digest', '--expected-digest', true),
+    ] }, { resource: 'standards', id: 'corp.std.x', version: '2.0.0', expectedDigest: 'sha256:' + 'c'.repeat(64) }).join('|'),
+  ];
+}
+
 const rfStdoutFile = process.argv[2];
 const rfStdout = rfStdoutFile ? fs.readFileSync(rfStdoutFile, 'utf8') : '';
 const parsed = core.parseExplainText(rfStdout);
@@ -121,6 +151,7 @@ const lines = [
   'parse-authority_status=' + (parsed.authority_status || ''),
   'parse-authoritative=' + (parsed.authoritative || ''),
   ...mapBatteryLines(),
+  ...stage5BatteryLines(),
   'scan-classify-0=' + core.classifyScanExit(0),
   'scan-classify-2=' + core.classifyScanExit(2),
   'scan-classify-3=' + core.classifyScanExit(3),
