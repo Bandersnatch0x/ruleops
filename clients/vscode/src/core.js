@@ -299,7 +299,113 @@ function validateSubmissionResponse(receipt, request, statusQuery = false) {
   return receipt;
 }
 
+
+// Registry metadata and release pins are deliberately separate inputs. No network lives here.
+function registryText(value, name) {
+  requireNonEmpty(name, value);
+  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error('INVALID_REGISTRY_FIELD:' + name);
+  return value;
+}
+function registryResource(resource) {
+  if (!['rules', 'standards'].includes(resource)) throw new Error('REGISTRY_TYPE_INVALID');
+  return resource;
+}
+function registryConnectionArgs(opts) {
+  const profile = opts.connectionProfile || '';
+  const server = opts.server || '';
+  if (!!profile === !!server) throw new Error('REGISTRY_CONNECTION_REQUIRED_EXACTLY_ONE');
+  if (server) {
+    const uri = new URL(server);
+    if (!['http:', 'https:'].includes(uri.protocol) || uri.username || uri.password || uri.search || uri.hash) throw new Error('INVALID_REGISTRY_ENDPOINT');
+  }
+  const args = profile ? ['--connection-profile', registryText(profile, 'connectionProfile')]
+    : ['--server', registryText(server, 'server')];
+  if (!Number.isInteger(opts.timeoutMs) || opts.timeoutMs <= 0) throw new Error('INVALID_TIMEOUT');
+  return [...args, '--timeout-ms', String(opts.timeoutMs)];
+}
+function projectRegistryPins(document) {
+  if (!document || !Array.isArray(document.pins)) throw new Error('INVALID_RELEASE_PINS');
+  return document.pins.map(pin => {
+    if (!pin || typeof pin !== 'object') throw new Error('INVALID_RELEASE_PIN');
+    const result = { resource: registryResource(pin.resource) };
+    for (const key of ['id', 'version', 'expectedDigest', 'provenance']) result[key] = registryText(pin[key], key);
+    if (!/^sha256:[a-f0-9]{64}$/.test(result.expectedDigest)) throw new Error('INVALID_EXPECTED_DIGEST');
+    if (pin.deliveryDescriptor !== undefined) result.deliveryDescriptor = registryText(pin.deliveryDescriptor, 'deliveryDescriptor');
+    return Object.freeze(result);
+  });
+}
+function selectRegistryPin(pins, selection, resource) {
+  const pin = pins.find((_, index) => String(index) === selection);
+  if (!pin || pin.resource !== resource) throw new Error('INDEPENDENT_PIN_REQUIRED');
+  return pin;
+}
+function buildRegistryListArgs(resource, opts) {
+  registryResource(resource);
+  if (!Number.isInteger(opts.limit) || opts.limit < 1 || opts.limit > 256) throw new Error('REGISTRY_LIMIT_INVALID');
+  const args = ['registry', 'list', resource, ...registryConnectionArgs(opts), '--limit', String(opts.limit)];
+  if (opts.cursor !== undefined) {
+    if (typeof opts.cursor !== 'string') throw new Error('REGISTRY_CURSOR_INVALID');
+    args.push('--cursor-json', JSON.stringify(opts.cursor)); // NUL stays escaped in one argv.
+  }
+  return args;
+}
+function buildRegistryShowArgs(pin, opts) {
+  const checked = projectRegistryPins({ pins: [pin] })[0];
+  return ['registry', 'show', checked.resource, checked.id, '--version', checked.version,
+    '--expected-digest', checked.expectedDigest, ...registryConnectionArgs(opts)];
+}
+function buildRegistrySyncArgs(pin, descriptor, repoRoot, opts) {
+  if (pin?.resource !== 'rules') throw new Error('SYNC_RULES_ONLY');
+  const args = buildRegistryShowArgs(pin, opts);
+  args[1] = 'sync';
+  return [...args, '--delivery-descriptor', registryText(descriptor, 'deliveryDescriptor'), '--repo-root', registryText(repoRoot, 'repoRoot')];
+}
+function registryEnvelope(receipt) {
+  const registry = receipt?.registry;
+  if (receipt?.status !== 'RECEIVED_ONLY' || receipt.authority !== 'UNKNOWN'
+    || !['FORMAT_ONLY', 'PIN_MATCH', 'UNKNOWN'].includes(receipt.digestVerification)) throw new Error('REGISTRY_RESPONSE_INVALID');
+  return registryData(registry);
+}
+function registryData(registry) {
+  if (registry?.apiVersion !== CLIENT_API_VERSION || registry.schemaVersion !== 'asset-registry-v1'
+    || registry.authority !== 'UNKNOWN' || registry.requestId !== 'registry-read') throw new Error('REGISTRY_RESPONSE_INVALID');
+  return registry;
+}
+function registryItem(item, resource) {
+  if (item?.type !== registryResource(resource) || !/^sha256:[a-f0-9]{64}$/.test(item.digest)) throw new Error('REGISTRY_RESPONSE_INVALID');
+  for (const key of ['id', 'version', 'state']) registryText(item[key], key);
+  return Object.freeze({ type: item.type, id: item.id, version: item.version, state: item.state, digest: item.digest });
+}
+function projectRegistryPage(receipt, resource, cursor = '') {
+  const data = registryEnvelope(receipt);
+  if (receipt.digestVerification === 'PIN_MATCH' || !Array.isArray(data.items) || typeof data.nextCursor !== 'string'
+    || data.cursor !== cursor || typeof data.hasMore !== 'boolean'
+    || (data.hasMore && (!data.items.length || data.nextCursor === cursor))) throw new Error('REGISTRY_PAGE_INVALID');
+  return { items: data.items.map(item => registryItem(item, resource)), nextCursor: data.nextCursor, hasMore: data.hasMore };
+}
+function matchRegistryPin(data, pin) {
+  const item = registryItem(data.resource, pin.resource);
+  if (item.id !== pin.id || item.version !== pin.version) throw new Error('REGISTRY_IDENTITY_MISMATCH · UNKNOWN · 未安装');
+  if (item.digest !== pin.expectedDigest) throw new Error('REGISTRY_DIGEST_MISMATCH · UNKNOWN · 未安装');
+}
+function renderRegistryShow(receipt, pin) {
+  matchRegistryPin(registryEnvelope(receipt), pin);
+  return `${receipt.digestVerification} · authority=UNKNOWN · 未安装 / 不代表可执行\n${pin.id} @ ${pin.version}\n${pin.expectedDigest}\n独立来源：${pin.provenance}`;
+}
+function renderRegistrySync(receipt, pin) {
+  if (!receipt || receipt.authority !== 'UNKNOWN') throw new Error('REGISTRY_SYNC_RESPONSE_INVALID');
+  if (receipt.status !== 'CACHED') return 'UNKNOWN · 未安装 / 离线可用性未知';
+  if (receipt.digestVerification !== 'PIN_MATCH' || receipt.artifactKind !== 'SignedRuleBundle'
+    || !/^sha256:[a-f0-9]{64}$/.test(receipt.bundleDigest) || typeof receipt.destination !== 'string'
+    || !receipt.destination || receipt.overwritePolicy !== 'IMMUTABLE_DIGEST_ADDRESSED'
+    || typeof receipt.offlineAvailable !== 'boolean' || !receipt.provenance
+    || typeof receipt.provenance.descriptor !== 'string' || typeof receipt.provenance.trustRoot !== 'string') throw new Error('REGISTRY_SYNC_RESPONSE_INVALID');
+  matchRegistryPin(registryData(receipt.registry), pin);
+  return `CACHED · PIN_MATCH · authority=UNKNOWN · 缓存非安装 / 非 Gate PASS\nartifact：${receipt.artifactKind}\nbundleDigest：${receipt.bundleDigest}\ndestination：${receipt.destination}\noverwritePolicy：${receipt.overwritePolicy}\nofflineAvailable：${receipt.offlineAvailable}\nprovenance：${JSON.stringify(receipt.provenance)}\n后续扫描仍需 ExecutionLock、签名和撤销验证。`;
+}
+
 module.exports = {
+  projectRegistryPins, selectRegistryPin, buildRegistryListArgs, buildRegistryShowArgs, buildRegistrySyncArgs, projectRegistryPage, renderRegistryShow, renderRegistrySync,
   CLASSIFICATIONS, scopeCandidates, projectScopeOptions, selectScope, projectSavedRequest, selectRequest, statusSelection, validateSubmissionResponse,
   FORBIDDEN_FIELDS,
   CLIENT_API_VERSION,

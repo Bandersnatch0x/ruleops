@@ -25,6 +25,7 @@ pub struct LoadedDelivery {
     pub config: BundleDeliveryConfig,
     pub execution_lock_path: Option<PathBuf>,
     pub rule_id: String,
+    pub registry_pin: Option<RegistryPin>,
 }
 
 pub fn load_delivery(
@@ -54,7 +55,7 @@ pub fn load_delivery(
         &[
             "apiVersion", "kind", "schemaVersion", "ruleId", "endpoint", "cacheRoot", "profile",
             "expectedCompatibilityIdentity", "expectedPlatform", "timeoutMs",
-            "descriptor", "verification", "executionLockPath",
+            "descriptor", "verification", "executionLockPath", "registryPin",
         ],
         "delivery descriptor",
     )?;
@@ -140,7 +141,11 @@ pub fn load_delivery(
         return Err("delivery descriptor artifact statement does not match the backend Runtime Pack".into());
     }
 
+    let registry_pin = object.get("registryPin")
+        .map(|value| parse_registry_pin(value, &rule_id, &descriptor, &verification.context, now_epoch_secs))
+        .transpose()?;
     Ok(LoadedDelivery {
+        registry_pin,
         config: BundleDeliveryConfig {
             endpoint,
             descriptor,
@@ -842,4 +847,53 @@ mod tests {
         assert!(canonical_workspace_file(&root.join("descriptor.json"), &root, "descriptor").is_ok());
         fs::remove_dir_all(root).unwrap();
     }
+}
+
+/// A publishing-system statement, independently checked against the operator's pin.
+#[derive(Debug)]
+pub struct RegistryPin {
+    pub version: String,
+    pub store_digest: String,
+    pub provenance: String,
+}
+
+fn parse_registry_pin(
+    value: &Value,
+    rule_id: &str,
+    descriptor: &BundleDeliveryDescriptor,
+    verification: &BundleDeliveryVerification,
+    now: u64,
+) -> Result<RegistryPin, String> {
+    let fields = object(value, "registryPin")?;
+    reject_unknown(fields, &["type", "id", "version", "storeDigest", "bundleDigest", "descriptorDigest", "provenance", "signedMapping"], "registryPin")?;
+    expect_string(fields, "type", "rules")?;
+    expect_string(fields, "id", rule_id)?;
+    let version = required_string(fields, "version")?;
+    let provenance = required_string(fields, "provenance")?;
+    reject_empty_identity("registryPin.version", &version)?;
+    reject_empty_identity("registryPin.provenance", &provenance)?;
+    let store_digest = required_string(fields, "storeDigest")?;
+    parse_digest(fields, "storeDigest")?;
+    if parse_digest(fields, "bundleDigest")? != descriptor.bundle_digest
+        || parse_digest(fields, "descriptorDigest")? != descriptor.descriptor_digest() {
+        return Err("registryPin does not bind the selected delivery descriptor".into());
+    }
+    let mut payload = b"erf-registry-delivery-mapping-v1\0".to_vec();
+    for field in ["type", "id", "version", "storeDigest", "bundleDigest", "descriptorDigest", "provenance"] {
+        let text = required_string(fields, field)?;
+        payload.extend_from_slice(&(text.len() as u64).to_be_bytes());
+        payload.extend_from_slice(text.as_bytes());
+    }
+    let asset = parse_signed_asset(required_object(fields, "signedMapping")?, "registryPin.signedMapping")?;
+    if asset.payload != payload {
+        return Err("registryPin signed mapping payload mismatch".into());
+    }
+    let metadata = verification.trust_metadata.as_ref().ok_or("registryPin trust metadata missing")?;
+    verification.trust_store.verify_with_metadata(&asset, "registry-mapping-signing", metadata, now)
+        .map_err(|error| format!("registryPin signature invalid: {error}"))?;
+    if verification.revocation_snapshot.as_ref().ok_or("registryPin revocation snapshot missing")?
+        .is_asset_revoked(&asset.subject_digest()) {
+        return Err("registryPin mapping is revoked".into());
+    }
+    Ok(RegistryPin { version, store_digest, provenance })
 }

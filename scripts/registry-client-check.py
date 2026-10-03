@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import socket
+import ssl
+import secrets
 import subprocess
 import sys
 import threading
@@ -190,5 +192,122 @@ with (OUT / "server.log").open("w") as log:
 with socket.socket() as offline:
     offline.bind(("127.0.0.1", 0))
     assert cli("unreachable", ["list", "rules", "--server", f"http://127.0.0.1:{offline.getsockname()[1]}/v1", "--timeout-ms", "100"], 3)["code"] == "REGISTRY_UNAVAILABLE"
-(OUT / "summary.json").write_text(json.dumps({"checks": checks, "count": len(checks), "authority": "UNKNOWN"}, indent=2))
+# Approved transport acceptance uses ONLY a loopback TLS fixture, not an enterprise endpoint.
+tls = OUT / "tls"
+tls.mkdir()
+run("tls-ca", ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+               "-subj", "/CN=RegistryFixtureCA", "-keyout", str(tls / "ca.key"), "-out", str(tls / "ca.pem")])
+run("tls-csr", ["openssl", "req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=localhost",
+                "-keyout", str(tls / "leaf.key"), "-out", str(tls / "leaf.csr")])
+(tls / "leaf.ext").write_text("subjectAltName=DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\n")
+run("tls-cert", ["openssl", "x509", "-req", "-in", str(tls / "leaf.csr"), "-CA", str(tls / "ca.pem"),
+                 "-CAkey", str(tls / "ca.key"), "-CAcreateserial", "-days", "1", "-extfile", str(tls / "leaf.ext"),
+                 "-out", str(tls / "leaf.pem")])
+(tls / "client.pem").write_bytes((tls / "leaf.pem").read_bytes() + (tls / "leaf.key").read_bytes())
+token = secrets.token_urlsafe(32)
+os.environ["RULEOPS_REGISTRY_FIXTURE_TOKEN"] = token
+page_cursor = "fixture\x001&version=one +%/中文"
+requests = []
+redirect = False
+
+
+class SecureRegistry(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        from urllib.parse import parse_qs
+        requests.append(self.path)
+        assert self.headers.get("Authorization") == "Bearer " + token or self.connection.getpeercert()
+        assert self.headers.get("X-Request-Id") == "registry-read"
+        query = parse_qs(urlsplit(self.path).query)
+        base = {"apiVersion": "rulefactory.io/v1", "schemaVersion": "asset-registry-v1",
+                "authority": "UNKNOWN", "requestId": "registry-read"}
+        resource = {"type": "rules", "id": "fixture", "version": "1", "state": "DRAFT", "digest": pins["rules"]}
+        if urlsplit(self.path).path.endswith("/fixture"):
+            data = {**base, "resource": resource}
+        else:
+            cursor = query.get("cursor", [""])[0]
+            assert cursor in ("", page_cursor)
+            data = {**base, "items": [resource] if not cursor else [], "cursor": cursor,
+                    "nextCursor": page_cursor, "hasMore": not bool(cursor)}
+        body = json.dumps({} if redirect else data).encode()
+        self.send_response(302 if redirect else 200)
+        if redirect:
+            self.send_header("Location", "https://localhost:1/do-not-follow")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_):
+        pass
+
+
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(tls / "leaf.pem", tls / "leaf.key")
+context.load_verify_locations(tls / "ca.pem")
+context.verify_mode = ssl.CERT_OPTIONAL
+with http.server.HTTPServer(("127.0.0.1", 0), SecureRegistry) as secure:
+    secure.socket = context.wrap_socket(secure.socket, server_side=True)
+    thread = threading.Thread(target=secure.serve_forever, kwargs={"poll_interval": 0.01})
+    thread.start()
+    try:
+        profile = {"schemaVersion": "rf-connection-profile-v1", "approved": True,
+                   "endpoint": f"https://localhost:{secure.server_port}/v1", "provenance": "loopback fixture approval only",
+                   "bearerTokenEnv": "RULEOPS_REGISTRY_FIXTURE_TOKEN", "caCertificateFile": "ca.pem"}
+        profile_path = tls / "connection.json"
+        profile_path.write_text(json.dumps(profile))
+        connection = ["--connection-profile", str(profile_path)]
+        # An ambient proxy must not silently change the explicitly selected path.
+        old_proxy = os.environ.get("HTTPS_PROXY")
+        os.environ["HTTPS_PROXY"] = "http://127.0.0.1:1"
+        try:
+            secure_page = cli("approved-https-list", ["list", "rules", "--limit", "1", *connection])
+        finally:
+            if old_proxy is None:
+                del os.environ["HTTPS_PROXY"]
+            else:
+                os.environ["HTTPS_PROXY"] = old_proxy
+        assert secure_page["digestVerification"] == "FORMAT_ONLY"
+        assert secure_page["registry"]["nextCursor"] == page_cursor
+        next_page = cli("approved-https-cursor", ["list", "rules", "--limit", "1", "--cursor-json", json.dumps(page_cursor), *connection])
+        assert not next_page["registry"]["hasMore"]
+        assert "%00" in requests[-1] and "%26" in requests[-1]
+        assert cli("approved-https-pin", [*show, *connection])["digestVerification"] == "PIN_MATCH"
+        cli("approved-https-wrong-pin", ["show", "rules", "fixture", "--version", "1", "--expected-digest", "sha256:" + "0" * 64, *connection], 3)
+        for label, field, value in [
+            ("approval-required", "approved", False),
+            ("profile-plaintext-forbidden", "endpoint", f"http://127.0.0.1:{secure.server_port}/v1"),
+            ("profile-userinfo-forbidden", "endpoint", "https://user:not-for-output@localhost/v1"),
+            ("profile-query-forbidden", "endpoint", "https://localhost/v1?token=not-for-output"),
+            ("profile-inline-secret-forbidden", "bearerToken", "not-for-output"),
+            ("profile-credential-missing", "bearerTokenEnv", "RULEOPS_UNSET_FIXTURE_TOKEN"),
+            ("profile-ca-missing", "caCertificateFile", "absent-ca.pem"),
+            ("profile-proxy-no-fallback", "proxy", "https://127.0.0.1:1"),
+        ]:
+            broken = {**profile, field: value}
+            profile_path.write_text(json.dumps(broken))
+            before = len(requests)
+            cli(label, ["list", "rules", *connection, "--timeout-ms", "500"], 3)
+            assert len(requests) == before, label
+        broken = dict(profile)
+        del broken["caCertificateFile"]
+        profile_path.write_text(json.dumps(broken))
+        cli("profile-untrusted-ca", ["list", "rules", *connection], 3)
+        profile_path.write_text(json.dumps(profile))
+        cli("profile-server-conflict", ["list", "rules", *connection, "--server", profile["endpoint"]], 3)
+        redirect = True
+        before = len(requests)
+        cli("approved-https-no-redirect", ["list", "rules", *connection], 3)
+        assert len(requests) == before + 1
+        redirect = False
+        mtls_profile = {**profile, "clientIdentityPemFile": "client.pem"}
+        del mtls_profile["bearerTokenEnv"]
+        profile_path.write_text(json.dumps(mtls_profile))
+        assert cli("approved-mtls-pin", [*show, *connection])["digestVerification"] == "PIN_MATCH"
+    finally:
+        secure.shutdown()
+        thread.join(timeout=3)
+        assert not thread.is_alive()
+        del os.environ["RULEOPS_REGISTRY_FIXTURE_TOKEN"]
+# No fixture or profile validation above contacted a real remote endpoint.
+(OUT / "summary.json").write_text(json.dumps({"checks": checks, "count": len(checks), "authority": "UNKNOWN", "realRemoteEndpointTested": False}, indent=2))
 print(f"registry-client-check: {len(checks)} checks passed; evidence={OUT}")

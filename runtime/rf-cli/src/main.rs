@@ -1,4 +1,5 @@
 mod delivery;
+mod registry_sync;
 
 use delivery::load_delivery;
 use erf_incremental_baseline::{digest_summary, Stage, StageTimer};
@@ -987,6 +988,16 @@ fn validate_delivery_runner_release(
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("registry") {
+        match registry_sync::run(&args[1..]) {
+            Ok(receipt) => println!("{receipt}"),
+            Err(code) => {
+                println!("{}", serde_json::json!({"status": "UNKNOWN", "authority": "UNKNOWN", "code": code}));
+                std::process::exit(3);
+            }
+        }
+        return;
+    }
     if args.first().map(String::as_str) != Some("scan") {
         eprintln!("usage: rf scan --repo-root <path> --project-config <file> (--rule-id <id> | --candidate <dir> | --delivery-descriptor <file>) [--base <revision> --head <revision>] [--runtime-home <dir>] [--host <command>] [--host-arg <arg>] [--resolver <command>] [--deadline-ms <n>] [--execution-lock <file>] [--baseline-kind <debt|comparison|quality>] [--baseline-fingerprint <fp>] [--exception-fingerprint <fp>] [--blocking-rule-id <id>] [--format text|json|sarif] [--progress text|json|none] [--output <file>] [PROJECT_CONFIG_OVERRIDES]");
         std::process::exit(2);

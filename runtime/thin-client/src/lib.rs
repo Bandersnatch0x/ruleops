@@ -12,7 +12,7 @@ use std::path::Path;
 use thiserror::Error;
 
 mod explain;
-mod transport;
+pub mod transport;
 pub mod registry;
 
 pub use explain::{

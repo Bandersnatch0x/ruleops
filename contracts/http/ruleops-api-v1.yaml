@@ -224,3 +224,25 @@ assetRegistry:
   writeCode: METHOD_NOT_ALLOWED
   importsLocalFiles: false
   grantsPublicationAuthority: false
+
+# Client-side selection does not add a server endpoint or grant write authority.
+approvedRegistryTransport:
+  owner: CLI
+  contract: rf-cli-v1.yaml#registry.approvedRemote
+  legacyLocalSeam: explicit HTTP literal loopback /v1, unchanged
+  approvedPath: explicit operator-approved HTTPS /v1 profile
+  auth: bearer environment reference or mTLS PEM identity file reference
+  certificates: validated hostname and chain; optional explicit CA bundle
+  proxy: explicit HTTPS proxy only; no ambient discovery or redirect following
+  methods: [GET]
+  resources: [/v1/registry/rules, /v1/registry/standards, '/v1/rule-bundles/{bundleDigest}/delivery']
+  noSourceUpload: true
+  noRegistryMetadataAsExecutableAssets: true
+  localSync:
+    command: rf registry sync
+    publicationMappingSource: independently signed release-system registry identity/version/storeDigest to RuleBundle binding
+    transportDigestAuthority: UNKNOWN
+    verification: existing delivery trust root, RuleBundle, Runtime Packs, ExecutionLock, revocation and compatibility
+    cache: immutable digest-addressed local cache; no overwrite or automatic cleanup
+    latest: refresh then explicitly select an immutable published version and its independent pin
+    realRemoteAcceptance: pending authorized enterprise endpoint

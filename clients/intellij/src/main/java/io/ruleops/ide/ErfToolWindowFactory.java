@@ -36,9 +36,13 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         EXCEPTION("申请例外", "feedback_exceptions", "rf.exception.request"),
         SUBMIT_FEEDBACK("提交反馈", "feedback_exceptions", "rf.feedback.submit"),
         SUBMIT_EXCEPTION("提交例外", "feedback_exceptions", "rf.exception.submit"),
-        STATUS("查询提交状态", "feedback_exceptions", "rf.submission.status");
+        STATUS("查询提交状态", "feedback_exceptions", "rf.submission.status"),
+        REGISTRY_LIST("浏览规则库（元数据）", "registry", "rf.registry.list"),
+        REGISTRY_SHOW("核对独立发布 pin", "registry", "rf.registry.show"),
+        REGISTRY_SYNC("缓存签名规则包", "registry", "rf.registry.sync");
         final String title, section, cli;
         Scene(String title, String section, String cli) { this.title = title; this.section = section; this.cli = cli; }
+        boolean registry() { return this == REGISTRY_LIST || this == REGISTRY_SHOW || this == REGISTRY_SYNC; }
         boolean server() { return this == SUBMIT_FEEDBACK || this == SUBMIT_EXCEPTION || this == STATUS; }
         @Override public String toString() { return title; }
     }
@@ -86,6 +90,14 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private final JButton pick = new JButton("选择 JSON 文件");
         private final JButton refresh = new JButton("刷新上下文");
         private final DefaultMutableTreeNode runs = new DefaultMutableTreeNode("运行记录");
+        private final ErfRegistry registry = new ErfRegistry();
+        private final JComboBox<String> registryResource = new JComboBox<>(new String[]{"rules", "standards"});
+        private final JComboBox<Integer> registryLimit = new JComboBox<>(new Integer[]{10, 50, 100, 256});
+        private final JComboBox<ThinClientCore.RegistryPin> registryPins = new JComboBox<>();
+        private final JTextField registryDescriptor = new JTextField();
+        private final JLabel registrySource = new JLabel("缺少独立发布来源");
+        private final JButton nextPage = new JButton("下一页");
+        private boolean updatingRegistry;
         private Scene scene = Scene.SHOW;
         private RfInvoker.Job job;
         private boolean disposed;
@@ -142,7 +154,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 }
             });
             execute.addActionListener(e -> execute()); cancel.addActionListener(e -> { if (job != null) job.cancel(); });
-            refresh.addActionListener(e -> { refresh(); if (scene == Scene.EXCEPTION && !file.getText().isBlank()) loadScopes(); });
+            refresh.addActionListener(e -> { if (scene != null && scene.registry()) registry.resetPage(); refresh(); if (scene == Scene.EXCEPTION && !file.getText().isBlank()) loadScopes(); });
             scope.addActionListener(e -> {
                 if (updatingScope) return;
                 broaderConfirmed.setSelected(false);
@@ -160,6 +172,26 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             });
             reason.setLineWrap(true); reason.setWrapStyleWord(true);
             settings.addActionListener(e -> ShowSettingsUtil.getInstance().showSettingsDialog(project, ErfConfigurable.class));
+            // Swing labels otherwise interpret <html> in an external identity and may fetch images.
+            var pinRenderer = new DefaultListCellRenderer();
+            pinRenderer.putClientProperty("html.disable", Boolean.TRUE); registryPins.setRenderer(pinRenderer);
+            registryLimit.setSelectedItem(50);
+            registryResource.addActionListener(e -> {
+                registry.resource((String) registryResource.getSelectedItem()); refreshPins();
+                nextPage.setEnabled(false);
+            });
+            registryLimit.addActionListener(e -> { registry.resetPage(); nextPage.setEnabled(false); });
+            registryPins.addActionListener(e -> {
+                if (updatingRegistry) return;
+                registry.select((ThinClientCore.RegistryPin) registryPins.getSelectedItem());
+                registryDescriptor.setText(registry.descriptor());
+            });
+            registryDescriptor.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                public void insertUpdate(javax.swing.event.DocumentEvent e) { registry.descriptor(registryDescriptor.getText()); }
+                public void removeUpdate(javax.swing.event.DocumentEvent e) { registry.descriptor(registryDescriptor.getText()); }
+                public void changedUpdate(javax.swing.event.DocumentEvent e) { registry.descriptor(registryDescriptor.getText()); }
+            });
+            nextPage.addActionListener(e -> executeRegistry(true));
             select(Scene.SHOW);
         }
         void select(Scene next) {
@@ -181,7 +213,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             var previousArtifact = (ErfArtifactIndex.Entry) artifacts.getSelectedItem();
             scene = next; generation++; form.removeAll();
             form.add(new JLabel(next.title));
-            if (!next.server()) { form.add(pick); form.add(file); }
+            if (!next.server() && !next.registry()) { form.add(pick); form.add(file); }
+            if (next.registry()) registryForm(next);
             if (next == Scene.FEEDBACK) field("分类", classification);
             if (next == Scene.FEEDBACK || next == Scene.EXCEPTION) {
                 field("提交者", actor); form.add(actorConfirmed); field("理由（原文传 CLI；当前 CLI 不接受换行/控制符）", new JScrollPane(reason));
@@ -195,7 +228,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             }
             if (next.server()) { field("本工作区已保存请求 / 回执（无需手选 JSON）", artifacts); refreshArtifacts(previousArtifact); }
             if (next == Scene.STATUS) field("查询身份（从所选对象读取）", selector);
-            execute.setText(next == Scene.FEEDBACK || next == Scene.EXCEPTION ? "预览并保存草稿/申请" : "预览并执行");
+            execute.setText(next == Scene.REGISTRY_LIST ? "读取/刷新第一页" : next == Scene.REGISTRY_SHOW ? "核对独立 pin" : next == Scene.REGISTRY_SYNC ? "确认缓存签名包" : next == Scene.FEEDBACK || next == Scene.EXCEPTION ? "预览并保存草稿/申请" : "预览并执行");
             form.revalidate(); form.repaint(); refresh();
             if (next == Scene.EXCEPTION && !file.getText().isBlank()) loadScopes();
         }
@@ -228,7 +261,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         }
         private void settingsChanged() {
             generation++; endpoint = project.getService(ErfSettings.class).snapshot().serverEndpoint;
-            artifacts.setSelectedItem(null); clearScopes();
+            artifacts.setSelectedItem(null); clearScopes(); configureRegistry(); refreshPins();
             if (job != null) job.cancel();
             else { refreshArtifacts(null); refresh(); }
         }
@@ -236,9 +269,11 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             if (job != null) return;
             ErfSettings.State c = project.getService(ErfSettings.class).snapshot();
             if (!endpoint.equals(c.serverEndpoint)) { endpoint = c.serverEndpoint; refreshArtifacts(null); }
+            configureRegistry();
             context.setText("工作区：" + project.getBasePath() + "\nServer：" + (endpoint.isBlank() ? "未配置" : "已配置（由 CLI 校验连接）") + "\n提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。");
             cancel.setEnabled(false);
-            boolean ready = scene != null && project.getBasePath() != null && !c.rfPath.isBlank() && c.requestTimeoutMs > 0 && (!scene.server() || !endpoint.isBlank());
+            boolean ready = scene != null && project.getBasePath() != null && !c.rfPath.isBlank() && c.requestTimeoutMs > 0 && (!scene.server() || !endpoint.isBlank()) && (!scene.registry() || !c.connectionProfile.isBlank() || !endpoint.isBlank());
+            nextPage.setEnabled(ready && scene == Scene.REGISTRY_LIST && registry.hasMore());
             execute.setEnabled(ready && (scene != Scene.EXCEPTION || scope.getSelectedItem() != null));
             if (scene == null) setState("不可用", "尚未提供此场景参数面板。");
             else if (scene == Scene.EXCEPTION && scope.getSelectedItem() == null) setState("范围未就绪", scopeEvidence + "；请选择 Finding 并刷新上下文，不回退整仓库。");
@@ -255,6 +290,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         }
         private void busy(boolean value) {
             execute.setEnabled(!value); cancel.setEnabled(value); tree.setEnabled(!value); refresh.setEnabled(!value); enableTree(form, !value);
+            nextPage.setEnabled(!value && scene == Scene.REGISTRY_LIST && registry.hasMore());
         }
         private void loadScopes() {
             if (job != null || disposed) return;
@@ -300,6 +336,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private void execute() {
             if (job != null || scene == null) return;
             refresh(); if (!execute.isEnabled()) return;
+            if (scene.registry()) { executeRegistry(false); return; }
             try {
                 Scene selected = scene; var c = project.getService(ErfSettings.class).snapshot();
                 String base = project.getBasePath();
@@ -333,6 +370,82 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 if (submit) { entry.status = "UNKNOWN"; index().remember(entry); }
                 run(request);
             } catch (IllegalArgumentException error) { setState("输入无效", error.getMessage() + "\n表单内容已保留。"); }
+        }
+        private void configureRegistry() {
+            var c = project.getService(ErfSettings.class).snapshot();
+            registry.configure(project.getBasePath() == null ? "" : project.getBasePath(), c.serverEndpoint, c.connectionProfile, c.requestTimeoutMs);
+        }
+        private void refreshPins() {
+            updatingRegistry = true; registryPins.removeAllItems();
+            for (var pin : registry.pins()) registryPins.addItem(pin);
+            registryPins.setSelectedItem(null); updatingRegistry = false;
+            registry.select(null); registryDescriptor.setText("");
+            registrySource.setText(registry.source().isEmpty() ? "缺少独立发布来源；禁止从响应生成 pin" : registry.source());
+        }
+        private void registryForm(Scene next) {
+            configureRegistry();
+            var c = project.getService(ErfSettings.class).snapshot();
+            form.add(new JLabel(c.connectionProfile.isBlank() ? "连接：显式 Server endpoint，由 CLI 校验" : "连接 profile FILE：" + c.connectionProfile + "（优先；失败不回退）"));
+            form.add(new JLabel("FORMAT_ONLY / PIN_MATCH · UNKNOWN；元数据核对不是安装或可执行证明"));
+            if (next == Scene.REGISTRY_SYNC) { registryResource.setSelectedItem("rules"); form.add(new JLabel("资源：rules")); }
+            else field("资源类型", registryResource);
+            JButton load = new JButton("选择独立发布记录 JSON（非信任根）");
+            load.addActionListener(e -> loadReleasePins()); form.add(load); form.add(registrySource);
+            if (next == Scene.REGISTRY_LIST) { field("每页条数", registryLimit); form.add(nextPage); }
+            else field("独立身份 / 版本 / 摘要 / provenance（整条记录）", registryPins);
+            if (next == Scene.REGISTRY_SYNC) fileField("外部签名 descriptor（含 cacheRoot；非 registry 响应）", registryDescriptor);
+        }
+        private void loadReleasePins() {
+            if (job != null) return;
+            var chosen = FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFileDescriptor("json"), project, null);
+            if (chosen == null) return;
+            long version = generation; Path source = Path.of(chosen.getPath());
+            busy(true); setState("读取独立发布来源", source.toString());
+            job = project.getService(RfInvoker.class).submit(project, indicator -> {
+                var document = ErfWorkflow.object(Files.readString(WorkflowFiles.checkedPath(source, false)));
+                ThinClientCore.projectRegistryPins(document); return document;
+            }, document -> {
+                job = null; if (disposed) return; busy(false);
+                if (version != generation) { refresh(); return; }
+                registry.loadPins(document, source); refreshPins(); refresh();
+            }, error -> {
+                job = null; if (disposed) return; busy(false);
+                if (version != generation) { refresh(); return; }
+                setState("来源无效", error.toString());
+            }, () -> { job = null; if (!disposed) { busy(false); refresh(); setState("已取消", "未改变独立发布记录"); } });
+        }
+        private void executeRegistry(boolean next) {
+            if (job != null || scene == null || !scene.registry()) return;
+            try {
+                configureRegistry();
+                String action = scene == Scene.REGISTRY_LIST ? "list" : scene == Scene.REGISTRY_SHOW ? "show" : "sync";
+                var request = registry.prepare(action, next, (Integer) registryLimit.getSelectedItem());
+                var c = project.getService(ErfSettings.class).snapshot(); String base = project.getBasePath(); long version = generation;
+                String preview = new GsonBuilder().setPrettyPrinting().create().toJson(request.args()) + "\n独立来源：" + (request.pin() == null ? "无（仅浏览）" : request.pin().provenance())
+                    + "\n只调用 CLI。PIN_MATCH 不是安装；sync 仅按外部 descriptor 缓存，后续扫描仍须验证。";
+                JTextArea text = new JTextArea(preview, 16, 65); text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+                if (JOptionPane.showConfirmDialog(this, new JScrollPane(text), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                if (version != generation || disposed) return;
+                var invoker = project.getService(RfInvoker.class); busy(true); setState("运行中", "registry " + action);
+                job = invoker.submit(project, indicator -> {
+                    var result = invoker.run(c.rfPath, request.args(), base, c.requestTimeoutMs, indicator);
+                    if (result.exitCode() != 0) throw new IllegalArgumentException("UNKNOWN · 未安装 · exit=" + result.exitCode() + "\n" + (result.stderr().isBlank() ? result.stdout() : result.stderr()));
+                    return ErfWorkflow.object(result.stdout());
+                }, receipt -> {
+                    job = null; if (disposed) return; busy(false);
+                    if (version != generation) { refresh(); return; }
+                    try { String detail = registry.accept(request, receipt); refresh(); finish("完成（无批准权威）", detail); }
+                    catch (IllegalArgumentException error) { finish("UNKNOWN / 失败 / 未安装", error.getMessage()); }
+                }, error -> {
+                    job = null; if (disposed) return; busy(false);
+                    if (version != generation) { refresh(); return; }
+                    finish("UNKNOWN / 失败 / 未安装", error.toString());
+                }, () -> {
+                    job = null; if (disposed) return; busy(false);
+                    if (version != generation) { refresh(); return; }
+                    finish("已取消 / UNKNOWN", "缓存副作用未知；未安装。不会自动重试或改连服务。");
+                });
+            } catch (IllegalArgumentException error) { setState("输入无效 / UNKNOWN", error.getMessage()); }
         }
         private void run(ErfWorkflow.Request request) {
             long version = generation;

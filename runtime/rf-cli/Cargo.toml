@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+erf-thin-client = { path = "../thin-client" }
+erf-bundle-delivery = { path = "../bundle-delivery" }
 erf-bundle-cache = { path = "../bundle-cache" }
 erf-affected-scope = { path = "../affected-scope" }
 erf-incremental-baseline = { path = "../incremental-baseline" }

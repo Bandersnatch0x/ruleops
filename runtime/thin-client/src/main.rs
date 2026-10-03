@@ -324,24 +324,34 @@ fn registry_request(args: &mut impl Iterator<Item = String>) -> Result<serde_jso
     let mut options = std::collections::BTreeMap::new();
     while let Some(key) = args.next() {
         let allowed = match action.as_str() {
-            "list" => matches!(key.as_str(), "--server" | "--timeout-ms" | "--cursor-json" | "--limit"),
-            _ => matches!(key.as_str(), "--server" | "--timeout-ms" | "--version" | "--expected-digest"),
+            "list" => matches!(key.as_str(), "--server" | "--connection-profile" | "--timeout-ms" | "--cursor-json" | "--limit"),
+            _ => matches!(key.as_str(), "--server" | "--connection-profile" | "--timeout-ms" | "--version" | "--expected-digest"),
         };
         if !allowed || options.insert(key, args.next().ok_or("REGISTRY_QUERY_INVALID")?).is_some() {
             return Err("REGISTRY_QUERY_INVALID");
         }
     }
     let option = |key: &str| options.get(key).map(String::as_str);
-    let server = option("--server").ok_or("REGISTRY_ENDPOINT_REQUIRED")?;
+    let server = option("--server");
+    let profile_path = option("--connection-profile");
+    if server.is_some() == profile_path.is_some() { return Err("REGISTRY_ENDPOINT_REQUIRED"); }
+    let profile = profile_path.map(|path| erf_thin_client::transport::ConnectionProfile::load(Path::new(path)))
+        .transpose().map_err(|_| "REGISTRY_PROFILE_INVALID")?;
     let timeout: u64 = option("--timeout-ms").unwrap_or("10000").parse().map_err(|_| "REGISTRY_QUERY_INVALID")?;
     if !(1..=600_000).contains(&timeout) { return Err("REGISTRY_QUERY_INVALID"); }
     let timeout = Duration::from_millis(timeout);
     let cursor: String = serde_json::from_str(option("--cursor-json").unwrap_or("\"\"")).map_err(|_| "REGISTRY_QUERY_INVALID")?;
-    match id {
-        Some(id) => erf_thin_client::registry::show(server, &resource_type, &id,
-            option("--version").ok_or("REGISTRY_PIN_REQUIRED")?,
-            option("--expected-digest").ok_or("REGISTRY_PIN_REQUIRED")?, timeout),
-        None => erf_thin_client::registry::list(server, &resource_type, &cursor,
-            option("--limit").unwrap_or("256").parse().map_err(|_| "REGISTRY_QUERY_INVALID")?, timeout),
+    let limit = option("--limit").unwrap_or("256").parse().map_err(|_| "REGISTRY_QUERY_INVALID")?;
+    match (id, profile) {
+        (Some(id), profile) => {
+            let version = option("--version").ok_or("REGISTRY_PIN_REQUIRED")?;
+            let digest = option("--expected-digest").ok_or("REGISTRY_PIN_REQUIRED")?;
+            match profile {
+                Some(profile) => erf_thin_client::registry::show_with_profile(&profile, &resource_type, &id, version, digest, timeout),
+                None => erf_thin_client::registry::show(server.unwrap(), &resource_type, &id, version, digest, timeout),
+            }
+        }
+        (None, Some(profile)) => erf_thin_client::registry::list_with_profile(&profile, &resource_type, &cursor, limit, timeout),
+        (None, None) => erf_thin_client::registry::list(server.unwrap(), &resource_type, &cursor, limit, timeout),
     }
 }

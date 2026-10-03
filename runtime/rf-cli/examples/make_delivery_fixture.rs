@@ -165,7 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (
             "bundle-key".to_string(),
             bundle_key.verifying_key().to_bytes().to_vec(),
-            vec![erf_rule_bundle::RULE_BUNDLE_SIGNING_ROLE.to_string()],
+            vec![erf_rule_bundle::RULE_BUNDLE_SIGNING_ROLE.to_string(), "registry-mapping-signing".to_string()],
         ),
         (
             "pack-key".to_string(),
@@ -190,11 +190,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &delivery_root_key,
     );
 
+    // Test publishing identity is intentionally distinct from the RuleBundle digest.
+    let mut registry_pin = json!({
+        "type": "rules", "id": RULE_ID, "version": "1.0.0",
+        "storeDigest": prefixed_digest(&Sha256::digest(b"registry-test-rule-release").into()),
+        "bundleDigest": prefixed_digest(&descriptor.bundle_digest),
+        "descriptorDigest": prefixed_digest(&descriptor.descriptor_digest()),
+        "provenance": "test-fixture:publishing-system:not-production"
+    });
+    let mut mapping_payload = b"erf-registry-delivery-mapping-v1\0".to_vec();
+    for field in ["type", "id", "version", "storeDigest", "bundleDigest", "descriptorDigest", "provenance"] {
+        let value = registry_pin[field].as_str().unwrap();
+        mapping_payload.extend_from_slice(&(value.len() as u64).to_be_bytes());
+        mapping_payload.extend_from_slice(value.as_bytes());
+    }
+    registry_pin["signedMapping"] = signed_asset_json(&sign_asset(mapping_payload, "bundle-key", &bundle_key));
     let descriptor_json = json!({
         "apiVersion": DELIVERY_PROTOCOL_VERSION,
         "kind": "BundleDeliveryConfig",
         "schemaVersion": "rf-delivery-v1",
         "ruleId": RULE_ID,
+        "registryPin": registry_pin,
         "endpoint": "http://127.0.0.1:9/v1",
         "cacheRoot": ".ruleops/cache/bundles",
         "profile": profile,
@@ -236,7 +252,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     {
                         "keyId": "bundle-key",
                         "publicKeyHex": hex_bytes_string(&bundle_key.verifying_key().to_bytes()),
-                        "roles": [erf_rule_bundle::RULE_BUNDLE_SIGNING_ROLE]
+                        "roles": [erf_rule_bundle::RULE_BUNDLE_SIGNING_ROLE, "registry-mapping-signing"]
                     },
                     {
                         "keyId": "pack-key",

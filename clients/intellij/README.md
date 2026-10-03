@@ -87,3 +87,38 @@ SDK 宿主测试：`src/test/java/io/ruleops/ide/ErfHostTest.java`，需可用�
 - explain 的 result/authority-trust 使用成对文件选择并原样传给 CLI；插件不推导 trust root 或审批权威。
 
 `WorkflowFilesSelfTest` 是真实文件系统检查，`CoreSelfTest`/`ParityHarness` 是纯核检查；均不替代 SDK 类型检查、打包安装或真实 IDE 验收。完整编译需要离线可用的 `org.jetbrains.intellij:1.17.4` 与 IntelliJ 2024.1 SDK；依赖不可解析时必须报告未编译。
+
+
+## 阶段 3：显式连接与独立发布记录
+
+规则库分区提供 `registry list rules|standards`、`registry show` 和 `registry sync rules`。列表与下一页只调用 `rf`；cursor 保持不透明，JSON 编码为一个 `--cursor-json` argv（包括 NUL），不拆身份或自行发 HTTP。
+
+连接 profile 设置仅保存 **FILE 路径**，不填 JSON、token、密码或证书内容；非空时仅传 `--connection-profile FILE`，否则使用显式 Server endpoint。两者不同时传给 CLI，profile 失败不回退。配置文件解析、安全凭据引用及连接授权由 CLI/运维负责；插件不会创建代理/隧道或绕过连接限制。反馈/例外原有 endpoint 路径不变。
+
+通过“选择独立发布记录”载入外部发布系统提供的 JSON：
+
+```json
+{
+  "pins": [
+    {
+      "resource": "rules",
+      "id": "your-exact-rule-id",
+      "version": "your-exact-version",
+      "expectedDigest": "sha256:<64 lowercase hex characters from the independent release source>",
+      "provenance": "release job / approved manifest reference",
+      "deliveryDescriptor": "signed-delivery.json"
+    }
+  ]
+}
+```
+
+此示意摘要占位符不能执行。该文件是**独立来源输入，不是信任根或发布证明**；CLI 最终裁决。每个下拉选项绑定 resource/id/version/expectedDigest/provenance 整条记录，并限定当前工作区和连接；切换配置后须重新载入。不会从列表/show 响应补齐或替换 pin。`deliveryDescriptor` 可省略并另选外部文件；记录中的相对路径按发布记录文件目录解析。descriptor 改变不会改变独立 pin，换选 pin 时会清除旧 descriptor 配对。
+
+- 浏览：`FORMAT_ONLY / authority=UNKNOWN / 未安装`，不把 registry state 当执行授权。
+- 核对：`PIN_MATCH / UNKNOWN / 未安装` 仅表示身份/版本/存储摘要相符，不是 RuleBundle 摘要或签名证明；不符、缺来源、未知值保持失败/UNKNOWN。
+- 缓存：选择外部签名 `BundleDeliveryDescriptor`（含 `cacheRoot`）后显式确认 sync，传入完整 pin、descriptor FILE 和当前 repo-root。artifactKind、bundleDigest、destination、不可变覆盖策略、offlineAvailable 与 provenance 只展示 CLI receipt 的字段，不从 pin、目录元数据或缓存命中推断。
+- `CACHED` 不是“安装成功”或 Gate PASS；后续扫描仍须 ExecutionLock、独立 trust root、签名/兼容/撤销验证。来源缺失和 transport 不可用会显式失败，不自动重试或改连服务。
+
+验证范围是纯核与宿主绑定替身/状态绑定；真实 IDE 安装、真实企业 endpoint 与发布资产仍待负责人提供，不能由这些测试代替。
+
+IntelliJ 设置：ERF → Registry connection profile FILE（默认空）；持久字段 `connectionProfile` 只含路径。离线纯核和真实状态绑定定向测试：`bash clients/intellij/selftest/run-stage3.sh`（需要 JDK 21，输出在 `clients/intellij/build/stage3-selftest/`）。`ErfHostTest` 另需真实 SDK/test application；语法解析不是 SDK 编译或真实 IDE 验收。

@@ -9,6 +9,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 erf-trust = { path = "../trust" }
 
 [lib]

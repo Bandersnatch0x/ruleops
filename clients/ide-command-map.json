@@ -96,14 +96,15 @@
     },
     {
       "commandId": "rf.registry.list",
-      "commandTemplate": "rf registry list rules|standards --server URL [--cursor-json JSON_STRING] [--limit N] [--timeout-ms N]",
+      "commandTemplate": "rf registry list rules|standards (--server URL | --connection-profile FILE) [--cursor-json JSON_STRING] [--limit N] [--timeout-ms N]",
       "section": "registry",
       "fieldSources": {
         "server": "已配置且获批准的 endpoint，不自动猜测",
         "resource": "rules 或 standards 资源选择",
         "cursorJson": "上一页响应的 cursor，由程序保真传递",
         "limit": "用户选择且符合 CLI parser 的页大小",
-        "timeoutMs": "显式配置或 CLI 默认值"
+        "timeoutMs": "显式配置或 CLI 默认值",
+        "connectionProfile": "负责人批准的 HTTPS profile 文件引用，凭据仅环境变量名或密钥文件引用"
       },
       "sideEffects": [
         "向选定 Server 发起列表读取；只获得身份目录，不下载可扫描签名包"
@@ -115,7 +116,7 @@
     },
     {
       "commandId": "rf.registry.show",
-      "commandTemplate": "rf registry show rules|standards ID --version VERSION --expected-digest SHA256 --server URL [--timeout-ms N]",
+      "commandTemplate": "rf registry show rules|standards ID --version VERSION --expected-digest SHA256 (--server URL | --connection-profile FILE) [--timeout-ms N]",
       "section": "registry",
       "fieldSources": {
         "server": "已配置且获批准的 endpoint",
@@ -123,7 +124,8 @@
         "id": "选中目录行的身份",
         "version": "选中版本",
         "expectedDigest": "已有发布/交付系统的独立 pin 及 provenance，不从待验证响应自填",
-        "timeoutMs": "显式配置或 CLI 默认值"
+        "timeoutMs": "显式配置或 CLI 默认值",
+        "connectionProfile": "负责人批准的 HTTPS profile 文件引用，凭据仅环境变量名或密钥文件引用"
       },
       "sideEffects": [
         "读取并核对选中身份/版本；PIN_MATCH 不等于发布批准或 bundle 验证"
@@ -131,6 +133,32 @@
       "outputTypes": [
         "registry_version",
         "pin_verification",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.registry.sync",
+      "commandTemplate": "rf registry sync rules ID --version VERSION --expected-digest SHA256 --delivery-descriptor FILE --repo-root PATH (--server URL | --connection-profile FILE) [--timeout-ms N]",
+      "section": "registry",
+      "fieldSources": {
+        "server": "显式 loopback endpoint，与 delivery descriptor 匹配",
+        "connectionProfile": "负责人批准的 HTTPS profile 文件引用",
+        "id": "选中不可变规则身份",
+        "version": "所选独立发布 pin 的版本",
+        "expectedDigest": "独立发布系统 pin，与 identity/version 同一记录且展示 provenance",
+        "deliveryDescriptor": "发布系统签名映射、RuleBundle/Pack/ExecutionLock 与外部 trust root",
+        "repoRoot": "当前工作区；缓存目的路径来自 descriptor.cacheRoot"
+      },
+      "sideEffects": [
+        "经 CLI 验证独立 pin 及签名发布映射，拉取可执行资产到不可变摘要缓存；不扫描、不发布、不更改 Gate",
+        "刷新目录后显式选择最新已发布版本与独立 pin；不从不可信元数据推断 latest 或可用性"
+      ],
+      "outputTypes": [
+        "signed_bundle_cache_receipt",
+        "digest_and_destination",
+        "overwrite_policy",
+        "offline_availability",
+        "provenance",
         "json"
       ]
     },

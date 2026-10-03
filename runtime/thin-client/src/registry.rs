@@ -1,5 +1,5 @@
 //! Read-only registry seam. Pins verify identity/content-digest equality, never publication authority.
-use crate::transport::{encode_query_component, registry_response};
+use crate::transport::{encode_query_component, registry_response, ConnectionProfile};
 use crate::{is_sha256_digest, require_exact_fields, ClientError, CLIENT_API_VERSION};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -10,12 +10,20 @@ const INVALID: &str = "REGISTRY_RESPONSE_INVALID";
 
 /// Read one explicit page. FORMAT_ONLY does not verify the content behind a digest.
 pub fn list(endpoint: &str, resource_type: &str, cursor: &str, limit: usize, timeout: Duration) -> ReadResult {
+    list_request(|suffix| registry_response(endpoint, suffix, timeout), resource_type, cursor, limit)
+}
+
+pub fn list_with_profile(profile: &ConnectionProfile, resource_type: &str, cursor: &str, limit: usize, timeout: Duration) -> ReadResult {
+    list_request(|suffix| profile.get_json(&format!("/registry/{suffix}"), "registry-read", timeout, 1024 * 1024), resource_type, cursor, limit)
+}
+
+fn list_request(fetch: impl FnOnce(&str) -> Result<(u16, Value), ClientError>, resource_type: &str, cursor: &str, limit: usize) -> ReadResult {
     validate_type(resource_type)?;
     if !(1..=256).contains(&limit) || cursor.len() > 4096 || cursor.contains(['\r', '\n']) {
         return Err("REGISTRY_QUERY_INVALID");
     }
     // Store cursors contain NUL separators; keep them opaque and URL-encode, never reject/reinterpret them.
-    let response = read(endpoint, &format!("{resource_type}?cursor={}&limit={limit}", encode_query_component(cursor)), timeout)?;
+    let response = read(fetch(&format!("{resource_type}?cursor={}&limit={limit}", encode_query_component(cursor))))?;
     let object = closed(&response, &["apiVersion", "schemaVersion", "authority", "items", "cursor", "nextCursor", "hasMore", "requestId"])?;
     let items = object["items"].as_array().ok_or(INVALID)?;
     let has_more = object["hasMore"].as_bool().ok_or(INVALID)?;
@@ -38,11 +46,19 @@ pub fn list(endpoint: &str, resource_type: &str, cursor: &str, limit: usize, tim
 
 /// The expected digest must come from an independent trusted source, not this response.
 pub fn show(endpoint: &str, resource_type: &str, id: &str, version: &str, expected_digest: &str, timeout: Duration) -> ReadResult {
+    show_request(|suffix| registry_response(endpoint, suffix, timeout), resource_type, id, version, expected_digest)
+}
+
+pub fn show_with_profile(profile: &ConnectionProfile, resource_type: &str, id: &str, version: &str, expected_digest: &str, timeout: Duration) -> ReadResult {
+    show_request(|suffix| profile.get_json(&format!("/registry/{suffix}"), "registry-read", timeout, 1024 * 1024), resource_type, id, version, expected_digest)
+}
+
+fn show_request(fetch: impl FnOnce(&str) -> Result<(u16, Value), ClientError>, resource_type: &str, id: &str, version: &str, expected_digest: &str) -> ReadResult {
     validate_type(resource_type)?;
     if !valid_text(id) || !valid_text(version) || matches!(id, "." | "..") || !is_sha256_digest(expected_digest) {
         return Err("REGISTRY_PIN_REQUIRED");
     }
-    let response = read(endpoint, &format!("{resource_type}/{}?version={}", encode_query_component(id), encode_query_component(version)), timeout)?;
+    let response = read(fetch(&format!("{resource_type}/{}?version={}", encode_query_component(id), encode_query_component(version))))?;
     let object = closed(&response, &["apiVersion", "schemaVersion", "authority", "resource", "requestId"])?;
     let resource = validate_resource(&object["resource"], resource_type)?;
     if resource["id"] != id || resource["version"] != version {
@@ -58,8 +74,8 @@ fn receipt(response: Value, verification: &str) -> Value {
     json!({"status": "RECEIVED_ONLY", "authority": "UNKNOWN", "digestVerification": verification, "registry": response})
 }
 
-fn read(endpoint: &str, suffix: &str, timeout: Duration) -> ReadResult {
-    let (status, response) = registry_response(endpoint, suffix, timeout).map_err(|error| match error {
+fn read(result: Result<(u16, Value), ClientError>) -> ReadResult {
+    let (status, response) = result.map_err(|error| match error {
         ClientError::InvalidEndpoint(_) => "REGISTRY_ENDPOINT_INVALID",
         _ => "REGISTRY_UNAVAILABLE",
     })?;

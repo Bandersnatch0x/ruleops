@@ -24,8 +24,22 @@ public final class ErfHostTest extends LightPlatformTestCase {
         try {
             assertTrue(panel.getComponentCount() > 0);
             for (var scene : ErfToolWindowFactory.Scene.values()) panel.select(scene);
-            assertEquals(8, ErfToolWindowFactory.Scene.values().length);
+            assertEquals(11, ErfToolWindowFactory.Scene.values().length);
+            panel.select(ErfToolWindowFactory.Scene.REGISTRY_SHOW);
+            assertTrue(hasPlainTextRegistryRenderer(panel));
         } finally { panel.dispose(); }
+    }
+
+    public void testConnectionProfileIsOnlyAnIndependentFileReference() {
+        var settings = getProject().getService(ErfSettings.class);
+        var previous = settings.snapshot();
+        try {
+            var state = new ErfSettings.State(); state.connectionProfile = "/release/connection profile.json";
+            state.serverEndpoint = "http://127.0.0.1:9/v1"; settings.loadState(state);
+            assertEquals(state.connectionProfile, settings.snapshot().connectionProfile);
+            var configurable = new ErfConfigurable(getProject()); configurable.createComponent();
+            assertFalse(configurable.isModified());
+        } finally { settings.loadState(previous); }
     }
 
     public void testProcessWorkIsBackgroundAndCompletionIsEdt() throws Exception {
@@ -55,6 +69,14 @@ public final class ErfHostTest extends LightPlatformTestCase {
         });
         try { await(entered); job.cancel(); await(cancelled); }
         finally { job.cancel(); }
+    }
+
+    private static boolean hasPlainTextRegistryRenderer(java.awt.Component component) {
+        if (component instanceof javax.swing.JComboBox<?> combo && combo.getRenderer() instanceof javax.swing.JComponent renderer
+            && Boolean.TRUE.equals(renderer.getClientProperty("html.disable"))) return true;
+        if (component instanceof java.awt.Container container)
+            for (var child : container.getComponents()) if (hasPlainTextRegistryRenderer(child)) return true;
+        return false;
     }
 
     private static void await(AtomicBoolean completed) throws Exception {

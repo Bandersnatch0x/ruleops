@@ -34,18 +34,18 @@ function saveCli(args) {
   return { code: 0, stdout: '', stderr: '' };
 }
 
-test('native container, grouped tree, menus and all 31 metadata entries are discoverable', () => {
+test('native container, grouped tree, menus and all shared metadata entries are discoverable', () => {
   assert.equal(manifest.contributes.viewsContainers.activitybar[0].id, 'erf');
   assert.equal(manifest.contributes.views.erf[1].type, 'webview');
   assert.ok(manifest.contributes.menus['view/title'].some(m => m.command === 'erf.cancel'));
   const h = host(); const tree = h.providers.tree;
   assert.deepEqual(tree.getChildren().slice(0, -1).map(s => s.id), Object.keys(map.sections));
   const items = tree.getChildren().flatMap(s => tree.getChildren(s));
-  assert.equal(items.length, 33); // 31 CLI entries + show/navigate local scenes.
+  assert.equal(items.length, map.commands.length + 2); // Shared CLI entries + show/navigate local scenes.
   for (const cli of map.commands) assert.ok(items.some(s => s.cli === cli.commandId || s.commandId === cli.commandId));
 });
 
-test('the actual activation binds all eight commands to the same sidebar without executing', async () => {
+test('the actual activation binds all supported commands to the same sidebar without executing', async () => {
   require('../scripts/prepare-resources');
   const Module = require('node:module'); const original = Module._load;
   const h = host();

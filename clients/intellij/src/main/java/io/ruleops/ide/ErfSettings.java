@@ -15,6 +15,7 @@ public final class ErfSettings implements PersistentStateComponent<ErfSettings.S
     public static final class State {
         public String rfPath = "rf";
         public String serverEndpoint = "";
+        public String connectionProfile = "";
         public boolean telemetryEnabled = false;
         public int requestTimeoutMs = 5000;
     }
@@ -25,6 +26,7 @@ public final class ErfSettings implements PersistentStateComponent<ErfSettings.S
         State copy = new State();
         copy.rfPath = state.rfPath;
         copy.serverEndpoint = state.serverEndpoint;
+        copy.connectionProfile = state.connectionProfile;
         copy.telemetryEnabled = state.telemetryEnabled;
         copy.requestTimeoutMs = state.requestTimeoutMs;
         return copy;

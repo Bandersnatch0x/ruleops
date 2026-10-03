@@ -51,3 +51,38 @@ Activity Bar 的 ERF 入口提供分组任务树与轻量场景表单，原 8 �
 
 仓库开发或打包前运行 `node clients/vscode/scripts/prepare-resources.js`，将共享元数据复制为插件资源（生成件不入 Git）；VSIX prepublish 自动执行同一步。
 定向测试：`node --test clients/vscode/test/*.test.js`（包含宿主 API 替身测试，不等于真实 VS Code 验收）。
+
+
+## 阶段 3：显式连接与独立发布记录
+
+规则库分区提供 `registry list rules|standards`、`registry show` 和 `registry sync rules`。列表与下一页只调用 `rf`；cursor 保持不透明，JSON 编码为一个 `--cursor-json` argv（包括 NUL），不拆身份或自行发 HTTP。
+
+连接 profile 设置仅保存 **FILE 路径**，不填 JSON、token、密码或证书内容；非空时仅传 `--connection-profile FILE`，否则使用显式 Server endpoint。两者不同时传给 CLI，profile 失败不回退。配置文件解析、安全凭据引用及连接授权由 CLI/运维负责；插件不会创建代理/隧道或绕过连接限制。反馈/例外原有 endpoint 路径不变。
+
+通过“选择独立发布记录”载入外部发布系统提供的 JSON：
+
+```json
+{
+  "pins": [
+    {
+      "resource": "rules",
+      "id": "your-exact-rule-id",
+      "version": "your-exact-version",
+      "expectedDigest": "sha256:<64 lowercase hex characters from the independent release source>",
+      "provenance": "release job / approved manifest reference",
+      "deliveryDescriptor": "signed-delivery.json"
+    }
+  ]
+}
+```
+
+此示意摘要占位符不能执行。该文件是**独立来源输入，不是信任根或发布证明**；CLI 最终裁决。每个下拉选项绑定 resource/id/version/expectedDigest/provenance 整条记录，并限定当前工作区和连接；切换配置后须重新载入。不会从列表/show 响应补齐或替换 pin。`deliveryDescriptor` 可省略并另选外部文件；记录中的相对路径按发布记录文件目录解析。descriptor 改变不会改变独立 pin，换选 pin 时会清除旧 descriptor 配对。
+
+- 浏览：`FORMAT_ONLY / authority=UNKNOWN / 未安装`，不把 registry state 当执行授权。
+- 核对：`PIN_MATCH / UNKNOWN / 未安装` 仅表示身份/版本/存储摘要相符，不是 RuleBundle 摘要或签名证明；不符、缺来源、未知值保持失败/UNKNOWN。
+- 缓存：选择外部签名 `BundleDeliveryDescriptor`（含 `cacheRoot`）后显式确认 sync，传入完整 pin、descriptor FILE 和当前 repo-root。artifactKind、bundleDigest、destination、不可变覆盖策略、offlineAvailable 与 provenance 只展示 CLI receipt 的字段，不从 pin、目录元数据或缓存命中推断。
+- `CACHED` 不是“安装成功”或 Gate PASS；后续扫描仍须 ExecutionLock、独立 trust root、签名/兼容/撤销验证。来源缺失和 transport 不可用会显式失败，不自动重试或改连服务。
+
+验证范围是纯核与宿主绑定替身/状态绑定；真实 IDE 安装、真实企业 endpoint 与发布资产仍待负责人提供，不能由这些测试代替。
+
+VS Code 设置名：`erf.connectionProfile`（默认空）。定向命令：`node --test clients/vscode/test/core.test.js clients/vscode/test/sidebar.test.js clients/vscode/test/registry.test.js`。

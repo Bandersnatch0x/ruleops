@@ -10,6 +10,130 @@ use std::time::Duration;
 
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
+/// An explicitly selected, operator-approved HTTPS profile. This is configuration,
+/// not publication authority; credential values are resolved only at request time.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectionProfile {
+    schema_version: String,
+    approved: bool,
+    endpoint: String,
+    provenance: String,
+    bearer_token_env: Option<String>,
+    ca_certificate_file: Option<std::path::PathBuf>,
+    client_identity_pem_file: Option<std::path::PathBuf>,
+    proxy: Option<String>,
+    #[serde(skip)]
+    directory: std::path::PathBuf,
+}
+
+fn profile_error() -> ClientError {
+    ClientError::InvalidEndpoint("REGISTRY_PROFILE_INVALID".into())
+}
+
+impl ConnectionProfile {
+    pub fn load(path: &std::path::Path) -> Result<Self, ClientError> {
+        let path = path.canonicalize().map_err(|_| profile_error())?;
+        let file = std::fs::File::open(&path).map_err(|_| profile_error())?;
+        let mut bytes = Vec::new();
+        file.take(64 * 1024 + 1).read_to_end(&mut bytes).map_err(|_| profile_error())?;
+        if bytes.len() > 64 * 1024 { return Err(profile_error()); }
+        let mut profile: Self = serde_json::from_slice(&bytes).map_err(|_| profile_error())?;
+        profile.directory = path.parent().ok_or_else(profile_error)?.to_owned();
+        profile.validate()?;
+        Ok(profile)
+    }
+
+    pub fn endpoint(&self) -> &str { &self.endpoint }
+    pub fn provenance(&self) -> &str { &self.provenance }
+
+    fn validate(&self) -> Result<(), ClientError> {
+        let url = secure_url(&self.endpoint)?;
+        if self.schema_version != "rf-connection-profile-v1" || !self.approved
+            || self.provenance.trim().is_empty() || self.provenance.chars().any(char::is_control)
+            || url.path() != "/v1"
+            || (self.bearer_token_env.is_none() && self.client_identity_pem_file.is_none())
+        { return Err(profile_error()); }
+        if let Some(name) = &self.bearer_token_env {
+            if name.is_empty() || !name.bytes().enumerate().all(|(index, c)|
+                c == b'_' || c.is_ascii_alphabetic() || (index > 0 && c.is_ascii_digit()))
+            { return Err(profile_error()); }
+        }
+        if let Some(proxy) = &self.proxy {
+            let url = secure_url(proxy)?;
+            if url.path() != "/" { return Err(profile_error()); }
+        }
+        Ok(())
+    }
+
+    /// Read only this approved origin. Redirects and ambient proxy discovery are
+    /// disabled so authorization headers cannot migrate to a second endpoint.
+    pub fn get_json(&self, suffix: &str, request_id: &str, timeout: Duration, max_bytes: usize)
+        -> Result<(u16, Value), ClientError>
+    {
+        self.validate()?;
+        if !(suffix.starts_with("/registry/") || suffix.starts_with("/rule-bundles/"))
+            || suffix.contains('#') || timeout.is_zero() || timeout > Duration::from_secs(600)
+            || max_bytes == 0
+        { return Err(profile_error()); }
+        let unavailable = || ClientError::SubmissionUnknown("REGISTRY_UNAVAILABLE".into());
+        let mut builder = reqwest::blocking::Client::builder()
+            .redirect(reqwest::redirect::Policy::none()).no_proxy().https_only(true)
+            .min_tls_version(reqwest::tls::Version::TLS_1_2).timeout(timeout).connect_timeout(timeout);
+        if let Some(path) = &self.ca_certificate_file {
+            let bytes = read_profile_material(&self.directory.join(path))?;
+            let certificates = reqwest::Certificate::from_pem_bundle(&bytes).map_err(|_| profile_error())?;
+            if certificates.is_empty() { return Err(profile_error()); }
+            for certificate in certificates { builder = builder.add_root_certificate(certificate); }
+        }
+        if let Some(path) = &self.client_identity_pem_file {
+            let bytes = read_profile_material(&self.directory.join(path))?;
+            builder = builder.identity(reqwest::Identity::from_pem(&bytes).map_err(|_| profile_error())?);
+        }
+        if let Some(proxy) = &self.proxy {
+            builder = builder.proxy(reqwest::Proxy::all(proxy).map_err(|_| profile_error())?);
+        }
+        let client = builder.build().map_err(|_| profile_error())?;
+        let mut request = client.get(format!("{}{suffix}", self.endpoint))
+            .header("Accept", "application/json").header("X-Request-Id", request_id);
+        if let Some(name) = &self.bearer_token_env {
+            let token = std::env::var(name).map_err(|_| profile_error())?;
+            // Reject rather than trim malformed secrets; never echo credentials.
+            if token.is_empty() || token.bytes().any(|c| !c.is_ascii_graphic()) { return Err(profile_error()); }
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().map_err(|_| unavailable())?;
+        let status = response.status().as_u16();
+        if response.content_length().is_some_and(|length| length > max_bytes as u64) {
+            return Err(unavailable());
+        }
+        let mut body = Vec::new();
+        response.take(max_bytes as u64 + 1).read_to_end(&mut body).map_err(|_| unavailable())?;
+        if body.len() > max_bytes { return Err(unavailable()); }
+        let value = serde_json::from_slice(&body).map_err(|_| unavailable())?;
+        Ok((status, value))
+    }
+}
+
+fn secure_url(value: &str) -> Result<reqwest::Url, ClientError> {
+    if value.chars().any(|c| c.is_whitespace() || c.is_control()) || value.contains('\\') {
+        return Err(profile_error());
+    }
+    let url = reqwest::Url::parse(value).map_err(|_| profile_error())?;
+    if url.scheme() != "https" || url.host_str().is_none() || !url.username().is_empty()
+        || url.password().is_some() || url.query().is_some() || url.fragment().is_some()
+    { return Err(profile_error()); }
+    Ok(url)
+}
+
+fn read_profile_material(path: &std::path::Path) -> Result<Vec<u8>, ClientError> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path).map_err(|_| profile_error())?.take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes).map_err(|_| profile_error())?;
+    if bytes.len() > 1024 * 1024 { return Err(profile_error()); }
+    Ok(bytes)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SubmissionReceipt {
     #[serde(rename = "apiVersion")]
@@ -1069,5 +1193,51 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, ClientError::SubmissionUnknown(_)));
+    }
+}
+
+#[cfg(test)]
+mod connection_profile_tests {
+    use super::*;
+
+    fn profile() -> Value {
+        serde_json::json!({"schemaVersion":"rf-connection-profile-v1", "approved":true,
+            "endpoint":"https://registry.example.test/v1", "provenance":"release-ops approval 42",
+            "bearerTokenEnv":"REGISTRY_TOKEN"})
+    }
+
+    #[test]
+    fn approved_profile_requires_https_explicit_approval_and_reference_only_credentials() {
+        let valid: ConnectionProfile = serde_json::from_value(profile()).unwrap();
+        valid.validate().unwrap();
+        for (field, value) in [
+            ("approved", Value::Bool(false)),
+            ("provenance", Value::String(String::new())),
+            ("endpoint", Value::String("http://registry.example.test/v1".into())),
+            ("endpoint", Value::String("https://user:secret@registry.example.test/v1".into())),
+            ("endpoint", Value::String("https://registry.example.test/v1?token=secret".into())),
+            ("endpoint", Value::String("https://registry.example.test/other".into())),
+            ("bearerTokenEnv", Value::String("literal token".into())),
+            ("bearerTokenEnv", Value::Null),
+            ("proxy", Value::String("http://proxy.example.test:8080".into())),
+            ("proxy", Value::String("https://user:secret@proxy.example.test".into())),
+        ] {
+            let mut bad = profile(); bad[field] = value;
+            let bad: ConnectionProfile = serde_json::from_value(bad).unwrap();
+            assert!(bad.validate().is_err(), "accepted {field}");
+        }
+        let mut bad = profile(); bad["bearerToken"] = "do-not-store".into();
+        assert!(serde_json::from_value::<ConnectionProfile>(bad).is_err());
+    }
+
+    #[test]
+    fn mtls_and_explicit_https_proxy_are_supported_without_bearer() {
+        let mut value = profile();
+        value.as_object_mut().unwrap().remove("bearerTokenEnv");
+        value["clientIdentityPemFile"] = "client.pem".into();
+        value["caCertificateFile"] = "enterprise-ca.pem".into();
+        value["proxy"] = "https://proxy.example.test:8443".into();
+        let profile: ConnectionProfile = serde_json::from_value(value).unwrap();
+        profile.validate().unwrap();
     }
 }

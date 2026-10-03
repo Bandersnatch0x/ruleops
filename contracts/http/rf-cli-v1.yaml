@@ -76,6 +76,96 @@ entrypoint:
     - PATH
   missingAssetOutcome: INPUT_OR_CONTRACT_ERROR
 
+registry:
+  connectionSelection: exactlyOneOfServerOrConnectionProfile
+  localServer:
+    option: --server URL
+    allowed: explicitHttpLiteralLoopbackWithV1Base
+    hostnameAndNonLoopback: rejected
+  approvedRemote:
+    option: --connection-profile FILE
+    schemaVersion: rf-connection-profile-v1
+    additionalFields: false
+    requiredFields: [schemaVersion, approved, endpoint, provenance]
+    optionalFields: [bearerTokenEnv, caCertificateFile, clientIdentityPemFile, proxy]
+    approved: true
+    approvalMeaning: operator-selected configuration from an authorized owner, not publication authority
+    endpoint: explicit HTTPS origin with exact /v1 base; no userinfo, query or fragment
+    authentication: at least one of bearerTokenEnv or clientIdentityPemFile
+    bearerTokenEnv: environment variable NAME only; resolve value at request time; never log
+    clientIdentityPemFile: PEM certificate and private-key file reference; never inline key material
+    caCertificateFile: optional PEM CA bundle added to platform-independent public roots
+    relativeMaterialPaths: relative to profile file directory
+    proxy: optional explicit HTTPS proxy origin; no credentials, query or fragment
+    ambientProxyDiscovery: false
+    redirects: forbidden
+    minimumTlsVersion: '1.2'
+    certificateAndHostnameValidation: required
+    profileMaxBytes: 65536
+    materialMaxBytes: 1048576
+    endpointDiscovery: forbidden
+  list:
+    command: rf registry list rules|standards (--server URL | --connection-profile FILE) [--cursor-json JSON_STRING] [--limit N] [--timeout-ms N]
+    cursor: opaque string, JSON-encoded as one argv element including NUL; only CLI URL-encodes it
+    pageSize: 1..256
+    cursorMaxUtf8Bytes: 4096
+    timeoutMs: 1..600000
+    status: RECEIVED_ONLY
+    digestVerification: FORMAT_ONLY
+    authority: UNKNOWN
+    executableAssetsInstalled: false
+  show:
+    command: rf registry show rules|standards ID --version VERSION --expected-digest SHA256 (--server URL | --connection-profile FILE) [--timeout-ms N]
+    identityBinding: [resourceType, id, version, expectedDigest]
+    expectedDigestSource: independent release-system pin with provenance; never copied from registry response
+    digestIdentity: canonicalStoreEnvelopeNotRuleBundleDigest
+    digestVerification: PIN_MATCH
+    authority: UNKNOWN
+    executableAssetsInstalled: false
+  sync:
+    command: rf registry sync rules ID --version VERSION --expected-digest SHA256 --delivery-descriptor FILE --repo-root PATH (--server URL | --connection-profile FILE) [--timeout-ms N]
+    selection: explicit immutable version and independent pin; refresh directory to select a newer published version
+    automaticLatestResolutionOrSemverGuessing: forbidden
+    versionNames: opaque exact registry strings; immutable selection is bound by the independent digest and signed mapping
+    delivery: existing rf-delivery-v1 signature, trust, revocation, compatibility and ExecutionLock verification
+    mapping:
+      field: registryPin
+      optionalForScan: true
+      requiredForSync: true
+      additionalFields: false
+      requiredFields: [type, id, version, storeDigest, bundleDigest, descriptorDigest, provenance, signedMapping]
+      type: rules
+      source: existing release system; no self-generated or registry-response-derived trust
+      signedMapping: existing SignedAsset DSSE envelope
+      signingRole: registry-mapping-signing
+      signingKeyAuthority: existing external delivery trust root delegation
+      payload: ASCII erf-registry-delivery-mapping-v1 followed by NUL, then UTF-8 fields type/id/version/storeDigest/bundleDigest/descriptorDigest/provenance each prefixed by an unsigned 8-byte big-endian byte length
+      binds: exact rule identity, version, independent store pin, RuleBundle digest and entire canonical delivery descriptor digest
+      verification: trust metadata freshness, key role/delegation, mapping signature, payload identity and mapping-subject revocation
+      provenanceAuthority: signed provenance identifies source, not Gate/publication approval
+    networkPath: selected connection only; descriptor endpoint must match
+    destination: descriptor cacheRoot under repo-root; existing immutable digest-addressed bundle cache
+    overwritePolicy: IMMUTABLE_DIGEST_ADDRESSED
+    cachedAssets: signed RuleBundle bytes in cache; verified Runtime Pack payloads in the supplied descriptor and separately supplied signed ExecutionLock are retained local inputs
+    receipt:
+      status: CACHED
+      authority: UNKNOWN
+      digestVerification: PIN_MATCH
+      artifactKind: SignedRuleBundle
+      fields: [status, authority, digestVerification, artifactKind, bundleDigest, destination, overwritePolicy, offlineAvailable, provenance, registry]
+      registry: underlying asset-registry-v1 detail response, not a nested show receipt
+      provenanceFields: [descriptor, trustRoot, mapping, executionLock, descriptorDigest, offlineCondition]
+    offlineMeaning: cached executable assets at verification time; later scans must reverify trust, freshness and platform
+    scanExecuted: false
+    authority: UNKNOWN
+    noScmPublicationOrGateAuthority: true
+  failure:
+    status: UNKNOWN
+    authority: UNKNOWN
+    diagnostics: static CLI codes only, no credentials or untrusted response messages
+    exitCode: 3
+  acceptanceBoundary: loopback HTTP/HTTPS fixtures only; enterprise remote acceptance requires an authorized real endpoint
+
 configuration:
   file: .ruleops/config.yaml
   schemaVersion: ruleops.config/v1
@@ -99,9 +189,9 @@ configuration:
     - workspaceDescriptorDigest
     - resolvedWorkspaceDescriptorDigest
     - configScanPlanDigest
-    binding:
-      workspaceDescriptorDigest: deterministic project-config scope projection
-      resolvedWorkspaceDescriptorDigest: actual descriptor digest returned by the selected Resolver
+  identityBinding:
+    workspaceDescriptorDigest: deterministic project-config scope projection
+    resolvedWorkspaceDescriptorDigest: actual descriptor digest returned by the selected Resolver
   executionModes:
     connected:
       cacheMiss: SERVER_FETCH_REQUIRED
@@ -153,7 +243,7 @@ nonGoals:
 # IDE exposure notes (informational only; existing contract/version unchanged).
 # ADR-0178: docs/adr/0178-ide-interaction-boundaries-and-acceptance.md.
 # Follow-up implementation and real-IDE acceptance: GitHub issue #139.
-# clients/ide-command-map.json lists 31 root rf --help templates in help order.
+# clients/ide-command-map.json lists root rf --help templates in help order.
 # It contains UI metadata only, not argument validation, execution policy,
 # registered IDE actions, a network protocol, or evidence of working UI.
 # D1: completion means a scannable signed bundle via existing delivery/cache;

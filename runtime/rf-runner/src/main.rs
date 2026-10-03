@@ -449,24 +449,6 @@ impl BundleDeliveryIdentity {
 impl BundleDeliveryConfig {
     fn resolve(&self) -> Result<(BundleDeliveryIdentity, Vec<u8>), ScanError> {
         self.descriptor.validate().map_err(|error| classified_delivery("input", error.to_string()))?;
-        let client = erf_bundle_delivery::DeliveryClient::new(
-            &self.endpoint,
-            std::time::Duration::from_millis(self.timeout_ms),
-        )
-        .map_err(|error| classified_delivery("input", error.to_string()))?;
-        let cache = erf_bundle_cache::FileBundleCache::new(&self.cache_root);
-        let single_flight = BUNDLE_DELIVERY_SINGLE_FLIGHT.get_or_init(Default::default);
-        let resolved = single_flight
-            .resolve(
-                &client,
-                &cache,
-                &self.cache_root,
-                &self.descriptor,
-                self.profile,
-                self.evidence,
-                self.now_epoch_secs,
-            )
-            .map_err(|error| ScanError::Delivery(classify_delivery_detail(&error.to_string())))?;
         let verification = self.verification.as_ref().ok_or_else(|| {
             classified_delivery("trust", "delivery verification context is required before scan")
         })?;
@@ -481,13 +463,32 @@ impl BundleDeliveryConfig {
             ScanError::Delivery(detail) => ScanError::Delivery(classify_delivery_detail(&detail)),
             other => other,
         })?;
+        let resolved = self.resolve_verified_bytes()?;
         let identity = BundleDeliveryIdentity::from_descriptor(&self.descriptor);
         identity.validate().map_err(|error| classified_delivery("input", error))?;
         Ok((identity, resolved.bytes))
     }
+
+    // Called only after verification; cache availability is transport-independent.
+    fn resolve_verified_bytes(&self) -> Result<erf_bundle_cache::ResolvedBundle, ScanError> {
+        let cache = erf_bundle_cache::FileBundleCache::new(&self.cache_root);
+        match erf_bundle_cache::resolve_cached(&cache, &self.descriptor, self.profile, self.evidence, self.now_epoch_secs) {
+            Ok(bundle) => Ok(bundle),
+            Err(erf_bundle_cache::DeliveryError::ServerFetchRequired) => {
+                let client = erf_bundle_delivery::DeliveryClient::new(
+                    &self.endpoint, std::time::Duration::from_millis(self.timeout_ms),
+                ).map_err(|error| classified_delivery("input", error.to_string()))?;
+                BUNDLE_DELIVERY_SINGLE_FLIGHT.get_or_init(Default::default)
+                    .resolve(&client, &cache, &self.cache_root, &self.descriptor, self.profile, self.evidence, self.now_epoch_secs)
+                    .map_err(|error| ScanError::Delivery(classify_delivery_detail(&error.to_string())))
+            }
+            Err(error) => Err(ScanError::Delivery(classify_delivery_detail(&error.to_string()))),
+        }
+    }
+
 }
 
-fn verify_delivery_context(
+pub fn verify_delivery_context(
     descriptor: &erf_bundle_cache::BundleDeliveryDescriptor,
     verification: &BundleDeliveryVerification,
     expected_compatibility_identity: &str,
@@ -2490,6 +2491,44 @@ mod tests {
         .unwrap();
         let error = validate_rule_bundle(&root).unwrap_err();
         assert!(error.to_string().contains("64-character digest"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn delivery_verified_cache_is_transport_independent_for_https_and_offline() {
+        use erf_bundle_cache::{BundleCache, DeploymentProfile, FileBundleCache, VerificationEvidence};
+        let root = test_bundle();
+        let bytes = b"verified-cache-transport-test";
+        let descriptor = erf_bundle_cache::BundleDeliveryDescriptor {
+            protocol_version: erf_bundle_cache::DELIVERY_PROTOCOL_VERSION.into(),
+            descriptor_version: erf_bundle_cache::DELIVERY_DESCRIPTOR_VERSION.into(),
+            bundle_digest: Sha256::digest(bytes).into(),
+            bundle_schema_version: "rule-bundle-v0".into(),
+            compatibility_identity: "java21-pmd7".into(), platform: "linux/amd64".into(),
+            rule_release_digest: [1; 32], policy_profile_digest: [2; 32],
+            execution_lock_digest: [3; 32], ontology_contract_pack_digest: [4; 32],
+            runtime_pack_digests: vec![[5; 32]], artifact_statement_digest: [6; 32],
+            revocation_snapshot_digest: [7; 32], issued_at_epoch_secs: 1, expires_at_epoch_secs: 100,
+        };
+        FileBundleCache::new(&root).put(&descriptor, bytes).unwrap();
+        let mut config = BundleDeliveryConfig {
+            endpoint: "https://unreachable.invalid/v1".into(),
+            expected_compatibility_identity: descriptor.compatibility_identity.clone(),
+            expected_platform: descriptor.platform.clone(), descriptor,
+            cache_root: root.to_string_lossy().into_owned(), profile: DeploymentProfile::Connected,
+            evidence: VerificationEvidence { signature_valid: true, trust_metadata_fresh: true,
+                revocation_snapshot_fresh: true, referenced_packs_available: true, trusted_context_valid: true },
+            verification: None, now_epoch_secs: 2, timeout_ms: 1,
+        };
+        // The private post-verification seam must never construct an HTTP client on a hit.
+        for profile in [DeploymentProfile::Connected, DeploymentProfile::EnterpriseAirGapped, DeploymentProfile::StandaloneDeveloper] {
+            config.profile = profile;
+            assert_eq!(config.resolve_verified_bytes().unwrap().bytes, bytes);
+        }
+        // The public scan path still refuses to use the cache without signed context.
+        assert!(config.resolve().unwrap_err().to_string().contains("verification context is required"));
+        config.now_epoch_secs = 100;
+        assert!(config.resolve_verified_bytes().is_err());
         fs::remove_dir_all(root).unwrap();
     }
 

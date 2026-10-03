@@ -97,6 +97,11 @@
           "type": "number",
           "default": 5000,
           "description": "提交/状态查询的超时（毫秒）。"
+        },
+        "erf.connectionProfile": {
+          "type": "string",
+          "default": "",
+          "description": "Registry 显式连接 profile FILE 路径（不是 JSON/凭据内容）。非空时优先于 serverEndpoint；IDE 不读取或保存 token，CLI 解析文件与安全引用，失败不回退。"
         }
       }
     },

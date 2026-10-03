@@ -430,4 +430,128 @@ public final class ThinClientCore {
             violations,
             "提交回执仅代表“已接收/已记录”，绝不表示 Feedback 已采纳、Exception 已批准或 Gate PASS。");
     }
+
+    public record RegistryPin(String resource, String id, String version, String expectedDigest, String provenance, String deliveryDescriptor) {
+        @Override public String toString() { return id + " @ " + version + " · " + expectedDigest + " · " + provenance; }
+    }
+    public record RegistryPage(List<Map<String, Object>> items, String nextCursor, boolean hasMore) {}
+    private static String registryText(Object value, String name) {
+        if (!(value instanceof String text) || text.isBlank() || text.chars().anyMatch(c -> c < 32 || c == 127))
+            throw new IllegalArgumentException("INVALID_REGISTRY_FIELD:" + name);
+        return text;
+    }
+    private static String registryResource(String resource) {
+        if (!List.of("rules", "standards").contains(resource)) throw new IllegalArgumentException("REGISTRY_TYPE_INVALID");
+        return resource;
+    }
+    private static String registryDigest(Object digest) {
+        String value = registryText(digest, "digest");
+        if (!value.matches("sha256:[a-f0-9]{64}")) throw new IllegalArgumentException("INVALID_EXPECTED_DIGEST");
+        return value;
+    }
+    public static List<RegistryPin> projectRegistryPins(Map<String, Object> document) {
+        if (!(document.get("pins") instanceof List<?> pins)) throw new IllegalArgumentException("INVALID_RELEASE_PINS");
+        List<RegistryPin> result = new ArrayList<>();
+        for (Object raw : pins) {
+            if (!(raw instanceof Map<?, ?> pin)) throw new IllegalArgumentException("INVALID_RELEASE_PIN");
+            result.add(new RegistryPin(registryResource(registryText(pin.get("resource"), "resource")),
+                registryText(pin.get("id"), "id"), registryText(pin.get("version"), "version"), registryDigest(pin.get("expectedDigest")),
+                registryText(pin.get("provenance"), "provenance"), pin.containsKey("deliveryDescriptor") ? registryText(pin.get("deliveryDescriptor"), "deliveryDescriptor") : ""));
+        }
+        return List.copyOf(result);
+    }
+    private static List<String> registryConnectionArgs(String server, String profile, int timeoutMs) {
+        if (nonEmpty(server) == nonEmpty(profile)) throw new IllegalArgumentException("REGISTRY_CONNECTION_REQUIRED_EXACTLY_ONE");
+        if (timeoutMs <= 0) throw new IllegalArgumentException("INVALID_TIMEOUT");
+        if (nonEmpty(server)) {
+            java.net.URI uri;
+            try { uri = java.net.URI.create(server); }
+            catch (IllegalArgumentException error) { throw new IllegalArgumentException("INVALID_REGISTRY_ENDPOINT"); }
+            if (uri.getHost() == null || !List.of("http", "https").contains(uri.getScheme()) || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null)
+                throw new IllegalArgumentException("INVALID_REGISTRY_ENDPOINT");
+        }
+        return List.of(nonEmpty(profile) ? "--connection-profile" : "--server", registryText(nonEmpty(profile) ? profile : server, "connection"), "--timeout-ms", String.valueOf(timeoutMs));
+    }
+    /** JSON string in ONE argv: opaque NUL-delimited store cursors must never be process arguments directly. */
+    public static String registryCursorJson(String cursor) {
+        StringBuilder result = new StringBuilder("\"");
+        for (char c : cursor.toCharArray()) {
+            if (c == '\\' || c == '"') result.append('\\').append(c);
+            else if (c < 32 || Character.isSurrogate(c)) result.append(String.format("\\u%04x", (int)c));
+            else result.append(c);
+        }
+        return result.append('"').toString();
+    }
+    public static List<String> buildRegistryListArgs(String resource, String server, String profile, int timeoutMs, int limit, String cursor) {
+        if (limit < 1 || limit > 256) throw new IllegalArgumentException("REGISTRY_LIMIT_INVALID");
+        List<String> args = new ArrayList<>(List.of("registry", "list", registryResource(resource)));
+        args.addAll(registryConnectionArgs(server, profile, timeoutMs));
+        args.addAll(List.of("--limit", String.valueOf(limit)));
+        if (cursor != null) args.addAll(List.of("--cursor-json", registryCursorJson(cursor)));
+        return List.copyOf(args);
+    }
+    public static List<String> buildRegistryShowArgs(RegistryPin pin, String server, String profile, int timeoutMs) {
+        if (pin == null) throw new IllegalArgumentException("INDEPENDENT_PIN_REQUIRED");
+        registryText(pin.provenance(), "provenance");
+        List<String> args = new ArrayList<>(List.of("registry", "show", registryResource(pin.resource()), registryText(pin.id(), "id"),
+            "--version", registryText(pin.version(), "version"), "--expected-digest", registryDigest(pin.expectedDigest())));
+        args.addAll(registryConnectionArgs(server, profile, timeoutMs));
+        return List.copyOf(args);
+    }
+    public static List<String> buildRegistrySyncArgs(RegistryPin pin, String descriptor, String repoRoot, String server, String profile, int timeoutMs) {
+        if (pin == null || !"rules".equals(pin.resource())) throw new IllegalArgumentException("SYNC_RULES_ONLY");
+        List<String> args = new ArrayList<>(buildRegistryShowArgs(pin, server, profile, timeoutMs)); args.set(1, "sync");
+        args.addAll(List.of("--delivery-descriptor", registryText(descriptor, "deliveryDescriptor"), "--repo-root", registryText(repoRoot, "repoRoot")));
+        return List.copyOf(args);
+    }
+    private static Map<?, ?> registryEnvelope(Map<String, Object> receipt) {
+        if (!"RECEIVED_ONLY".equals(receipt.get("status")) || !"UNKNOWN".equals(receipt.get("authority"))
+            || !(receipt.get("digestVerification") instanceof String verification) || !List.of("FORMAT_ONLY", "PIN_MATCH", "UNKNOWN").contains(verification))
+            throw new IllegalArgumentException("REGISTRY_RESPONSE_INVALID");
+        return registryData(receipt.get("registry"));
+    }
+    private static Map<?, ?> registryData(Object registry) {
+        if (!(registry instanceof Map<?, ?> data) || !CLIENT_API_VERSION.equals(data.get("apiVersion"))
+            || !"asset-registry-v1".equals(data.get("schemaVersion")) || !"UNKNOWN".equals(data.get("authority")) || !"registry-read".equals(data.get("requestId")))
+            throw new IllegalArgumentException("REGISTRY_RESPONSE_INVALID");
+        return data;
+    }
+    private static Map<String, Object> registryItem(Object raw, String resource) {
+        if (!(raw instanceof Map<?, ?> item) || !registryResource(resource).equals(item.get("type"))) throw new IllegalArgumentException("REGISTRY_RESPONSE_INVALID");
+        return Map.of("type", resource, "id", registryText(item.get("id"), "id"), "version", registryText(item.get("version"), "version"),
+            "state", registryText(item.get("state"), "state"), "digest", registryDigest(item.get("digest")));
+    }
+    public static RegistryPage projectRegistryPage(Map<String, Object> receipt, String resource, String cursor) {
+        var data = registryEnvelope(receipt);
+        if ("PIN_MATCH".equals(receipt.get("digestVerification")) || !(data.get("items") instanceof List<?> items)
+            || !(data.get("nextCursor") instanceof String next) || !java.util.Objects.equals(data.get("cursor"), cursor)
+            || !(data.get("hasMore") instanceof Boolean more) || (more && (items.isEmpty() || next.equals(cursor))))
+            throw new IllegalArgumentException("REGISTRY_PAGE_INVALID");
+        return new RegistryPage(items.stream().map(item -> registryItem(item, resource)).toList(), next, more);
+    }
+    private static void matchRegistryPin(Map<?, ?> data, RegistryPin pin) {
+        var item = registryItem(data.get("resource"), pin.resource());
+        if (!pin.id().equals(item.get("id")) || !pin.version().equals(item.get("version"))) throw new IllegalArgumentException("REGISTRY_IDENTITY_MISMATCH · UNKNOWN · 未安装");
+        if (!pin.expectedDigest().equals(item.get("digest"))) throw new IllegalArgumentException("REGISTRY_DIGEST_MISMATCH · UNKNOWN · 未安装");
+    }
+    public static String renderRegistryShow(Map<String, Object> receipt, RegistryPin pin) {
+        matchRegistryPin(registryEnvelope(receipt), pin);
+        return receipt.get("digestVerification") + " · authority=UNKNOWN · 未安装 / 不代表可执行\n" + pin;
+    }
+    public static String renderRegistrySync(Map<String, Object> receipt, RegistryPin pin) {
+        if (!"UNKNOWN".equals(receipt.get("authority"))) throw new IllegalArgumentException("REGISTRY_SYNC_RESPONSE_INVALID");
+        if (!"CACHED".equals(receipt.get("status"))) return "UNKNOWN · 未安装 / 离线可用性未知";
+        if (!"PIN_MATCH".equals(receipt.get("digestVerification")) || !"SignedRuleBundle".equals(receipt.get("artifactKind"))
+            || !(receipt.get("offlineAvailable") instanceof Boolean) || !"IMMUTABLE_DIGEST_ADDRESSED".equals(receipt.get("overwritePolicy"))
+            || !(receipt.get("registry") instanceof Map<?, ?> registry) || !(receipt.get("provenance") instanceof Map<?, ?> provenance))
+            throw new IllegalArgumentException("REGISTRY_SYNC_RESPONSE_INVALID");
+        registryText(receipt.get("destination"), "destination"); registryDigest(receipt.get("bundleDigest"));
+        registryText(provenance.get("descriptor"), "descriptor"); registryText(provenance.get("trustRoot"), "trustRoot");
+        matchRegistryPin(registryData(registry), pin);
+        return "CACHED · PIN_MATCH · authority=UNKNOWN · 缓存非安装 / 非 Gate PASS\nartifact：" + receipt.get("artifactKind")
+            + "\nbundleDigest：" + receipt.get("bundleDigest") + "\ndestination：" + receipt.get("destination")
+            + "\noverwritePolicy：" + receipt.get("overwritePolicy") + "\nofflineAvailable：" + receipt.get("offlineAvailable")
+            + "\nprovenance：" + provenance + "\n后续扫描仍需 ExecutionLock、签名和撤销验证。";
+    }
+
 }

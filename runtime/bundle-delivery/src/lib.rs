@@ -383,6 +383,15 @@ fn parse_delivery_response(
     }
     let value: Value = serde_json::from_slice(body)
         .map_err(|error| BundleDeliveryError::InvalidResponse(format!("response JSON is invalid: {error}")))?;
+    parse_delivery_json(status, &value, requested)
+}
+
+/// Parse the same delivery wire contract after an approved transport fetched JSON.
+pub fn parse_delivery_json(
+    status: u16,
+    value: &Value,
+    requested: &BundleDeliveryDescriptor,
+) -> Result<FetchedDelivery, BundleDeliveryError> {
     let object = value
         .as_object()
         .ok_or_else(|| BundleDeliveryError::InvalidResponse("response must be a JSON object".into()))?;
