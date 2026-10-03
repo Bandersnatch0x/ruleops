@@ -1,0 +1,565 @@
+{
+  "metadataOnly": true,
+  "source": {
+    "helpCommand": "./rf --help",
+    "baselineCommit": "0b4cb358a331c5850f3a0afae099c09d8d1a4280",
+    "review": ".scratch/ide-interaction-review-20261003.md#4",
+    "decision": "docs/adr/0178-ide-interaction-boundaries-and-acceptance.md",
+    "followUpIssue": "#139"
+  },
+  "notes": [
+    "仅供 VS Code/IntelliJ 共享展示；尚未接入 UI，不是业务实现、执行授权或新的 CLI/网络契约。",
+    "commandId 是清单标识而非已注册 IDE 命令；commandTemplate 与根入口帮助逐行同序，不可直接作为 shell 命令执行。",
+    "fieldSources 说明来源而非穷尽旗标或定义参数 schema；OBSERVER_OPTIONS/OPTIONS 等须阶段 4 逐项核对 parser 和安装能力。",
+    "outputTypes 是 UI 展示类别，不定义 wire schema；真实输出/错误与执行权威遵循既有 contracts 和 parser。",
+    "31 项全部可发现，常用优先；高级/维护项缺依赖时显示具体不可用原因，不隐藏、不自动执行、不自动构建。",
+    "副作用是已核实的提示下限，不是完整无副作用声明；根 rf 的仓库分发可能调用 Cargo/Maven、脚本、测试或子进程，阶段 4 须核实安装产物与完整执行计划。"
+  ],
+  "sections": {
+    "workspace": "工作区",
+    "registry": "规则库",
+    "scan_findings": "扫描与 Findings",
+    "feedback_exceptions": "反馈与例外",
+    "authoring_coverage": "创作与覆盖",
+    "pilot_governance": "试点与治理",
+    "operations_status": "运维状态"
+  },
+  "commands": [
+    {
+      "commandId": "rf.init",
+      "commandTemplate": "rf init --repo-root PATH [--non-interactive] [OPTIONS]",
+      "section": "workspace",
+      "fieldSources": {
+        "repoRoot": "当前 workspace 选择",
+        "options": "project-config init parser 支持的 language/build-system、路径及配置选项"
+      },
+      "sideEffects": [
+        "预览并确认后写入工作区配置文件"
+      ],
+      "outputTypes": [
+        "configuration_file",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.doctor",
+      "commandTemplate": "rf doctor --repo-root PATH [--format text|json] [--scan-probe COMMAND]",
+      "section": "workspace",
+      "fieldSources": {
+        "repoRoot": "当前 workspace 选择",
+        "format": "CLI 支持的 text/json",
+        "scanProbe": "用户明确指定并确认的高级诊断命令"
+      },
+      "sideEffects": [
+        "读取并诊断环境；指定 scan-probe 时执行外部命令，须独立确认"
+      ],
+      "outputTypes": [
+        "diagnostics",
+        "text",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.config.validate",
+      "commandTemplate": "rf config validate --repo-root PATH [--config FILE]",
+      "section": "workspace",
+      "fieldSources": {
+        "repoRoot": "当前 workspace 选择",
+        "config": "工作区配置文件选择；缺省遵循 CLI"
+      },
+      "sideEffects": [
+        "读取并校验配置；校验失败显示错误与文件位置"
+      ],
+      "outputTypes": [
+        "validation_result",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.config.show",
+      "commandTemplate": "rf config show --repo-root PATH [--config FILE] [--format text|json] [OPTIONS]",
+      "section": "workspace",
+      "fieldSources": {
+        "repoRoot": "当前 workspace 选择",
+        "config": "工作区配置文件选择",
+        "options": "project-config parser 支持的覆盖项",
+        "format": "CLI 支持的 text/json"
+      },
+      "sideEffects": [
+        "读取配置及有效覆盖来源，不把展示值另存为新的权威配置"
+      ],
+      "outputTypes": [
+        "effective_configuration",
+        "text",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.registry.list",
+      "commandTemplate": "rf registry list rules|standards --server URL [--cursor-json JSON_STRING] [--limit N] [--timeout-ms N]",
+      "section": "registry",
+      "fieldSources": {
+        "server": "已配置且获批准的 endpoint，不自动猜测",
+        "resource": "rules 或 standards 资源选择",
+        "cursorJson": "上一页响应的 cursor，由程序保真传递",
+        "limit": "用户选择且符合 CLI parser 的页大小",
+        "timeoutMs": "显式配置或 CLI 默认值"
+      },
+      "sideEffects": [
+        "向选定 Server 发起列表读取；只获得身份目录，不下载可扫描签名包"
+      ],
+      "outputTypes": [
+        "registry_page",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.registry.show",
+      "commandTemplate": "rf registry show rules|standards ID --version VERSION --expected-digest SHA256 --server URL [--timeout-ms N]",
+      "section": "registry",
+      "fieldSources": {
+        "server": "已配置且获批准的 endpoint",
+        "resource": "所选目录资源类型 rules/standards",
+        "id": "选中目录行的身份",
+        "version": "选中版本",
+        "expectedDigest": "已有发布/交付系统的独立 pin 及 provenance，不从待验证响应自填",
+        "timeoutMs": "显式配置或 CLI 默认值"
+      },
+      "sideEffects": [
+        "读取并核对选中身份/版本；PIN_MATCH 不等于发布批准或 bundle 验证"
+      ],
+      "outputTypes": [
+        "registry_version",
+        "pin_verification",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.standard.validate",
+      "commandTemplate": "rf standard validate FILE...",
+      "section": "authoring_coverage",
+      "fieldSources": {
+        "files": "文件多选；遵循 scripts/authoring-validate.sh 的实际输入关系"
+      },
+      "sideEffects": [
+        "运行创作校验器；仓库脚本可能准备 Maven classpath/临时文件，不自动作为 IDE 启动动作"
+      ],
+      "outputTypes": [
+        "validation_result",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.rule.validate",
+      "commandTemplate": "rf rule validate FILE...",
+      "section": "authoring_coverage",
+      "fieldSources": {
+        "files": "RuleIntent 等文件多选；按现有校验器关系，不凭文件名猜输入"
+      },
+      "sideEffects": [
+        "运行创作校验器；仓库脚本可能准备 Maven classpath/临时文件"
+      ],
+      "outputTypes": [
+        "validation_result",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.rule.generate",
+      "commandTemplate": "rf rule generate INTENT.yaml OUTPUT_DIR",
+      "section": "authoring_coverage",
+      "fieldSources": {
+        "intent": "选中的 RuleIntent YAML 文件",
+        "outputDir": "用户选择并确认的 candidate 输出目录"
+      },
+      "sideEffects": [
+        "调用候选生成工具并写入输出目录；可能准备 Maven 依赖，不发布候选"
+      ],
+      "outputTypes": [
+        "candidate_directory",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.rule.test",
+      "commandTemplate": "rf rule test CANDIDATE_DIR OUTPUT_DIR",
+      "section": "authoring_coverage",
+      "fieldSources": {
+        "candidateDir": "所选本地 candidate 目录",
+        "outputDir": "用户选择并确认的 evidence 输出目录"
+      },
+      "sideEffects": [
+        "运行候选 fixture 验证并写 evidence；保持 LOCAL_UNATTESTED 等原始限定"
+      ],
+      "outputTypes": [
+        "evidence_bundle",
+        "verification_result",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.coverage.analyze",
+      "commandTemplate": "rf coverage analyze OUTPUT_DIR",
+      "section": "authoring_coverage",
+      "fieldSources": {
+        "outputDir": "用户选择的报告/证据目录；不是被分析仓库输入"
+      },
+      "sideEffects": [
+        "执行现有覆盖分析脚本及 Maven 测试，写报告/证据并使用临时目录；不是任意工程的通用分析入口"
+      ],
+      "outputTypes": [
+        "coverage_report",
+        "evidence_links",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.report",
+      "commandTemplate": "rf pilot report OUTPUT_DIR",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "outputDir": "用户选择的试点报告输出目录"
+      },
+      "sideEffects": [
+        "执行现有试点报告脚本及其子检查并写出报告；不自动授权正式试点或 Gate"
+      ],
+      "outputTypes": [
+        "pilot_report",
+        "evidence_links",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.delivery-check",
+      "commandTemplate": "rf pilot delivery-check OUTPUT_DIR",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "outputDir": "用户选择并确认的检查输出目录"
+      },
+      "sideEffects": [
+        "执行仓库交付检查并写入检查产物；所需维护环境须另行核实"
+      ],
+      "outputTypes": [
+        "check_result",
+        "logs",
+        "evidence_links"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.baseline",
+      "commandTemplate": "rf pilot baseline OBSERVER_OPTIONS...",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "observerOptions": "runtime/pilot-observer/src/main.rs 的 baseline parser；对象、路径与事实由明确选择/确认提供"
+      },
+      "sideEffects": [
+        "执行基线扫描并写 baseline 文件；提交前预览实际命令及写出物，不自动执行"
+      ],
+      "outputTypes": [
+        "baseline_artifact",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.observe",
+      "commandTemplate": "rf pilot observe OBSERVER_OPTIONS...",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "observerOptions": "runtime/pilot-observer/src/main.rs 的 run parser；实际路径、观测对象/模式与已确认事实"
+      },
+      "sideEffects": [
+        "执行观测扫描并写 journal；执行计划、外部命令和写出物须预览"
+      ],
+      "outputTypes": [
+        "observation_result",
+        "journal",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.feedback",
+      "commandTemplate": "rf pilot feedback OBSERVER_OPTIONS...",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "observerOptions": "runtime/pilot-observer/src/main.rs 的 feedback parser；既有观测及经确认反馈事实"
+      },
+      "sideEffects": [
+        "将试点反馈写入 journal；与 Finding feedback 草稿/提交分开"
+      ],
+      "outputTypes": [
+        "journal",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.governance",
+      "commandTemplate": "rf pilot governance OBSERVER_OPTIONS...",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "observerOptions": "runtime/pilot-observer/src/main.rs 的 governance parser；真实治理事实、身份与证据，不自动代填"
+      },
+      "sideEffects": [
+        "向 journal 记录治理事实，不产生外部审批授权"
+      ],
+      "outputTypes": [
+        "journal",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.window-report",
+      "commandTemplate": "rf pilot window-report OBSERVER_OPTIONS...",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "observerOptions": "runtime/pilot-observer/src/main.rs 的 report parser；已选 journal、模式、时间窗及实际支持的输出选项"
+      },
+      "sideEffects": [
+        "读取观测并写窗口报告；报告是中间观测，不替代最终完整证据包裁决"
+      ],
+      "outputTypes": [
+        "window_report",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.evidence.package",
+      "commandTemplate": "rf pilot evidence package INPUT OUTPUT",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "input": "用户选择的既有证据输入；具体文件格式依 parser",
+        "output": "用户确认的包输出位置",
+        "bindings": "既有批准合同/样本的独立摘要；parser 要求 --contract-digest 与 --sample-digest，帮助模板未展开"
+      },
+      "sideEffects": [
+        "读取/核对证据并写 package；预览包含的资产，不编造缺失证据"
+      ],
+      "outputTypes": [
+        "pilot_evidence_package",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.pilot.evidence.adjudicate",
+      "commandTemplate": "rf pilot evidence adjudicate PACKAGE OUTPUT [OWNER]",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "package": "用户选择的完整证据包",
+        "output": "用户确认的裁决输出位置",
+        "owner": "真实治理身份先确认；帮助中的 OWNER 在 parser 中为 --owner，不用默认字符串代填",
+        "bindings": "既有批准合同/样本的独立摘要；parser 要求 --contract-digest 与 --sample-digest"
+      },
+      "sideEffects": [
+        "执行既有证据裁决并写输出；需要明确身份和执行确认，IDE 不自动代裁"
+      ],
+      "outputTypes": [
+        "pilot_adjudication",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.decision.evaluate",
+      "commandTemplate": "rf decision evaluate INPUT_DIGEST SIGNAL NOW OUTPUT [OPTIONS]",
+      "section": "pilot_governance",
+      "fieldSources": {
+        "inputDigest": "可追溯的输入证据摘要",
+        "signal": "真实观测信号，由负责人/操作者确认",
+        "now": "明确提供并确认的事实时间，不猜测",
+        "output": "用户确认的输出位置",
+        "options": "runtime/fast-decision/src/main.rs 已支持的选项"
+      },
+      "sideEffects": [
+        "执行现有决策评估并写证据；不代填裁决事实，不改变阈值或授予新权限"
+      ],
+      "outputTypes": [
+        "decision_evidence",
+        "text"
+      ]
+    },
+    {
+      "commandId": "rf.center.check",
+      "commandTemplate": "rf center check OUTPUT_DIR",
+      "section": "operations_status",
+      "fieldSources": {
+        "outputDir": "维护者选择并确认的检查输出目录"
+      },
+      "sideEffects": [
+        "执行仓库中心检查、测试/构建与子检查并写报告；需维护环境，非默认启动动作"
+      ],
+      "outputTypes": [
+        "check_result",
+        "logs",
+        "evidence_links"
+      ]
+    },
+    {
+      "commandId": "rf.explain",
+      "commandTemplate": "rf explain FINDING.json [--rule-meta FILE] [--result FILE --authority-trust FILE] [--assessment FILE] [--format text|json] [--output FILE]",
+      "section": "scan_findings",
+      "fieldSources": {
+        "finding": "当前选中的 digest-only FindingView 文件",
+        "ruleMeta": "可选规则元数据文件",
+        "resultAndAuthorityTrust": "所选扫描结果与独立 authority trust 文件；按 CLI 关系组合",
+        "assessment": "可选 assessment 文件",
+        "format": "CLI 支持的 text/json",
+        "output": "可选用户确认的输出文件"
+      },
+      "sideEffects": [
+        "读取解释输入；指定 output 时写文件；不重判原始权威或完整性"
+      ],
+      "outputTypes": [
+        "explanation",
+        "text",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.feedback.draft",
+      "commandTemplate": "rf feedback draft FINDING.json --classification CLASS --reason TEXT --actor ACTOR [--output FILE]",
+      "section": "feedback_exceptions",
+      "fieldSources": {
+        "finding": "当前选中的 FindingView 文件",
+        "classification": "既有 thin-client contract/parser 允许值的下拉",
+        "reason": "用户明确填写的理由",
+        "actor": "经确认的真实身份，不使用 git 用户名代填",
+        "output": "用户选择的草稿文件；不指定时遵循 CLI 输出方式"
+      },
+      "sideEffects": [
+        "生成 digest-only FeedbackDraft；指定 output 时落盘，落盘成功才列为已保存；不提交"
+      ],
+      "outputTypes": [
+        "feedback_draft",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.exception.request",
+      "commandTemplate": "rf exception request FINDING.json --scope GLOB --reason TEXT --actor ACTOR [--output FILE]",
+      "section": "feedback_exceptions",
+      "fieldSources": {
+        "finding": "当前选中的 FindingView 文件",
+        "scope": "从当前 Finding/workspace 动态生成；默认当前仓库相对文件，扩至目录/module 须明确确认",
+        "reason": "用户明确填写的申请理由",
+        "actor": "经确认的真实身份",
+        "output": "用户选择的申请文件；不指定时遵循 CLI 输出方式"
+      },
+      "sideEffects": [
+        "生成 digest-only ExceptionRequest；指定 output 时落盘；不提交也不批准"
+      ],
+      "outputTypes": [
+        "exception_request",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.feedback.submit",
+      "commandTemplate": "rf feedback submit REQUEST.json --server URL [--timeout-ms N] [--output FILE]",
+      "section": "feedback_exceptions",
+      "fieldSources": {
+        "request": "选中已保存的 FeedbackDraft 文件",
+        "server": "显式选择且获批准的 endpoint",
+        "timeoutMs": "显式配置或 CLI 默认值",
+        "output": "可选回执保存位置"
+      },
+      "sideEffects": [
+        "确认请求摘要后发送反馈请求；指定 output 时写回执；收到回执不等于批准，未知结果不能显示成功"
+      ],
+      "outputTypes": [
+        "submission_receipt",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.exception.submit",
+      "commandTemplate": "rf exception submit REQUEST.json --server URL [--timeout-ms N] [--output FILE]",
+      "section": "feedback_exceptions",
+      "fieldSources": {
+        "request": "选中已保存的 ExceptionRequest 文件",
+        "server": "显式选择且获批准的 endpoint",
+        "timeoutMs": "显式配置或 CLI 默认值",
+        "output": "可选回执保存位置"
+      },
+      "sideEffects": [
+        "确认请求摘要/范围后发送例外请求；指定 output 时写回执；提交不等于批准"
+      ],
+      "outputTypes": [
+        "submission_receipt",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.submission.status",
+      "commandTemplate": "rf submission status --server URL (--request-id DIGEST | --artifact-digest DIGEST) [--timeout-ms N] [--output FILE]",
+      "section": "feedback_exceptions",
+      "fieldSources": {
+        "server": "所选请求对应且明确确认的 endpoint",
+        "requestIdOrArtifactDigest": "最近请求/回执选择；request-id 与 artifact-digest 按 CLI 互斥，保持实际标识来源",
+        "timeoutMs": "显式配置或 CLI 默认值",
+        "output": "可选状态输出文件"
+      },
+      "sideEffects": [
+        "查询远端接收状态；指定 output 时写状态；不因刷新触发重新提交或审批"
+      ],
+      "outputTypes": [
+        "submission_status",
+        "json"
+      ]
+    },
+    {
+      "commandId": "rf.status.contract-check",
+      "commandTemplate": "rf status contract-check OUTPUT_DIR",
+      "section": "operations_status",
+      "fieldSources": {
+        "outputDir": "维护者选择并确认的独立输出目录"
+      },
+      "sideEffects": [
+        "执行状态契约检查及 erf-status 测试并写产物；需独立确认，不作为默认启动动作"
+      ],
+      "outputTypes": [
+        "check_result",
+        "logs",
+        "evidence_links"
+      ]
+    },
+    {
+      "commandId": "rf.status.deployment-check",
+      "commandTemplate": "rf status deployment-check OUTPUT_DIR",
+      "section": "operations_status",
+      "fieldSources": {
+        "outputDir": "维护者选择并确认的独立输出目录"
+      },
+      "sideEffects": [
+        "执行状态部署契约检查及测试并写报告；外部前置条件须核实，检查不等于实际部署或状态发布"
+      ],
+      "outputTypes": [
+        "check_result",
+        "logs",
+        "evidence_links"
+      ]
+    },
+    {
+      "commandId": "rf.scan",
+      "commandTemplate": "rf scan --repo-root PATH (--rule-id ID | --candidate DIR | --delivery-descriptor FILE) [--runtime-home DIR] [--host COMMAND] [--resolver COMMAND] [--format text|json|sarif] [--progress text|json|none] [--output FILE] [OPTIONS]",
+      "section": "scan_findings",
+      "fieldSources": {
+        "repoRoot": "当前 workspace 选择",
+        "ruleIdOrCandidateOrDeliveryDescriptor": "规则身份、本地 candidate 或发布系统提供的 descriptor 三种路线按实际 CLI 互斥选择",
+        "runtimeHomeHostResolver": "已安装 Runtime 及显式高级覆盖项，不自动构建或猜外部命令",
+        "options": "有效配置/module 等由实际配置与 parser 生成；base/head 成对明确选择",
+        "format": "CLI 支持的 text/json/sarif",
+        "progress": "CLI 支持的 text/json/none",
+        "output": "可选结果输出文件"
+      },
+      "sideEffects": [
+        "委托 rf-runner 执行扫描；可能执行 Backend/Resolver、访问交付/cache 并写输出；权限/可信与完整性判断不下放 IDE"
+      ],
+      "outputTypes": [
+        "scan_result",
+        "scan_failure",
+        "text",
+        "json",
+        "sarif",
+        "progress"
+      ]
+    }
+  ]
+}

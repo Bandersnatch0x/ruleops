@@ -149,3 +149,26 @@ nonGoals:
   - scmWrite
   - sourceUpload
   - clientOwnedScanAuthority
+
+# IDE exposure notes (informational only; existing contract/version unchanged).
+# ADR-0178: docs/adr/0178-ide-interaction-boundaries-and-acceptance.md.
+# Follow-up implementation and real-IDE acceptance: GitHub issue #139.
+# clients/ide-command-map.json lists 31 root rf --help templates in help order.
+# It contains UI metadata only, not argument validation, execution policy,
+# registered IDE actions, a network protocol, or evidence of working UI.
+# D1: completion means a scannable signed bundle via existing delivery/cache;
+# directory browsing and PIN_MATCH alone do not complete delivery.
+# D2: all templates are discoverable, common workflows first; advanced or
+# maintenance actions expose missing installation/environment prerequisites.
+# Visibility grants no permission and does not prove executable coverage.
+# D3: approved remote security belongs in the CLI, not separate IDE transports;
+# do not bypass loopback restrictions or substitute plaintext public access.
+# D4: independent pins, rule-to-bundle mappings, descriptors/ExecutionLock and
+# external trust roots come from the release/delivery system with provenance.
+# A registry store digest is not a bundle digest; response keys are not trust.
+# D5: confirm real actor/OWNER and facts; exception scope defaults to the current
+# file, with explicit confirmation before widening. Receipts are not approvals.
+# D6: VS Code ^1.85.0 and IntelliJ 2024.1/Java 21 are source declarations only;
+# actual OS/version/package capabilities and real-IDE acceptance remain unproven.
+# Help placeholders are not a complete parser schema: implementations must check
+# each actual parser and installed assets before declaring executable coverage.
