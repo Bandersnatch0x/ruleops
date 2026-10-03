@@ -14,8 +14,8 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <projectService serviceImplementation="io.ruleops.ide.ErfSettings"/>
-        <projectService serviceImplementation="io.ruleops.ide.RfInvoker"/>
+        <toolWindow id="ERF" anchor="right" factoryClass="io.ruleops.ide.ErfToolWindowFactory"/>
+        <projectConfigurable id="io.ruleops.ide.settings" displayName="ERF" instance="io.ruleops.ide.ErfConfigurable"/>
     </extensions>
 
     <actions>

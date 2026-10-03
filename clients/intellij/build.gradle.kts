@@ -44,3 +44,8 @@ tasks {
         dependsOn.clear()
     }
 }
+
+// One authoritative UI map; bundle it instead of maintaining a second command catalog.
+tasks.processResources {
+    from("../ide-command-map.json")
+}

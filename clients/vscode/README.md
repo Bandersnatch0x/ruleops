@@ -41,3 +41,13 @@ code --install-extension erf-thin-client-0.1.0.vsix
 
 随后在真实 VS Code 上完成 导航→解释→草稿→可选提交 的交互闭环验收。
 上述人工验收职责保持不变；本说明不宣称真实 IDE 验收已完成。
+
+## 阶段 1 原生入口（尚非真实 IDE 验收）
+
+Activity Bar 的 ERF 入口提供分组任务树与轻量场景表单，原 8 个命令只负责打开并选中同一场景。
+7 个分区从 `clients/ide-command-map.json` 派生，31 条 CLI 清单均可发现；尚未接入的命令显示不可用，不执行命令模板。
+多根工作区须显式选择；rf/endpoint 仅使用设置，调用期间可取消，配置切换使旧结果失效。
+当前阶段只提供已有输入能力，例外范围限已验证 Finding 的当前文件；草稿文件衔接、完整动态选项及高级能力仍属后续阶段。
+
+仓库开发或打包前运行 `node clients/vscode/scripts/prepare-resources.js`，将共享元数据复制为插件资源（生成件不入 Git）；VSIX prepublish 自动执行同一步。
+定向测试：`node --test clients/vscode/test/*.test.js`（包含宿主 API 替身测试，不等于真实 VS Code 验收）。

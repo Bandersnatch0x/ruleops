@@ -57,3 +57,15 @@ gradle buildPlugin   # 产出 build/distributions/*.zip
 随后在 IntelliJ：Settings → Plugins → ⚙ → Install Plugin from Disk…，选择上述 zip。
 交互式真实 IDE 验收与插件仓库维护属人工最后一步。
 本节仅供维护者按既有商定范围复现，不构成公开安装或发布承诺，也不宣称真实 IDE 验收已完成。
+
+## 阶段 1 工具窗与宿主测试
+
+ERF 工具窗提供原生 Swing 场景表单和分组树，8 个 action 只进入同一工具窗；Settings → ERF 配置项目级路径、endpoint 和超时。
+共享 `clients/ide-command-map.json` 由 `processResources` 打包；未接入命令保持可见且不可执行。
+所有 rf 进程通过 `RfInvoker.submit` 的可取消 `Task.Backgroundable` 启动，完成/失败/取消回调回 EDT，设置变化废弃旧回调。
+场景只保留原有薄客户端能力，例外 scope 限当前 Finding 文件；后续闭环及 31 项执行覆盖未在本阶段实现。
+
+SDK 宿主测试：`src/test/java/io/ruleops/ide/ErfHostTest.java`，需可用离线 IntelliJ SDK 与相匹配 Gradle 环境：
+`gradle -p clients/intellij --offline test --tests io.ruleops.ide.ErfHostTest`。
+该测试核实原生面板/描述符、后台实际 Java 子进程、EDT 回调与取消；不能以 `coreSelfTest` 或源码注册断言替代。
+未在真实 IDE 中验收，不据声明推导安装兼容性。

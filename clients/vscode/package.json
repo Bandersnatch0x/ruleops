@@ -16,14 +16,64 @@
   "activationEvents": [],
   "contributes": {
     "commands": [
-      { "command": "erf.showFinding", "title": "ERF: 显示 Finding", "category": "ERF" },
-      { "command": "erf.navigateToLocation", "title": "ERF: 跳转到 Finding 位置", "category": "ERF" },
-      { "command": "erf.explainFinding", "title": "ERF: 解释 Finding", "category": "ERF" },
-      { "command": "erf.draftFeedback", "title": "ERF: 起草反馈（PROPOSED）", "category": "ERF" },
-      { "command": "erf.requestException", "title": "ERF: 申请例外（REQUESTED）", "category": "ERF" },
-      { "command": "erf.submitFeedback", "title": "ERF: 提交反馈到 Server（RECEIVED_ONLY）", "category": "ERF" },
-      { "command": "erf.submitException", "title": "ERF: 提交例外到 Server（RECEIVED_ONLY）", "category": "ERF" },
-      { "command": "erf.submissionStatus", "title": "ERF: 查询提交状态", "category": "ERF" }
+      {
+        "command": "erf.showFinding",
+        "title": "ERF: 显示 Finding",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.navigateToLocation",
+        "title": "ERF: 跳转到 Finding 位置",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.explainFinding",
+        "title": "ERF: 解释 Finding",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.draftFeedback",
+        "title": "ERF: 起草反馈（PROPOSED）",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.requestException",
+        "title": "ERF: 申请例外（REQUESTED）",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.submitFeedback",
+        "title": "ERF: 提交反馈到 Server（RECEIVED_ONLY）",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.submitException",
+        "title": "ERF: 提交例外到 Server（RECEIVED_ONLY）",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.submissionStatus",
+        "title": "ERF: 查询提交状态",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.refresh",
+        "title": "刷新上下文",
+        "icon": "$(refresh)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.cancel",
+        "title": "取消运行",
+        "icon": "$(debug-stop)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.settings",
+        "title": "打开 ERF 设置",
+        "icon": "$(settings-gear)",
+        "category": "ERF"
+      }
     ],
     "configuration": {
       "title": "ERF Thin Client",
@@ -49,6 +99,51 @@
           "description": "提交/状态查询的超时（毫秒）。"
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "erf",
+          "title": "ERF",
+          "icon": "resources/erf.svg"
+        }
+      ]
+    },
+    "views": {
+      "erf": [
+        {
+          "id": "erf.scenarios",
+          "name": "任务"
+        },
+        {
+          "id": "erf.details",
+          "name": "场景与运行状态",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "erf.refresh",
+          "when": "view == erf.scenarios",
+          "group": "navigation"
+        },
+        {
+          "command": "erf.settings",
+          "when": "view == erf.scenarios",
+          "group": "navigation"
+        },
+        {
+          "command": "erf.cancel",
+          "when": "view == erf.scenarios && erf.running",
+          "group": "navigation"
+        }
+      ]
     }
+  },
+  "scripts": {
+    "vscode:prepublish": "node scripts/prepare-resources.js",
+    "test": "node scripts/prepare-resources.js && node --test test/*.test.js"
   }
 }

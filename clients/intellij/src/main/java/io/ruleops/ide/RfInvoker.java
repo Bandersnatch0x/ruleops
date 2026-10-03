@@ -1,97 +1,104 @@
 package io.ruleops.ide;
 
-// rf 调用薄封装：仅以 ProcessBuilder 启动用户配置的 rf 启动器并回传退出码/输出。
-// 不做任何权威决策；参数一律经 ThinClientCore 构造。
-
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
-
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 @Service(Service.Level.PROJECT)
 public final class RfInvoker {
     private static final int MAX_OUTPUT_BYTES = 1_048_576;
-
-    /** rf 执行结果：退出码 + stdout/stderr 文本。 */
-    public static final class Result {
-        public final int exitCode;
-        public final String stdout;
-        public final String stderr;
-        public Result(int exitCode, String stdout, String stderr) {
-            this.exitCode = exitCode;
-            this.stdout = stdout;
-            this.stderr = stderr;
-        }
+    public static final class UnavailableException extends IOException {
+        UnavailableException(IOException cause) { super(cause.getMessage(), cause); }
+    }
+    public record Result(int exitCode, String stdout, String stderr) {}
+    @FunctionalInterface public interface Work<T> { T run(ProgressIndicator indicator) throws Exception; }
+    public static final class Job {
+        private volatile ProgressIndicator indicator;
+        private volatile boolean cancelled;
+        public void cancel() { cancelled = true; if (indicator != null) indicator.cancel(); }
     }
 
-    public Result run(String rfPath, List<String> args, String workingDir, long timeoutMs)
-            throws Exception {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(rfPath == null || rfPath.isEmpty() ? "rf" : rfPath);
-        cmd.addAll(args);
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        if (workingDir != null && !workingDir.isEmpty()) {
-            pb.directory(new java.io.File(workingDir));
-        }
-        Process p = pb.start();
+    // Task callbacks are EDT callbacks; work, stream reads and process waits never run there.
+    public <T> Job submit(Project project, Work<T> work, Consumer<T> success,
+                          Consumer<Exception> failure, Runnable cancelled) {
+        Job job = new Job();
+        new Task.Backgroundable(project, "ERF", true) {
+            private T result;
+            private Exception error;
+            @Override public void run(@NotNull ProgressIndicator indicator) {
+                job.indicator = indicator;
+                if (job.cancelled) indicator.cancel();
+                indicator.checkCanceled();
+                try { result = work.run(indicator); indicator.checkCanceled(); }
+                catch (ProcessCanceledException ex) { throw ex; }
+                catch (Exception ex) { error = ex; }
+            }
+            @Override public void onSuccess() {
+                ApplicationManager.getApplication().assertIsDispatchThread();
+                if (project.isDisposed()) return;
+                if (job.cancelled) cancelled.run();
+                else if (error != null) failure.accept(error);
+                else success.accept(result);
+            }
+            @Override public void onCancel() {
+                ApplicationManager.getApplication().assertIsDispatchThread();
+                if (!project.isDisposed()) cancelled.run();
+            }
+        }.queue();
+        return job;
+    }
+
+    public Result run(String rfPath, List<String> args, String workingDir, long timeoutMs,
+                      ProgressIndicator indicator) throws Exception {
+        if (ApplicationManager.getApplication().isDispatchThread()) throw new IllegalStateException("RF_ON_EDT");
+        indicator.checkCanceled();
+        List<String> cmd = new ArrayList<>(); cmd.add(rfPath); cmd.addAll(args);
+        ProcessBuilder builder = new ProcessBuilder(cmd);
+        builder.directory(new File(workingDir));
+        Process process;
+        try { process = builder.start(); }
+        catch (IOException error) { throw new UnavailableException(error); }
         ExecutorService readers = Executors.newFixedThreadPool(2);
-        Future<String> stdout = readers.submit(() -> read(p.getInputStream()));
-        Future<String> stderr = readers.submit(() -> read(p.getErrorStream()));
-        long effectiveTimeout = timeoutMs <= 0 ? 5000 : timeoutMs;
+        Future<String> stdout = readers.submit(() -> read(process.getInputStream()));
+        Future<String> stderr = readers.submit(() -> read(process.getErrorStream()));
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
         try {
-            boolean done = p.waitFor(effectiveTimeout, TimeUnit.MILLISECONDS);
-            if (!done) {
-                destroyTree(p);
-                return new Result(3, get(stdout), "TIMEOUT");
+            while (!process.waitFor(50, TimeUnit.MILLISECONDS)) {
+                indicator.checkCanceled();
+                checkReader(stdout); checkReader(stderr);
+                if (System.nanoTime() >= deadline) throw new TimeoutException("TIMEOUT");
             }
-            return new Result(p.exitValue(), stdout.get(1, TimeUnit.SECONDS), stderr.get(1, TimeUnit.SECONDS));
-        } catch (Exception error) {
-            destroyTree(p);
-            return new Result(3, get(stdout), "OUTPUT_LIMIT");
+            indicator.checkCanceled();
+            return new Result(process.exitValue(), stdout.get(1, TimeUnit.SECONDS), stderr.get(1, TimeUnit.SECONDS));
         } finally {
-            stdout.cancel(true);
-            stderr.cancel(true);
-            readers.shutdownNow();
-            readers.awaitTermination(1, TimeUnit.SECONDS);
+            destroyTree(process);
+            process.getInputStream().close(); process.getErrorStream().close();
+            stdout.cancel(true); stderr.cancel(true); readers.shutdownNow();
         }
     }
-
-    private static String read(java.io.InputStream in) throws IOException {
+    private static void checkReader(Future<String> reader) throws Exception {
+        if (reader.isDone()) reader.get();
+    }
+    private static String read(InputStream input) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int count;
-        while ((count = in.read(buffer)) != -1) {
-            if (output.size() + count > MAX_OUTPUT_BYTES) {
-                throw new IOException("rf output exceeds the configured limit");
-            }
+        byte[] buffer = new byte[8192]; int count;
+        while ((count = input.read(buffer)) != -1) {
+            if (output.size() + count > MAX_OUTPUT_BYTES) throw new IOException("OUTPUT_LIMIT");
             output.write(buffer, 0, count);
         }
         return output.toString(StandardCharsets.UTF_8);
     }
-
-    private static String get(Future<String> output) {
-        try {
-            return output.get(1, TimeUnit.SECONDS);
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
     private static void destroyTree(Process process) {
-        process.toHandle().descendants().forEach(handle -> {
-            try {
-                handle.destroyForcibly();
-            } catch (SecurityException ignored) {
-                // The direct process is still terminated below.
-            }
-        });
+        process.toHandle().descendants().forEach(ProcessHandle::destroyForcibly);
         process.destroyForcibly();
     }
 }
