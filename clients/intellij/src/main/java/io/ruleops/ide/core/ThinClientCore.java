@@ -45,7 +45,7 @@ public final class ThinClientCore {
         }
         // 控制字符（含 NUL、制表、换行等）一律拒绝。
         for (int i = 0; i < path.length(); i += 1) {
-            if (path.charAt(i) < 0x20) {
+            if (Character.isISOControl(path.charAt(i))) {
                 return Check.fail("CONTROL_CHAR");
             }
         }
@@ -104,10 +104,16 @@ public final class ThinClientCore {
                 return Check.fail("UNKNOWN_FIELD:" + key);
             }
         }
+        for (String field : List.of("findingId", "ruleId", "fingerprint", "message")) {
+            Object value = view.get(field);
+            if (!(value instanceof String text) || text.isBlank() || text.chars().anyMatch(Character::isISOControl))
+                return Check.fail("INVALID_FIELD:" + field);
+        }
         Object locObj = view.get("location");
         if (!(locObj instanceof Map<?, ?> loc)) {
             return Check.fail("LOCATION_MISSING");
         }
+        if (loc.size() != 3 || !loc.keySet().containsAll(List.of("path", "line", "column"))) return Check.fail("LOCATION_FIELDS");
         Object pathVal = loc.get("path");
         Check pathCheck = validateRelativePath(pathVal instanceof String s ? s : null);
         if (!pathCheck.ok) {
@@ -128,6 +134,139 @@ public final class ThinClientCore {
         return false;
     }
 
+    public static final List<String> CLASSIFICATIONS = List.of("true-fp", "not-fp", "scope-issue", "documentation");
+
+    public record ScopeOption(String value, String source, boolean broader) {
+        @Override public String toString() { return value + " · " + source + (broader ? " · 扩范围" : " · 当前文件"); }
+    }
+
+    private static boolean literalPath(String path) {
+        return path != null && path.equals(path.trim()) && validateRelativePath(path).ok
+            && !path.matches(".*[\\*?\\[\\]{}!].*");
+    }
+
+    public static Check validateScope(String value) {
+        if (value == null || value.isBlank()) return Check.fail("EMPTY_SCOPE");
+        String stem = value.endsWith("/**") ? value.substring(0, value.length() - 3) : value;
+        return literalPath(stem) ? Check.ok() : Check.fail("UNBOUNDED_OR_INVALID_SCOPE");
+    }
+
+    /** Inputs contain only paths already checked against the workspace by the filesystem adapter. */
+    public static List<ScopeOption> scopeOptions(Object finding, Map<String, ?> config,
+                                                List<String> files, List<String> directories) {
+        if (!validateFindingView(finding).ok) return List.of();
+        Map<?, ?> location = (Map<?, ?>) ((Map<?, ?>) finding).get("location");
+        String file = (String) location.get("path");
+        if (!literalPath(file) || !files.contains(file)) return List.of();
+        Map<String, ScopeOption> options = new LinkedHashMap<>();
+        options.put(file, new ScopeOption(file, "file", false));
+        int slash = file.lastIndexOf('/');
+        if (slash > 0) addScope(options, file.substring(0, slash), "directory", file, directories);
+        for (String field : List.of("modules", "source_roots")) {
+            Object values = config.get(field);
+            if (values instanceof List<?> paths) for (Object path : paths)
+                if (path instanceof String value) addScope(options, value, field.equals("modules") ? "module" : "source_root", file, directories);
+        }
+        return List.copyOf(options.values());
+    }
+
+    private static void addScope(Map<String, ScopeOption> options, String root, String source,
+                                 String file, List<String> directories) {
+        if (literalPath(root) && directories.contains(root) && file.startsWith(root + "/"))
+            options.putIfAbsent(root + "/**", new ScopeOption(root + "/**", source, true));
+    }
+
+    public static String selectScope(List<ScopeOption> options, String value, boolean confirmed) {
+        ScopeOption selected = options.stream().filter(o -> o.value().equals(value)).findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("SCOPE_NOT_AVAILABLE"));
+        if (selected.broader() && !confirmed) throw new IllegalArgumentException("SCOPE_CONFIRMATION_REQUIRED");
+        return selected.value();
+    }
+
+    /** Refresh never silently replaces an expired selection; only a new Finding defaults to its file. */
+    public static ScopeOption restoreScopeSelection(List<ScopeOption> options, String previous, boolean newFinding) {
+        return options.stream().filter(option -> newFinding ? !option.broader() : option.value().equals(previous))
+            .findFirst().orElse(null);
+    }
+
+    private static void validateContext(String name, String value) {
+        requireNonEmpty(name, value);
+        if (value.chars().anyMatch(Character::isISOControl)
+                || value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 2000)
+            throw new IllegalArgumentException("INVALID_CONTEXT:" + name + " (CLI requires no control characters and at most 2000 UTF-8 bytes)");
+    }
+
+    public record Artifact(String kind, String requestId, String artifactDigest, String status) {}
+
+    public static Artifact savedArtifact(Map<String, ?> object) {
+        rejectPrivate(object);
+        String kind = text(object, "kind");
+        boolean feedback = "FeedbackDraft".equals(kind);
+        if (!feedback && !"ExceptionRequest".equals(kind)) throw new IllegalArgumentException("INVALID_REQUEST_KIND");
+        String field = feedback ? "classification" : "scope";
+        List<String> fields = List.of("apiVersion", "kind", "schemaVersion", "status", "requestId", "findingDigest",
+            "findingFingerprint", "ruleId", field, "reason", "actor", "digest");
+        if (object.size() != fields.size() || !object.keySet().containsAll(fields)) throw new IllegalArgumentException("INVALID_REQUEST_FIELDS");
+        if (!CLIENT_API_VERSION.equals(text(object, "apiVersion"))
+            || !(feedback ? "feedback-draft-v1" : "exception-request-v1").equals(text(object, "schemaVersion"))
+            || !(feedback ? "PROPOSED" : "REQUESTED").equals(text(object, "status")))
+            throw new IllegalArgumentException("INVALID_REQUEST_CONTRACT");
+        for (String key : fields) text(object, key);
+        validateContext("actor", text(object, "actor")); validateContext("reason", text(object, "reason"));
+        if (feedback ? !CLASSIFICATIONS.contains(text(object, field)) : !validateScope(text(object, field)).ok)
+            throw new IllegalArgumentException("INVALID_REQUEST_" + field);
+        digest(object, "findingDigest");
+        return new Artifact(kind, digest(object, "requestId"), digest(object, "digest"), text(object, "status"));
+    }
+
+    /** CLI remains the digest/authority verifier; the UI checks shape and binds its display to the selected object. */
+    public static String checkedResponse(Map<String, ?> object, Artifact expected, boolean statusQuery) {
+        rejectPrivate(object);
+        if (!CLIENT_API_VERSION.equals(text(object, "apiVersion"))) throw new IllegalArgumentException("INVALID_RESPONSE_API");
+        String state = text(object, "status");
+        for (String guard : List.of("exceptionApproved", "gateMutated", "scmPublished")) {
+            Object value = object.get(guard);
+            if (statusQuery ? Boolean.TRUE.equals(value) : !Boolean.FALSE.equals(value))
+                throw new IllegalArgumentException("RECEIPT_AUTHORITY_GUARD:" + guard);
+        }
+        if (!statusQuery) {
+            if (!"SubmissionReceipt".equals(text(object, "kind")) || !"submission-receipt-v1".equals(text(object, "schemaVersion"))
+                || !List.of("SUBMITTED", "REPLAYED").contains(state) || !"RECEIVED_ONLY".equals(text(object, "governanceOutcome")))
+                throw new IllegalArgumentException("INVALID_RECEIPT");
+        } else {
+            if (!"SubmissionStatus".equals(text(object, "kind")) || !"submission-status-v1".equals(text(object, "schemaVersion"))
+                || !List.of("PENDING", "UNKNOWN", "RECEIVED_ONLY", "REPLAYED").contains(state)
+                || !Boolean.FALSE.equals(object.get("automaticRetry"))) throw new IllegalArgumentException("INVALID_SUBMISSION_STATUS");
+            String authority = List.of("PENDING", "UNKNOWN").contains(state) ? "UNKNOWN" : "RECEIVED_ONLY";
+            if (!authority.equals(text(object, "authority"))) throw new IllegalArgumentException("STATUS_AUTHORITY_GUARD");
+        }
+        for (String key : List.of("requestId", "artifactDigest")) {
+            if (!statusQuery || object.containsKey(key)) {
+                String value = digest(object, key);
+                if (!value.equals(key.equals("requestId") ? expected.requestId() : expected.artifactDigest()))
+                    throw new IllegalArgumentException("RESPONSE_IDENTITY_CONFLICT:" + key);
+            }
+        }
+        if (statusQuery && !object.containsKey("requestId") && !object.containsKey("artifactDigest"))
+            throw new IllegalArgumentException("RESPONSE_IDENTITY_MISSING");
+        return state;
+    }
+
+    private static void rejectPrivate(Map<String, ?> object) {
+        String forbidden = findForbiddenField(object);
+        if (forbidden != null) throw new IllegalArgumentException("FORBIDDEN_FIELD:" + forbidden);
+    }
+    private static String text(Map<String, ?> object, String field) {
+        Object value = object.get(field);
+        if (!(value instanceof String s) || s.isBlank()) throw new IllegalArgumentException("INVALID_FIELD:" + field);
+        return s;
+    }
+    private static String digest(Map<String, ?> object, String field) {
+        String value = text(object, field);
+        if (!value.matches("sha256:[0-9a-f]{64}")) throw new IllegalArgumentException("INVALID_DIGEST:" + field);
+        return value;
+    }
+
     // ---- rf 调用参数构造（子命令均为空格分隔，见 rf 启动器） ----
 
     /** explain 选项。null 字段表示不传该 flag；format 仅 "text"/"json"。 */
@@ -135,16 +274,23 @@ public final class ThinClientCore {
         public String format;
         public String ruleMeta;
         public String result;
+        public String authorityTrust;
         public String assessment;
         public String output;
     }
 
     public static List<String> buildExplainArgs(String findingPath, ExplainOpts opts) {
         ExplainOpts o = opts == null ? new ExplainOpts() : opts;
+        requireNonEmpty("findingPath", findingPath);
+        if (nonEmpty(o.authorityTrust) && !nonEmpty(o.result))
+            throw new IllegalArgumentException("AUTHORITY_TRUST_REQUIRES_RESULT");
+        if (nonEmpty(o.format) && !List.of("text", "json").contains(o.format))
+            throw new IllegalArgumentException("BAD_FORMAT:" + o.format);
         List<String> args = new ArrayList<>(Arrays.asList(
             "explain", findingPath, "--format", "text".equals(o.format) ? "text" : "json"));
         if (nonEmpty(o.ruleMeta)) { args.add("--rule-meta"); args.add(o.ruleMeta); }
         if (nonEmpty(o.result)) { args.add("--result"); args.add(o.result); }
+        if (nonEmpty(o.authorityTrust)) { args.add("--authority-trust"); args.add(o.authorityTrust); }
         if (nonEmpty(o.assessment)) { args.add("--assessment"); args.add(o.assessment); }
         if (nonEmpty(o.output)) { args.add("--output"); args.add(o.output); }
         return args;
@@ -160,12 +306,13 @@ public final class ThinClientCore {
 
     public static List<String> buildFeedbackDraftArgs(
             String findingPath, String classification, String reason, String actor, String output) {
+        requireNonEmpty("findingPath", findingPath);
         requireNonEmpty("classification", classification);
-        if (!List.of("true-fp", "not-fp", "scope-issue", "documentation").contains(classification)) {
+        if (!CLASSIFICATIONS.contains(classification)) {
             throw new IllegalArgumentException("BAD_CLASSIFICATION:" + classification);
         }
-        requireNonEmpty("reason", reason);
-        requireNonEmpty("actor", actor);
+        validateContext("reason", reason);
+        validateContext("actor", actor);
         List<String> args = new ArrayList<>(Arrays.asList(
             "feedback", "draft", findingPath,
             "--classification", classification, "--reason", reason, "--actor", actor));
@@ -175,9 +322,12 @@ public final class ThinClientCore {
 
     public static List<String> buildExceptionRequestArgs(
             String findingPath, String scope, String reason, String actor, String output) {
+        requireNonEmpty("findingPath", findingPath);
         requireNonEmpty("scope", scope);
-        requireNonEmpty("reason", reason);
-        requireNonEmpty("actor", actor);
+        Check scopeCheck = validateScope(scope);
+        if (!scopeCheck.ok) throw new IllegalArgumentException("BAD_SCOPE:" + scopeCheck.reason);
+        validateContext("reason", reason);
+        validateContext("actor", actor);
         List<String> args = new ArrayList<>(Arrays.asList(
             "exception", "request", findingPath,
             "--scope", scope, "--reason", reason, "--actor", actor));
@@ -202,6 +352,8 @@ public final class ThinClientCore {
     public static List<String> buildSubmissionStatusArgs(
             String server, String requestId, String artifactDigest, int timeoutMs) {
         requireNonEmpty("serverEndpoint", server);
+        if (nonEmpty(requestId) && nonEmpty(artifactDigest))
+            throw new IllegalArgumentException("CONFLICTING_SELECTORS");
         List<String> args = new ArrayList<>(Arrays.asList(
             "submission", "status", "--server", server));
         if (nonEmpty(requestId)) {

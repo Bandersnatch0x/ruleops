@@ -138,3 +138,49 @@ test('renderReceiptGuards fails closed if any guard claims authority', () => {
 test('statusLabel fails closed on unknown status', () => {
   assert.match(core.statusLabel('WHATEVER'), /fail closed/);
 });
+
+
+const { cases: scopeCases, projection } = require('./scope-fixtures');
+for (const c of scopeCases) test('shared scope fixture: ' + c.name, () => assert.equal(projection(c), c.expected));
+
+test('scope choices reject stale selections and require explicit expansion confirmation', () => {
+  const c = scopeCases[0]; const options = core.projectScopeOptions(c.finding, c.config, c.facts);
+  assert.equal(core.selectScope(options, c.finding.location.path), c.finding.location.path);
+  assert.throws(() => core.selectScope(options, 'app/**'), /CONFIRMATION/);
+  assert.equal(core.selectScope(options, 'app/**', true), 'app/**');
+  assert.throws(() => core.selectScope(options, '**', true), /STALE_SCOPE/);
+  assert.throws(() => core.selectScope([], c.finding.location.path), /STALE_SCOPE/);
+  assert.deepEqual(core.scopeCandidates({ ...c.finding, source: 'private' }, c.config), []);
+});
+test('explain authority trust remains paired with result and argv-safe', () => {
+  assert.deepEqual(core.buildExplainArgs('finding.json', { result: 'result with spaces.json', authorityTrust: 'trust.json' }),
+    ['explain', 'finding.json', '--format', 'json', '--result', 'result with spaces.json', '--authority-trust', 'trust.json']);
+  assert.throws(() => core.buildExplainArgs('f', { authorityTrust: 't' }), /REQUIRES_RESULT/);
+});
+test('request/status projections use the selected saved identity, not arbitrary typed digests', () => {
+  const request = { apiVersion: core.CLIENT_API_VERSION, kind: 'FeedbackDraft', schemaVersion: 'feedback-draft-v1', status: 'PROPOSED', requestId: 'sha256:' + '1'.repeat(64), digest: 'sha256:' + '2'.repeat(64) };
+  const record = { ...core.projectSavedRequest(request), path: '/workspace/saved.json' };
+  assert.equal(core.selectRequest([record], record.path, 'feedback'), record);
+  assert.throws(() => core.selectRequest([record], record.path, 'exception'), /STALE_REQUEST/);
+  assert.throws(() => core.projectSavedRequest({ ...request, sourceCode: 'secret' }), /FORBIDDEN/);
+  for (const selector of ['requestId', 'artifactDigest']) assert.equal(core.statusSelection(record, selector)[selector], record[selector]);
+  assert.throws(() => core.statusSelection(record, 'anything'), /STALE_STATUS/);
+  assert.throws(() => core.buildSubmissionStatusArgs({ server: 'http://127.0.0.1:1', requestId: 'a', artifactDigest: 'b' }), /AMBIGUOUS/);
+});
+test('receipt projection rejects malformed, unbound and authority-bearing responses', () => {
+  const request = { requestId: 'sha256:' + '1'.repeat(64), artifactDigest: 'sha256:' + '2'.repeat(64) };
+  const receipt = { apiVersion: core.CLIENT_API_VERSION, kind: 'SubmissionReceipt', schemaVersion: 'submission-receipt-v1', status: 'SUBMITTED', ...request, governanceOutcome: 'RECEIVED_ONLY', exceptionApproved: false, gateMutated: false, scmPublished: false };
+  assert.equal(core.validateSubmissionResponse(receipt, request), receipt);
+  assert.throws(() => core.validateSubmissionResponse({}, request), /INVALID_RECEIPT/);
+  assert.throws(() => core.validateSubmissionResponse({ ...receipt, gateMutated: true }, request), /GUARDS/);
+  assert.throws(() => core.validateSubmissionResponse({ ...receipt, requestId: 'other' }, request), /IDENTITY/);
+});
+
+
+test('scope sources require a complete, closed FindingView identity', () => {
+  for (const name of ['findingId', 'ruleId', 'fingerprint', 'message']) {
+    const view = { ...goodView }; delete view[name]; assert.equal(core.validateFindingView(view).ok, false);
+    assert.deepEqual(core.scopeCandidates(view, { modules: ['src'] }), []);
+  }
+  assert.equal(core.validateFindingView({ ...goodView, location: { ...goodView.location, extra: 1 } }).ok, false);
+});

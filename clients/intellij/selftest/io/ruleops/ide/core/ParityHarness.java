@@ -31,7 +31,7 @@ public final class ParityHarness {
             "feedback-args=" + String.join("|", ThinClientCore.buildFeedbackDraftArgs(
                 "f.json", "true-fp", "why", "alice", null)),
             "exception-args=" + String.join("|", ThinClientCore.buildExceptionRequestArgs(
-                "f.json", "file", "why", "alice", null)),
+                "f.json", "src/Main.java", "why", "alice", null)),
             "submit-args=" + String.join("|", ThinClientCore.buildSubmitArgs(
                 "feedback", "req.json", "https://s", 5000, null)),
             "status-args=" + String.join("|", ThinClientCore.buildSubmissionStatusArgs(
@@ -54,7 +54,28 @@ public final class ParityHarness {
             "parse-authoritative=" + orEmpty(parsed.get("authoritative")),
         };
         System.out.print(String.join("\n", lines) + "\n");
+        for (String line : scopeFixtureLines(args.length > 1 ? Path.of(args[1]) : Path.of("clients/testdata/scope-options.tsv")))
+            System.out.println(line);
     }
+
+    public static List<String> scopeFixtureLines(Path fixture) throws Exception {
+        List<String> output = new java.util.ArrayList<>();
+        var rows = Files.readAllLines(fixture);
+        for (String line : rows.subList(1, rows.size())) {
+            if (line.isBlank()) continue;
+            String[] columns = line.split("\t", -1);
+            if (columns.length != 7) throw new AssertionError("BAD_SCOPE_FIXTURE_COLUMNS");
+            Map<String, Object> view = goodView();
+            view.put("location", Map.of("path", columns[1], "line", 1, "column", 1));
+            var options = ThinClientCore.scopeOptions(view, Map.of("modules", items(columns[2]), "source_roots", items(columns[3])), items(columns[4]), items(columns[5]));
+            String actual = String.join(";", options.stream().map(o -> o.value() + "|" + o.source() + "|" + o.broader()).toList());
+            if (columns[6].equals("-")) columns[6] = ""; // Explicit empty projection avoids trailing TSV whitespace.
+            if (!actual.equals(columns[6])) throw new AssertionError("SCOPE_FIXTURE:" + columns[0] + " expected=" + columns[6] + " actual=" + actual);
+            output.add("scope-case-" + columns[0] + "=" + actual);
+        }
+        return output;
+    }
+    private static List<String> items(String value) { return value.isEmpty() ? List.of() : List.of(value.split(";", -1)); }
 
     private static String orEmpty(String s) {
         return s == null ? "" : s;

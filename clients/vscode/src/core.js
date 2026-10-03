@@ -9,6 +9,8 @@ const FORBIDDEN_FIELDS = [
 
 const CLIENT_API_VERSION = 'rulefactory.io/v1';
 const FINDING_VIEW_KIND = 'FindingView';
+// Local CLI contract, not a remotely invented classification API.
+const CLASSIFICATIONS = Object.freeze(['true-fp', 'not-fp', 'scope-issue', 'documentation']);
 
 // 镜像 erf-thin-client 的 validate_relative_path：导航目标必须是工作区内相对路径。
 function validateRelativePath(path) {
@@ -26,7 +28,7 @@ function validateRelativePath(path) {
   }
   // 控制字符（含 NUL、制表、换行等）一律拒绝。
   for (let i = 0; i < path.length; i += 1) {
-    if (path.charCodeAt(i) < 0x20) {
+    if (path.charCodeAt(i) < 0x20 || (path.charCodeAt(i) >= 0x7f && path.charCodeAt(i) <= 0x9f)) {
       return { ok: false, reason: 'CONTROL_CHAR' };
     }
   }
@@ -82,10 +84,14 @@ function validateFindingView(view) {
       return { ok: false, reason: 'UNKNOWN_FIELD:' + key };
     }
   }
+  for (const name of ['findingId', 'ruleId', 'fingerprint', 'message']) {
+    if (typeof view[name] !== 'string' || !view[name].trim() || /[\u0000-\u001f\u007f-\u009f]/.test(view[name])) return { ok: false, reason: 'INVALID_FIELD:' + name };
+  }
   const loc = view.location;
   if (!loc || typeof loc !== 'object') {
     return { ok: false, reason: 'LOCATION_MISSING' };
   }
+  if (Object.keys(loc).length !== 3 || !['path', 'line', 'column'].every(key => Object.hasOwn(loc, key))) return { ok: false, reason: 'LOCATION_FIELDS' };
   const pathCheck = validateRelativePath(loc.path);
   if (!pathCheck.ok) {
     return { ok: false, reason: 'LOCATION_PATH:' + pathCheck.reason };
@@ -104,7 +110,9 @@ function buildExplainArgs(findingPath, opts) {
   const o = opts || {};
   const args = ['explain', findingPath, '--format', o.format === 'text' ? 'text' : 'json'];
   if (o.ruleMeta) args.push('--rule-meta', o.ruleMeta);
+  if (o.authorityTrust && !o.result) throw new Error('AUTHORITY_TRUST_REQUIRES_RESULT');
   if (o.result) args.push('--result', o.result);
+  if (o.authorityTrust) args.push('--authority-trust', o.authorityTrust);
   if (o.assessment) args.push('--assessment', o.assessment);
   if (o.output) args.push('--output', o.output);
   return args;
@@ -119,7 +127,7 @@ function requireNonEmpty(name, value) {
 function buildFeedbackDraftArgs(findingPath, opts) {
   const o = opts || {};
   requireNonEmpty('classification', o.classification);
-  if (!['true-fp', 'not-fp', 'scope-issue', 'documentation'].includes(o.classification)) {
+  if (!CLASSIFICATIONS.includes(o.classification)) {
     throw new Error('BAD_CLASSIFICATION:' + o.classification);
   }
   requireNonEmpty('reason', o.reason);
@@ -160,6 +168,7 @@ function buildSubmissionStatusArgs(opts) {
   const o = opts || {};
   requireNonEmpty('serverEndpoint', o.server);
   const args = ['submission', 'status', '--server', o.server];
+  if (o.requestId && o.artifactDigest) throw new Error('AMBIGUOUS_STATUS_SELECTOR');
   if (o.requestId) args.push('--request-id', o.requestId);
   else if (o.artifactDigest) args.push('--artifact-digest', o.artifactDigest);
   else throw new Error('MISSING_ARG:request-id|artifact-digest');
@@ -193,6 +202,7 @@ function classifyExitCode(code) {
 
 // 已知申请/提交状态到可读标签的映射；未知状态 fail closed（不渲染为成功）。
 const STATUS_LABELS = {
+  SUBMITTED: '已提交（仅已接收，非批准）',
   PROPOSED: '已起草（PROPOSED，尚未提交）',
   REQUESTED: '已生成申请（REQUESTED，尚未提交）',
   RECEIVED_ONLY: '仅已接收（RECEIVED_ONLY，非批准/非 Gate PASS/非 SCM 写入）',
@@ -220,7 +230,77 @@ function renderReceiptGuards(receipt) {
   };
 }
 
+
+// Facts are supplied by the filesystem adapter; this module never resolves files,
+// reads config or grants scope authority. CLI remains the request validator.
+function scopeCandidates(finding, config = {}) {
+  if (!validateFindingView(finding).ok) return [];
+  const file = finding.location.path;
+  const concrete = value => validateRelativePath(value).ok && value === value.trim() && !/[*?\[\]{}!]/.test(value);
+  if (!concrete(file)) return [];
+  const options = [{ value: file, source: 'file', broader: false }];
+  const add = (directory, source) => {
+    if (!concrete(directory) || !file.startsWith(directory + '/')) return;
+    const value = directory + '/**';
+    if (!options.some(option => option.value === value)) options.push({ value, source, broader: true });
+  };
+  if (file.includes('/')) add(file.slice(0, file.lastIndexOf('/')), 'directory');
+  for (const [key, source] of [['modules', 'module'], ['source_roots', 'source_root']]) {
+    for (const directory of Array.isArray(config?.[key]) ? config[key] : []) add(directory, source);
+  }
+  return options;
+}
+function projectScopeOptions(finding, config, facts) {
+  const options = scopeCandidates(finding, config);
+  if (!options.length || !facts.files.includes(options[0].value)) return [];
+  return options.filter(option => option.broader
+    ? facts.directories.includes(option.value.slice(0, -3)) : true);
+}
+function selectScope(options, value, confirmed = false) {
+  const selected = options.find(option => option.value === value);
+  if (!selected) throw new Error('STALE_SCOPE_SELECTION');
+  if (selected.broader && !confirmed) throw new Error('SCOPE_EXPANSION_REQUIRES_CONFIRMATION');
+  return selected.value;
+}
+function projectSavedRequest(request) {
+  const forbidden = findForbiddenField(request);
+  if (forbidden) throw new Error('FORBIDDEN_FIELD:' + forbidden);
+  const kind = { FeedbackDraft: 'feedback', ExceptionRequest: 'exception' }[request?.kind];
+  if (!kind || request.apiVersion !== CLIENT_API_VERSION || request.schemaVersion !== (kind === 'feedback' ? 'feedback-draft-v1' : 'exception-request-v1')
+    || request.status !== (kind === 'feedback' ? 'PROPOSED' : 'REQUESTED')
+    || !/^sha256:[a-f0-9]{64}$/.test(request.requestId) || !/^sha256:[a-f0-9]{64}$/.test(request.digest)) {
+    throw new Error('INVALID_SAVED_REQUEST');
+  }
+  return { kind, requestId: request.requestId, artifactDigest: request.digest, status: request.status };
+}
+function selectRequest(records, path, kind) {
+  const selected = records.find(record => record.path === path && (!kind || record.kind === kind));
+  if (!selected) throw new Error('STALE_REQUEST_SELECTION');
+  return selected;
+}
+function statusSelection(request, selector) {
+  if (!request || !['requestId', 'artifactDigest'].includes(selector)) throw new Error('STALE_STATUS_SELECTION');
+  requireNonEmpty(selector, request[selector]);
+  return { [selector]: request[selector] };
+}
+function validateSubmissionResponse(receipt, request, statusQuery = false) {
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || findForbiddenField(receipt)
+    || receipt.apiVersion !== CLIENT_API_VERSION || receipt.schemaVersion !== (statusQuery ? 'submission-status-v1' : 'submission-receipt-v1')) throw new Error('INVALID_RECEIPT');
+  if (statusQuery) {
+    if (receipt.kind !== 'SubmissionStatus' || !['UNKNOWN', 'RECEIVED_ONLY'].includes(receipt.authority) || receipt.automaticRetry !== false
+      || !['RECEIVED_ONLY', 'REPLAYED', 'PENDING', 'UNKNOWN'].includes(receipt.status)) throw new Error('INVALID_STATUS_RECEIPT');
+  } else if (receipt.kind !== 'SubmissionReceipt' || !['SUBMITTED', 'REPLAYED'].includes(receipt.status)
+    || ['exceptionApproved', 'gateMutated', 'scmPublished'].some(key => receipt[key] !== false)
+    || receipt.governanceOutcome !== 'RECEIVED_ONLY') throw new Error('INVALID_RECEIPT_GUARDS');
+  if (statusQuery && !receipt.requestId && !receipt.artifactDigest) throw new Error('RECEIPT_IDENTITY_MISSING');
+  for (const key of ['requestId', 'artifactDigest']) {
+    if ((!statusQuery || receipt[key] !== undefined) && receipt[key] !== request[key]) throw new Error('RECEIPT_IDENTITY_MISMATCH:' + key);
+  }
+  return receipt;
+}
+
 module.exports = {
+  CLASSIFICATIONS, scopeCandidates, projectScopeOptions, selectScope, projectSavedRequest, selectRequest, statusSelection, validateSubmissionResponse,
   FORBIDDEN_FIELDS,
   CLIENT_API_VERSION,
   FINDING_VIEW_KIND,

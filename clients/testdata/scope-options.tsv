@@ -1,0 +1,12 @@
+name	findingPath	modules	source_roots	files	directories	expected
+module-source	app/src/main/java/A.java	app;app	app/src	app/src/main/java/A.java	app/src/main/java;app;app/src	app/src/main/java/A.java|file|false;app/src/main/java/**|directory|true;app/**|module|true;app/src/**|source_root|true
+file-only	Main.java			Main.java		Main.java|file|false
+duplicate-roots	src/A.java	src;src	src	src/A.java	src	src/A.java|file|false;src/**|directory|true
+unrelated-module	src/A.java	other	other/src	src/A.java	src;other;other/src	src/A.java|file|false;src/**|directory|true
+unsafe-roots	src/A.java	.;*;**;../src;/src;src/../x	src/*	src/A.java	src	src/A.java|file|false;src/**|directory|true
+missing-file	src/A.java	src			src	-
+symlink-file	linked/A.java	linked			linked	-
+untrusted-module	app/src/A.java	app		app/src/A.java	app/src	app/src/A.java|file|false;app/src/**|directory|true
+outside-file	../A.java			../A.java		-
+glob-file	src/*.java			src/*.java	src	-
+control-file	src/A.java			src/A.java	src	-

@@ -41,7 +41,7 @@ const lines = [
   'feedback-args=' + core.buildFeedbackDraftArgs('f.json',
     { classification: 'true-fp', reason: 'why', actor: 'alice' }).join('|'),
   'exception-args=' + core.buildExceptionRequestArgs('f.json',
-    { scope: 'file', reason: 'why', actor: 'alice' }).join('|'),
+    { scope: 'src/Main.java', reason: 'why', actor: 'alice' }).join('|'),
   'submit-args=' + core.buildSubmitArgs('feedback', 'req.json', submitOpts).join('|'),
   'status-args=' + core.buildSubmissionStatusArgs({ server: 'https://s', requestId: 'rid-1' }).join('|'),
   'exit0=' + core.classifyExitCode(0),
@@ -63,3 +63,6 @@ const lines = [
 ];
 
 process.stdout.write(lines.join('\n') + '\n');
+
+const { cases, projection } = require('./scope-fixtures');
+for (const c of cases) process.stdout.write('scope-case-' + c.name + '=' + projection(c) + '\n');

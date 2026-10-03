@@ -38,10 +38,17 @@ Runtime/Factory/Server/Registry/SCM/Gate 权威。
 ## 离线核自测（无需 IDE SDK / 无需联网）
 
 ```bash
-javac -d /tmp/erf-intellij-selftest \
-  src/main/java/io/ruleops/ide/core/ThinClientCore.java \
-  selftest/io/ruleops/ide/core/CoreSelfTest.java
-java -cp /tmp/erf-intellij-selftest io.ruleops.ide.core.CoreSelfTest
+# 从仓库根运行；Java 21；只读共享 scope 夹具。
+OUT=clients/intellij/build/stage2-selftest
+mkdir -p "$OUT"
+timeout 60 javac -d "$OUT" \
+  clients/intellij/src/main/java/io/ruleops/ide/core/ThinClientCore.java \
+  clients/intellij/src/main/java/io/ruleops/ide/WorkflowFiles.java \
+  clients/intellij/selftest/io/ruleops/ide/core/*.java \
+  clients/intellij/selftest/io/ruleops/ide/WorkflowFilesSelfTest.java
+timeout 60 java -cp "$OUT" io.ruleops.ide.core.CoreSelfTest
+timeout 60 java -cp "$OUT" io.ruleops.ide.WorkflowFilesSelfTest
+timeout 60 java -cp "$OUT" io.ruleops.ide.core.ParityHarness
 ```
 
 门禁脚本 `scripts/ide-client-check.sh` 会真实驱动 `rf` 并交叉校验本核与 VS Code 端核。
@@ -63,9 +70,20 @@ gradle buildPlugin   # 产出 build/distributions/*.zip
 ERF 工具窗提供原生 Swing 场景表单和分组树，8 个 action 只进入同一工具窗；Settings → ERF 配置项目级路径、endpoint 和超时。
 共享 `clients/ide-command-map.json` 由 `processResources` 打包；未接入命令保持可见且不可执行。
 所有 rf 进程通过 `RfInvoker.submit` 的可取消 `Task.Backgroundable` 启动，完成/失败/取消回调回 EDT，设置变化废弃旧回调。
-场景只保留原有薄客户端能力，例外 scope 限当前 Finding 文件；后续闭环及 31 项执行覆盖未在本阶段实现。
+阶段 1 建立了工具窗骨架；阶段 2 的保存/提交闭环见下节，31 项完整执行覆盖仍不作完成声明。
 
 SDK 宿主测试：`src/test/java/io/ruleops/ide/ErfHostTest.java`，需可用离线 IntelliJ SDK 与相匹配 Gradle 环境：
 `gradle -p clients/intellij --offline test --tests io.ruleops.ide.ErfHostTest`。
 该测试核实原生面板/描述符、后台实际 Java 子进程、EDT 回调与取消；不能以 `coreSelfTest` 或源码注册断言替代。
 未在真实 IDE 中验收，不据声明推导安装兼容性。
+
+## 阶段 2：对象与文件闭环
+
+- actions 继续统一委派工具窗；分类取自 CLI 四值，actor 文本须勾选确认。reason 使用多行文本控件，但现有 CLI 拒绝换行/控制符及超过 2000 UTF-8 字节；原文不被静默归一化，错误保留表单。
+- `ThinClientCore.scopeOptions` 只消费纯数据。`WorkflowFiles` 根据实际文件与 `rf config show --format json` 的内部 `config.modules/source_roots` 验证路径；选项按当前文件、直接父目录、关联模块、source root 去重。仅新 Finding 默认文件，刷新保留原选项；失效后禁用而不自动选第一项。扩大需确认，缺少可信文件或配置时阻塞；拒绝越界、符号链接、控制符与裸星。
+- 草稿/申请经原生输出选择器与参数预览，显式 `--output` 后核实真实新写入文件、字段与身份，才显示保存成功并进入项目本地 `ErfArtifactIndex`。输出失败/取消不清表单；覆盖须确认，不覆盖输入文件。已有文件时间戳未变化视为未证实新写入，而不是假成功。
+- “提交刚保存的同一对象”直接引用该路径；执行前重读文件、比较内容指纹和身份。提交前展示 endpoint、requestId、artifactDigest 与字段范围；回执另选显式文件并留存索引。UNKNOWN/PENDING/超时不当作批准，不自动重提。
+- 状态页下拉选择已保存对象，选择 requestId 或 artifactDigest 查询，不手抄摘要。endpoint 变化取消任务、废弃旧回调并清除选择，索引按工作区与 endpoint 隔离。
+- explain 的 result/authority-trust 使用成对文件选择并原样传给 CLI；插件不推导 trust root 或审批权威。
+
+`WorkflowFilesSelfTest` 是真实文件系统检查，`CoreSelfTest`/`ParityHarness` 是纯核检查；均不替代 SDK 类型检查、打包安装或真实 IDE 验收。完整编译需要离线可用的 `org.jetbrains.intellij:1.17.4` 与 IntelliJ 2024.1 SDK；依赖不可解析时必须报告未编译。

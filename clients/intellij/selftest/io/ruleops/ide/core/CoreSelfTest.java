@@ -8,10 +8,18 @@ import java.util.List;
 import java.util.Map;
 
 public final class CoreSelfTest {
+    private static Map<String, Object> savedRequest() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("apiVersion", "rulefactory.io/v1"); result.put("kind", "FeedbackDraft"); result.put("schemaVersion", "feedback-draft-v1");
+        result.put("status", "PROPOSED"); result.put("requestId", "sha256:" + "a".repeat(64)); result.put("digest", "sha256:" + "b".repeat(64));
+        result.put("findingDigest", "sha256:" + "c".repeat(64)); result.put("findingFingerprint", "fingerprint"); result.put("ruleId", "R1");
+        result.put("classification", "true-fp"); result.put("actor", "alice"); result.put("reason", "why"); return result;
+    }
+
     private static int passed = 0;
     private static int failed = 0;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         // ---- validateRelativePath 接受 ----
         assertOk("path.accept.simple", ThinClientCore.validateRelativePath("src/main/App.java").ok);
         assertOk("path.accept.nested", ThinClientCore.validateRelativePath("a/b/c/d.txt").ok);
@@ -70,8 +78,8 @@ public final class CoreSelfTest {
             ThinClientCore.buildFeedbackDraftArgs("f.json", "true-fp", "why", "alice", null).toString(),
             "[feedback, draft, f.json, --classification, true-fp, --reason, why, --actor, alice]");
         assertEq("args.exception.request",
-            ThinClientCore.buildExceptionRequestArgs("f.json", "file", "why", "alice", null).toString(),
-            "[exception, request, f.json, --scope, file, --reason, why, --actor, alice]");
+            ThinClientCore.buildExceptionRequestArgs("f.json", "src/Main.java", "why", "alice", null).toString(),
+            "[exception, request, f.json, --scope, src/Main.java, --reason, why, --actor, alice]");
         assertEq("args.submit.feedback",
             ThinClientCore.buildSubmitArgs("feedback", "req.json", "https://s", 5000, null).toString(),
             "[feedback, submit, req.json, --server, https://s, --timeout-ms, 5000]");
@@ -117,6 +125,62 @@ public final class CoreSelfTest {
         assertOk("receipt.violate", !viol.guardsHold);
         assertOk("receipt.violate.lists", viol.violations.contains("exceptionApproved") && viol.violations.contains("scmPublished"));
 
+        // Stage 2: options consume verified filesystem facts, never manufacture scope or identity.
+        assertEq("scope.shared.fixture.count", String.valueOf(ParityHarness.scopeFixtureLines(java.nio.file.Path.of("clients/testdata/scope-options.tsv")).size()), "11");
+        var scopeFinding = goodView(); scopeFinding.put("location", Map.of("path", "src/Main.java", "line", 1, "column", 1));
+        var options = ThinClientCore.scopeOptions(scopeFinding, Map.of("modules", List.of("src"), "source_roots", List.of("src")), List.of("src/Main.java"), List.of("src"));
+        assertEq("scope.default.file", options.getFirst().value(), "src/Main.java");
+        assertEq("scope.deduplicated", String.valueOf(options.size()), "2");
+        assertEq("scope.restore.newFinding", ThinClientCore.restoreScopeSelection(options, null, true).value(), "src/Main.java");
+        assertEq("scope.restore.keepsChoice", ThinClientCore.restoreScopeSelection(options, "src/**", false).value(), "src/**");
+        assertOk("scope.restore.expired", ThinClientCore.restoreScopeSelection(options, "removed/**", false) == null);
+        assertOk("scope.restore.empty", ThinClientCore.restoreScopeSelection(List.of(), "src/Main.java", false) == null);
+        assertOk("scope.restore.noSilentDefault", ThinClientCore.restoreScopeSelection(options, null, false) == null);
+        assertEq("scope.confirmed", ThinClientCore.selectScope(options, "src/**", true), "src/**");
+        assertThrows("scope.broader.confirmation", "SCOPE_CONFIRMATION_REQUIRED", () -> ThinClientCore.selectScope(options, "src/**", false));
+        assertThrows("scope.stale", "SCOPE_NOT_AVAILABLE", () -> ThinClientCore.selectScope(List.of(), "src/Main.java", false));
+        for (String bad : List.of("*", "**", "../x", "src/*", "src/**/x", "src/[ab]", "src/../x", "src/\u007f", "src/{x}", "/root"))
+            assertOk("scope.reject." + bad, !ThinClientCore.validateScope(bad).ok);
+        eo.result = "result.json"; eo.authorityTrust = "trust.json";
+        assertEq("args.explain.authority", ThinClientCore.buildExplainArgs("f.json", eo).toString(),
+            "[explain, f.json, --format, text, --rule-meta, rm.json, --result, result.json, --authority-trust, trust.json]");
+        eo.result = null;
+        assertThrows("args.explain.trustWithoutResult", "AUTHORITY_TRUST_REQUIRES_RESULT", () -> ThinClientCore.buildExplainArgs("f.json", eo));
+        assertThrows("args.status.twoSelectors", "CONFLICTING_SELECTORS", () -> ThinClientCore.buildSubmissionStatusArgs("https://s", "r", "d", 0));
+        assertEq("args.feedback.explicitOutput", ThinClientCore.buildFeedbackDraftArgs("f.json", "true-fp", "why", "alice", "saved.json").getLast(), "saved.json");
+        assertEq("args.submit.samePath", ThinClientCore.buildSubmitArgs("feedback", "saved.json", "https://s", 100, "receipt.json").get(2), "saved.json");
+        Map<String, Object> request = savedRequest();
+        var identity = ThinClientCore.savedArtifact(request);
+        assertEq("artifact.identity", identity.requestId(), "sha256:" + "a".repeat(64));
+        Map<String, Object> receipt = new LinkedHashMap<>(Map.of("apiVersion", "rulefactory.io/v1", "kind", "SubmissionReceipt",
+            "schemaVersion", "submission-receipt-v1", "status", "SUBMITTED", "governanceOutcome", "RECEIVED_ONLY",
+            "requestId", identity.requestId(), "artifactDigest", identity.artifactDigest(), "exceptionApproved", false, "gateMutated", false, "scmPublished", false));
+        assertEq("receipt.real.cliShape", ThinClientCore.checkedResponse(receipt, identity, false), "SUBMITTED");
+        receipt.remove("gateMutated");
+        assertThrows("receipt.missingGuard", "RECEIPT_AUTHORITY_GUARD:gateMutated", () -> ThinClientCore.checkedResponse(receipt, identity, false));
+        receipt.put("gateMutated", true);
+        assertThrows("receipt.trueGuard", "RECEIPT_AUTHORITY_GUARD:gateMutated", () -> ThinClientCore.checkedResponse(receipt, identity, false));
+        receipt.put("gateMutated", false); receipt.put("requestId", "sha256:" + "c".repeat(64));
+        assertThrows("receipt.wrongIdentity", "RESPONSE_IDENTITY_CONFLICT:requestId", () -> ThinClientCore.checkedResponse(receipt, identity, false));
+        Map<String, Object> status = new LinkedHashMap<>(Map.of("apiVersion", "rulefactory.io/v1", "kind", "SubmissionStatus", "schemaVersion", "submission-status-v1",
+            "status", "UNKNOWN", "requestId", identity.requestId(), "automaticRetry", false, "authority", "UNKNOWN"));
+        assertEq("status.unknown", ThinClientCore.checkedResponse(status, identity, true), "UNKNOWN");
+        status.put("gateMutated", true);
+        assertThrows("status.trueGuard", "RECEIPT_AUTHORITY_GUARD:gateMutated", () -> ThinClientCore.checkedResponse(status, identity, true));
+        status.remove("gateMutated");
+        status.put("authority", "APPROVED");
+        assertThrows("status.falseAuthority", "STATUS_AUTHORITY_GUARD", () -> ThinClientCore.checkedResponse(status, identity, true));
+        request.put("source", "private");
+        assertThrows("artifact.privacy", "FORBIDDEN_FIELD:source", () -> ThinClientCore.savedArtifact(request));
+        request.remove("source"); request.put("digest", "sha256:bad");
+        assertThrows("artifact.badDigest", "INVALID_DIGEST:digest", () -> ThinClientCore.savedArtifact(request));
+
+        assertThrows("args.reason.newline.visible", "INVALID_CONTEXT:reason (CLI requires no control characters and at most 2000 UTF-8 bytes)",
+            () -> ThinClientCore.buildFeedbackDraftArgs("f.json", "true-fp", "line1\nline2", "alice", "saved.json"));
+        var missingIdentity = goodView(); missingIdentity.remove("fingerprint");
+        assertReason("view.identity.required", ThinClientCore.validateFindingView(missingIdentity), "INVALID_FIELD:fingerprint");
+        var unknownLocation = goodView(); castMap(unknownLocation.get("location")).put("extra", "x");
+        assertReason("view.location.closed", ThinClientCore.validateFindingView(unknownLocation), "LOCATION_FIELDS");
         System.out.println("intellij-core-selftest: pass=" + passed + " fail=" + failed);
         if (failed != 0) {
             System.exit(1);
