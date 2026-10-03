@@ -115,9 +115,16 @@ run_or_fail() {
           'receipt-violate=scmPublished' \
           'status-unknown=failclosed' \
           'parse-authority_status=LOCAL_UNATTESTED' \
-          'parse-authoritative=false'; do
+          'parse-authoritative=false' \
+          'map-init=init|--repo-root|src|--language|java' \
+          'map-decision-evaluate=decision|evaluate' \
+          'scan-classify-2=INVALID_INPUT' \
+          'scan-classify-4=TRUST_FAILED'; do
           grep -Fq "$needle" "$PARITY_VSCODE" || failures+=("parity output missing required line: $needle")
         done
+        # scan-render 行必须显式拒绝把 exit=0 说成 PASS（阶段 4 工作台语义）。
+        grep -Fq 'scan-render-fail=scan FAIL' "$PARITY_VSCODE" \
+          || failures+=("scan-render-fail line must keep FAIL status visible")
       else
         failures+=("cross-core parity diff non-empty; see $PARITY_DIFF")
         parity_result="diff non-empty"

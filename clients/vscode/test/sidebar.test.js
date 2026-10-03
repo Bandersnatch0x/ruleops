@@ -77,12 +77,14 @@ test('webview has strict CSP, escaped output and no local resource access', asyn
   await h.sidebar.open('rf.init'); assert.notEqual(h.sidebar.state.phase, 'ready');
 });
 
-test('multi-root has no implicit first root; unsupported commands remain unavailable', async () => {
+test('multi-root has no implicit first root; unimplemented commands remain unavailable', async () => {
   const h = host(undefined, { folders: [{ uri: { fsPath: '/a' } }, { uri: { fsPath: '/b' } }] });
   assert.equal(h.sidebar.state.phase, 'unconfigured');
   await h.sidebar.message({ type: 'workspace' });
   assert.equal(h.sidebar.state.phase, 'ready');
-  await h.sidebar.open('rf.scan'); assert.equal(h.sidebar.state.phase, 'unavailable');
+  // 阶段 4 起 rf.scan 有工作台面板；仍无面板的命令（如 center.check）显式不可用。
+  await h.sidebar.open('rf.scan'); assert.notEqual(h.sidebar.state.phase, 'unavailable');
+  await h.sidebar.open('rf.center.check'); assert.equal(h.sidebar.state.phase, 'unavailable');
 });
 
 test('finding privacy rejection prevents invocation; saved request submits the exact output and queries without typing digests', async t => {

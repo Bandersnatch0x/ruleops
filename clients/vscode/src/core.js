@@ -404,6 +404,242 @@ function renderRegistrySync(receipt, pin) {
   return `CACHED · PIN_MATCH · authority=UNKNOWN · 缓存非安装 / 非 Gate PASS\nartifact：${receipt.artifactKind}\nbundleDigest：${receipt.bundleDigest}\ndestination：${receipt.destination}\noverwritePolicy：${receipt.overwritePolicy}\nofflineAvailable：${receipt.offlineAvailable}\nprovenance：${JSON.stringify(receipt.provenance)}\n后续扫描仍需 ExecutionLock、签名和撤销验证。`;
 }
 
+// ---- 统一命令面：机械地从同一份 map params 构造 rf argv ----
+// 两端（VS Code core.js / IntelliJ ThinClientCore.java）消费的是同一份
+// clients/ide-command-map.json#commands[].params；本层不新增网络或业务流程。
+
+function requireControlFree(value, name) {
+  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error('INVALID_CONTROL:' + name);
+  return value;
+}
+function digestValue(value, name) {
+  requireControlFree(value, name);
+  if (!/^sha256:[a-f0-9]{64}$/.test(value)) throw new Error('INVALID_DIGEST:' + name);
+  return value;
+}
+function hexDigestValue(value, name) {
+  requireControlFree(value, name);
+  if (!/^[a-f0-9]{64}$/.test(value)) throw new Error('INVALID_HEX_DIGEST:' + name);
+  return value;
+}
+function numberValue(value, name) {
+  requireControlFree(String(value), name);
+  if (!Number.isInteger(value) && !/^\d+$/.test(String(value))) throw new Error('INVALID_NUMBER:' + name);
+  return String(value);
+}
+function splitCsv(value, name) {
+  const parts = Array.isArray(value) ? value : String(value).split(',');
+  return parts.map(part => requireControlFree(String(part).trim(), name)).filter(part => part.length > 0);
+}
+
+// 参数值 → argv：按 map 声明的 params 顺序机械展开（位置参数 + flag）。
+// 子命令前缀来自 commandTemplate 且与 rf 启动器的分派词一致（area [+ action]）。
+// 已知分派词集合 = rf 启动器 case 分支；遇到其它 token（占位符/资源选择）即停，
+// 避免把 rules|standards、PATH、FILE... 这类 params 占位误入前缀。
+const RF_DISPATCH_WORDS = new Set([
+  'init', 'doctor', 'config', 'registry', 'standard', 'rule', 'coverage', 'pilot', 'decision',
+  'center', 'status', 'explain', 'feedback', 'exception', 'submission', 'scan',
+  'validate', 'show', 'list', 'sync', 'generate', 'test', 'analyze', 'report', 'delivery-check',
+  'baseline', 'observe', 'governance', 'window-report', 'package', 'adjudicate', 'evaluate',
+  'check', 'contract-check', 'deployment-check', 'draft', 'request', 'submit',
+]);
+function commandPrefix(cmd) {
+  const template = String(cmd.commandTemplate || '');
+  const body = template.startsWith('rf ') ? template.slice(3) : template;
+  const words = [];
+  for (const token of body.split(/\s+/)) {
+    if (!RF_DISPATCH_WORDS.has(token)) break;
+    words.push(token);
+    // evidence 是名词组前缀（rf pilot evidence package），不属于分派词本身。
+    if (words[words.length - 1] === 'evidence') continue;
+  }
+  // pilot evidence package/adjudicate：'evidence' 不在集合，循环会停在 pilot 后；
+  // 这里补上 "pilot evidence X" 的名词组。
+  if (words.length === 1 && words[0] === 'pilot' && body.startsWith('pilot evidence ')) {
+    const third = body.split(/\s+/)[2];
+    if (third === 'package' || third === 'adjudicate') words.push('evidence', third);
+  }
+  return words;
+}
+
+function buildMappedArgs(cmd, values) {
+  if (!cmd || !Array.isArray(cmd.params)) throw new Error('MISSING_COMMAND_PARAMS');
+  if (cmd.commandId === 'rf.scan') return buildScanArgs(cmd, values);
+  const input = values || {};
+  const args = commandPrefix(cmd);
+  for (const p of cmd.params) {
+    const raw = input[p.name];
+    if (p.kind === 'bool') {
+      const on = raw === true || raw === 'true' || raw === '1';
+      if (on) args.push(p.flag);
+      continue;
+    }
+    if (raw === undefined || raw === null || raw === '') {
+      if (p.required) throw new Error('MISSING_ARG:' + p.name);
+      continue;
+    }
+    const items = Array.isArray(raw) ? raw : (p.kind === 'csv' ? splitCsv(raw, p.name) : [raw]);
+    for (const item of items) {
+      let sv;
+      switch (p.kind) {
+        case 'enum': {
+          sv = requireControlFree(String(item), p.name);
+          if (!p.values.includes(sv)) throw new Error('BAD_ENUM:' + p.name + '=' + sv);
+          break;
+        }
+        case 'digest': sv = (p.hexDigest ? hexDigestValue : digestValue)(String(item), p.name); break;
+        case 'number': sv = numberValue(item, p.name); break;
+        default: {
+          sv = requireControlFree(String(item), p.name);
+          // CLI 路径参数由宿主提供，允许绝对路径（如 --repo-root）；相对路径门禁属工作区导航层。
+        }
+      }
+      if (p.flag) args.push(p.flag, sv);
+      else args.push(sv);
+    }
+  }
+  return args;
+}
+
+// scan 路线互斥、base/head 成对、JSON 结构化输出；其余 flag 由同一 params 展开。
+function buildScanArgs(cmd, values) {
+  const input = values || {};
+  const members = { 'rule-id': 'ruleId', candidate: 'candidate', 'delivery-descriptor': 'deliveryDescriptor' };
+  const route = input.route || (input.ruleId ? 'rule-id' : input.candidate ? 'candidate' : input.deliveryDescriptor ? 'delivery-descriptor' : null);
+  if (!route || !members[route]) throw new Error('SCAN_ROUTE_REQUIRED');
+  const memberName = members[route];
+  if (input[memberName] === undefined || input[memberName] === null || input[memberName] === '') throw new Error('MISSING_ARG:' + memberName);
+  const extraMembers = Object.keys(members).filter(r => r !== route).map(r => members[r])
+    .filter(name => input[name] !== undefined && input[name] !== null && input[name] !== '');
+  if (extraMembers.length) throw new Error('SCAN_ROUTE_CONFLICT');
+  if (Boolean(input.base) !== Boolean(input.head)) throw new Error('BASE_HEAD_MUST_BE_PAIRED');
+  const rest = cmd.params.filter(p =>
+    p.name === 'route' || p.name === memberName || p.name === 'base' || p.name === 'head');
+  const filtered = { ...input };
+  for (const name of ['ruleId', 'candidate', 'deliveryDescriptor', 'base', 'head']) if (name !== memberName && !['base', 'head'].includes(name)) filtered[name] = undefined;
+  const args = commandPrefix(cmd);
+  for (const p of cmd.params) {
+    if (rest.includes(p)) continue;
+    const raw = p.name === 'base' || p.name === 'head' ? input[p.name] : filtered[p.name];
+    if (p.kind === 'bool') {
+      const on = raw === true || raw === 'true' || raw === '1';
+      if (on) args.push(p.flag);
+      continue;
+    }
+    if (raw === undefined || raw === null || raw === '') {
+      if (p.required) throw new Error('MISSING_ARG:' + p.name);
+      continue;
+    }
+    const items = Array.isArray(raw) ? raw : (p.kind === 'csv' ? splitCsv(raw, p.name) : [raw]);
+    for (const item of items) {
+      let sv;
+      switch (p.kind) {
+        case 'enum': sv = requireControlFree(String(item), p.name);
+          if (!p.values.includes(sv)) throw new Error('BAD_ENUM:' + p.name + '=' + sv); break;
+        case 'digest': sv = (p.hexDigest ? hexDigestValue : digestValue)(String(item), p.name); break;
+        case 'number': sv = numberValue(item, p.name); break;
+        default: sv = requireControlFree(String(item), p.name);
+          // CLI 路径参数由宿主提供，允许绝对路径（如 --repo-root）；相对路径门禁属工作区导航层。
+      }
+      if (p.flag) args.push(p.flag, sv);
+      else args.push(sv);
+    }
+  }
+  const routeFlag = { 'rule-id': '--rule-id', candidate: '--candidate', 'delivery-descriptor': '--delivery-descriptor' }[route];
+  args.push(routeFlag, input[memberName]);
+  if (input.base) args.push('--base', input.base, '--head', input.head);
+  return args;
+}
+
+// ---- 扫描结果工作台：解析 rf scan 结构化输出，权威来自 rf-runner ----
+// 关键：绝不把 scan exit=0 当作 PASS；展示以 ScanResult.status/gateDecision/
+// authority 为准，ScanFailure 显示的 exitCode 就是 CLI 契约等级。
+
+function classifyScanExit(code) {
+  if (code === 0) return 'OK';
+  if (code === 2) return 'INVALID_INPUT';
+  if (code === 3) return 'INCONCLUSIVE_OR_REFUSED';
+  if (code === 4) return 'TRUST_FAILED';
+  return 'ERROR';
+}
+
+// 扫描不是"命令退出成功=通过"的简单开关：status 取 scan-output 的 DisplayStatus。
+const SCAN_STATUS_LABELS = {
+  PASS: 'PASS（Gate 通过）',
+  FAIL: 'FAIL（存在未豁免 finding，Gate 阻止）',
+  INCONCLUSIVE: 'INCONCLUSIVE（证据不足，Gate 未决）',
+  LOCAL_UNATTESTED: 'LOCAL_UNATTESTED（本地未证明，非生产 Gate 证据）',
+};
+
+// 把既有 ScanResult/ScanFailure 结构化对象收敛为归一化视图。
+// 与 Java 端 ThinClientCore 消费同一契约字段，供跨端 parity 使用。
+function normalizeScanReport(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, reason: 'NOT_OBJECT' };
+  if (findForbiddenField(raw)) return { ok: false, reason: 'FORBIDDEN_FIELD' };
+  const kind = raw.kind;
+  if (kind === 'ScanResult') {
+    const fields = ['apiVersion', 'kind', 'status', 'gateDecision', 'authority', 'trust', 'ruleId', 'findingRecords', 'diagnostics', 'progress', 'resultDigest'];
+    if (!fields.every(f => Object.hasOwn(raw, f))) return { ok: false, reason: 'SCAN_RESULT_INCOMPLETE' };
+    if (!Object.hasOwn(SCAN_STATUS_LABELS, raw.status)) return { ok: false, reason: 'SCAN_STATUS_UNKNOWN:' + raw.status };
+    return { ok: true, kind: 'ScanResult', status: raw.status, gateDecision: raw.gateDecision,
+      authority: raw.authority, trust: raw.trust, ruleId: raw.ruleId,
+      planned: raw.planned, executed: raw.executed, failed: raw.failed,
+      findings: Array.isArray(raw.findingRecords) ? raw.findingRecords : [],
+      diagnostics: Array.isArray(raw.diagnostics) ? raw.diagnostics : [],
+      progress: Array.isArray(raw.progress) ? raw.progress : [],
+      resultDigest: raw.resultDigest };
+  }
+  if (kind === 'ScanFailure') {
+    const fields = ['apiVersion', 'kind', 'exitCode', 'diagnostics', 'progress', 'diagnosticDigest'];
+    if (!fields.every(f => Object.hasOwn(raw, f))) return { ok: false, reason: 'SCAN_FAILURE_INCOMPLETE' };
+    return { ok: true, kind: 'ScanFailure', exitCode: Number(raw.exitCode),
+      diagnostics: Array.isArray(raw.diagnostics) ? raw.diagnostics : [],
+      progress: Array.isArray(raw.progress) ? raw.progress : [] };
+  }
+  return { ok: false, reason: 'SCAN_KIND_UNKNOWN:' + String(kind) };
+}
+
+function parseScanStdout(stdout) {
+  const text = String(stdout || '').trim();
+  if (!text) return { ok: false, reason: 'EMPTY_OUTPUT' };
+  let raw;
+  try { raw = JSON.parse(text); }
+  catch (error) { return { ok: false, reason: 'INVALID_JSON' }; }
+  return normalizeScanReport(raw);
+}
+
+function renderScanReport(parsed, exitCode, stderr) {
+  if (parsed && !parsed.ok) parsed = normalizeScanReport(parsed);
+  if (!parsed || !parsed.ok) return 'scan 输出无法按既有 ScanResult/ScanFailure 契约解析：' + (parsed && parsed.reason) + '\nexit=' + exitCode;
+  const progressLines = parseProgressLines(stderr);
+  const progressPart = progressLines.length ? '\n' + progressLines.join('\n') : '';
+  if (parsed.kind === 'ScanFailure') {
+    const diags = parsed.diagnostics.map(d =>
+      `diagnostic code=${d.code} stage=${d.stage} retry=${d.retry || ''} message=${d.message} next_step=${d.nextStep || ''}`).join('\n');
+    return `扫描未完成（ScanFailure）出口码=${parsed.exitCode}（${classifyScanExit(parsed.exitCode)}）\n${diags}${progressPart}`;
+  }
+  const statusLine = SCAN_STATUS_LABELS[parsed.status] + (parsed.gateDecision ? ' · gate=' + parsed.gateDecision : '')
+    + ' · authority=' + parsed.authority + ' · trust=' + parsed.trust;
+  const header = `scan ${parsed.status} — 不做成 PASS：请以 status/gate/authority 为准\n${statusLine}\nrule_id=${parsed.ruleId} planned=${parsed.planned} executed=${parsed.executed} failed=${parsed.failed}\nresult_digest=${parsed.resultDigest}`;
+  const findings = parsed.findings.map(f => {
+    const loc = f.location || {};
+    const where = loc.path ? (loc.line ? `${loc.path}:${loc.line}:${loc.column || 1}` : loc.path) : ('identity ' + (loc.identityDigest || ''));
+    return `finding id=${f.findingId} rule=${f.ruleId} location=${where} digest=${f.findingDigest} message=${f.message}`;
+  }).join('\n');
+  const diags = parsed.diagnostics.map(d => `diagnostic code=${d.code} stage=${d.stage} retry=${d.retry || ''} message=${d.message} next_step=${d.nextStep || ''}`).join('\n');
+  return [header, findings ? 'findings：\n' + findings : 'findings：无', diags ? 'diagnostics：\n' + diags : '', 'exit=' + exitCode].filter(Boolean).join('\n') + progressPart;
+}
+
+// stderr progress 行：`progress stage=... outcome=... elapsed_nanos=...`（长任务不 5 秒截断）。
+function parseProgressLines(stderr) {
+  return String(stderr || '').split('\n').map(line => line.trim()).filter(line => line.startsWith('progress '));
+}
+
+function mapCommand(commandMap, commandId) {
+  if (!commandMap || !Array.isArray(commandMap.commands)) return null;
+  return commandMap.commands.find(c => c.commandId === commandId) || null;
+}
+
 module.exports = {
   projectRegistryPins, selectRegistryPin, buildRegistryListArgs, buildRegistryShowArgs, buildRegistrySyncArgs, projectRegistryPage, renderRegistryShow, renderRegistrySync,
   CLASSIFICATIONS, scopeCandidates, projectScopeOptions, selectScope, projectSavedRequest, selectRequest, statusSelection, validateSubmissionResponse,
@@ -420,6 +656,15 @@ module.exports = {
   buildSubmissionStatusArgs,
   parseExplainText,
   classifyExitCode,
+  classifyScanExit,
+  buildMappedArgs,
+  buildScanArgs,
+  normalizeScanReport,
+  parseScanStdout,
+  renderScanReport,
+  parseProgressLines,
+  SCAN_STATUS_LABELS,
+  mapCommand,
   statusLabel,
   renderReceiptGuards,
   STATUS_LABELS,

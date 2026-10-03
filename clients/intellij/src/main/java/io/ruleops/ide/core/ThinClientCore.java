@@ -554,4 +554,305 @@ public final class ThinClientCore {
             + "\nprovenance：" + provenance + "\n后续扫描仍需 ExecutionLock、签名和撤销验证。";
     }
 
+    // ---- 统一命令面：机械地从同一份 map params 构造 rf argv ----
+    // 与 clients/vscode/src/core.js 消费同一份 ide-command-map.json#commands[].params；
+    // 本层只机械展开参数，不新增网络或业务流程。identity 字段（actor/owner）由 UI 显式收集，绝不代填。
+
+    public record Param(String name, String kind, String flag, boolean required,
+                        List<String> values, boolean hexDigest, boolean repeatable,
+                        boolean identity, boolean routeSelector) {
+        public Param {
+            List<String> safe = values == null ? List.of() : List.copyOf(values);
+            values = safe;
+        }
+    }
+
+    private static List<String> splitCsv(String raw, String name) {
+        List<String> out = new ArrayList<>();
+        for (String part : raw.split(",", -1)) {
+            String chunk = controlFree(part.trim(), name);
+            if (!chunk.isEmpty()) out.add(chunk);
+        }
+        return out;
+    }
+    private static String controlFree(String value, String name) {
+        if (value == null) throw new IllegalArgumentException("INVALID_CONTROL:" + name);
+        for (int i = 0; i < value.length(); i += 1)
+            if (Character.isISOControl(value.charAt(i))) throw new IllegalArgumentException("INVALID_CONTROL:" + name);
+        return value;
+    }
+    private static String digestValue(String value, String name) {
+        controlFree(value, name);
+        if (!value.matches("sha256:[a-f0-9]{64}")) throw new IllegalArgumentException("INVALID_DIGEST:" + name);
+        return value;
+    }
+    private static String hexDigestValue(String value, String name) {
+        controlFree(value, name);
+        if (!value.matches("[a-f0-9]{64}")) throw new IllegalArgumentException("INVALID_HEX_DIGEST:" + name);
+        return value;
+    }
+    private static String numberValue(String value, String name) {
+        controlFree(value == null ? "" : value, name);
+        if (value == null || !value.matches("\\d+")) throw new IllegalArgumentException("INVALID_NUMBER:" + name);
+        return value;
+    }
+
+    private static final java.util.Set<String> RF_DISPATCH_WORDS = java.util.Set.of(
+        "init", "doctor", "config", "registry", "standard", "rule", "coverage", "pilot", "decision",
+        "center", "status", "explain", "feedback", "exception", "submission", "scan",
+        "validate", "show", "list", "sync", "generate", "test", "analyze", "report", "delivery-check",
+        "baseline", "observe", "governance", "window-report", "package", "adjudicate", "evaluate",
+        "check", "contract-check", "deployment-check", "draft", "request", "submit");
+
+    /** 子命令前缀 = commandTemplate 开头的已知分派词（area [+ action]），与 rf 启动器 case 分支一致。 */
+    public static List<String> commandPrefix(String commandTemplate) {
+        String body = commandTemplate == null ? "" : (commandTemplate.startsWith("rf ") ? commandTemplate.substring(3) : commandTemplate);
+        List<String> words = new ArrayList<>();
+        for (String token : body.split("\\s+")) {
+            if (!RF_DISPATCH_WORDS.contains(token)) break;
+            words.add(token);
+        }
+        if (words.size() == 1 && "pilot".equals(words.get(0)) && body.startsWith("pilot evidence ")) {
+            String third = body.split("\\s+")[2];
+            if ("package".equals(third) || "adjudicate".equals(third)) { words.add("evidence"); words.add(third); }
+        }
+        return List.copyOf(words);
+    }
+
+    /** 按 map params 声明顺序展开位置参数与 flag（与 core.js buildMappedArgs 对齐）。 */
+    public static List<String> buildMappedArgs(List<Param> params, Map<String, String> values) {
+        return buildMappedArgs("", params, values);
+    }
+
+    /** 同上；commandTemplate 供前缀推导。 */
+    public static List<String> buildMappedArgs(String commandTemplate, List<Param> params, Map<String, String> values) {
+        if (params == null) throw new IllegalArgumentException("MISSING_COMMAND_PARAMS");
+        Map<String, String> input = values == null ? Map.of() : values;
+        List<String> args = new ArrayList<>(commandPrefix(commandTemplate));
+        for (Param p : params) {
+            String raw = input.get(p.name());
+            if ("bool".equals(p.kind())) {
+                if ("true".equals(raw) || "1".equals(raw)) args.add(p.flag());
+                continue;
+            }
+            if (raw == null || raw.isEmpty()) {
+                if (p.required()) throw new IllegalArgumentException("MISSING_ARG:" + p.name());
+                continue;
+            }
+            List<String> items = "csv".equals(p.kind()) ? splitCsv(raw, p.name()) : List.of(raw);
+            for (String item : items) {
+                String sv;
+                switch (p.kind()) {
+                    case "enum":
+                        sv = controlFree(item, p.name());
+                        if (!p.values().contains(sv)) throw new IllegalArgumentException("BAD_ENUM:" + p.name() + "=" + sv);
+                        break;
+                    case "digest":
+                        sv = p.hexDigest() ? hexDigestValue(item, p.name()) : digestValue(item, p.name());
+                        break;
+                    case "number":
+                        sv = numberValue(item, p.name());
+                        break;
+                    default:
+                        // CLI path arguments come from the host and may be absolute (e.g. --repo-root);
+                        // workspace-relative gating belongs to the navigation layer.
+                        sv = controlFree(item, p.name());
+                }
+                if (p.flag() != null) { args.add(p.flag()); args.add(sv); }
+                else args.add(sv);
+            }
+        }
+        return List.copyOf(args);
+    }
+
+    /** scan：路线互斥（--rule-id / --candidate / --delivery-descriptor）、base/head 成对（与 core.js buildScanArgs 对齐）。 */
+    public static List<String> buildScanArgs(String commandTemplate, List<Param> params,
+                                             Map<String, String> values) {
+        if (params == null) throw new IllegalArgumentException("MISSING_COMMAND_PARAMS");
+        Map<String, String> input = values == null ? Map.of() : values;
+        String route = input.get("route");
+        if (route == null || route.isEmpty()) {
+            route = nonEmpty(input.get("ruleId")) ? "rule-id"
+                : nonEmpty(input.get("candidate")) ? "candidate"
+                : nonEmpty(input.get("deliveryDescriptor")) ? "delivery-descriptor" : null;
+        }
+        java.util.Map<String, String> members = java.util.Map.of(
+            "rule-id", "ruleId", "candidate", "candidate", "delivery-descriptor", "deliveryDescriptor");
+        if (route == null || !members.containsKey(route)) throw new IllegalArgumentException("SCAN_ROUTE_REQUIRED");
+        String memberName = members.get(route);
+        if (!nonEmpty(input.get(memberName))) throw new IllegalArgumentException("MISSING_ARG:" + memberName);
+        for (String other : members.values()) {
+            if (!other.equals(memberName) && nonEmpty(input.get(other))) throw new IllegalArgumentException("SCAN_ROUTE_CONFLICT");
+        }
+        if (nonEmpty(input.get("base")) != nonEmpty(input.get("head"))) throw new IllegalArgumentException("BASE_HEAD_MUST_BE_PAIRED");
+        List<String> args = new ArrayList<>(commandPrefix(commandTemplate));
+        for (Param p : params) {
+            boolean isRoute = p.name().equals("route") || p.name().equals(memberName) || p.name().equals("base") || p.name().equals("head");
+            String raw = input.get(p.name());
+            if ("bool".equals(p.kind())) {
+                if (!isRoute && ("true".equals(raw) || "1".equals(raw))) args.add(p.flag());
+                continue;
+            }
+            if (isRoute || raw == null || raw.isEmpty()) {
+                continue;
+            }
+            List<String> items = "csv".equals(p.kind()) ? splitCsv(raw, p.name()) : List.of(raw);
+            for (String item : items) {
+                String sv;
+                switch (p.kind()) {
+                    case "enum":
+                        sv = controlFree(item, p.name());
+                        if (!p.values().contains(sv)) throw new IllegalArgumentException("BAD_ENUM:" + p.name() + "=" + sv);
+                        break;
+                    case "digest":
+                        sv = p.hexDigest() ? hexDigestValue(item, p.name()) : digestValue(item, p.name());
+                        break;
+                    case "number":
+                        sv = numberValue(item, p.name());
+                        break;
+                    default:
+                        sv = controlFree(item, p.name());
+                }
+                if (p.flag() != null) { args.add(p.flag()); args.add(sv); }
+                else args.add(sv);
+            }
+        }
+        args.add("--" + route.replace("delivery-descriptor", "delivery-descriptor"));
+        args.add(input.get(memberName));
+        if (nonEmpty(input.get("base"))) { args.add("--base"); args.add(input.get("base")); args.add("--head"); args.add(input.get("head")); }
+        return List.copyOf(args);
+    }
+
+    // ---- 扫描结果工作台语义（镜像 runtime/scan-output 契约） ----
+    // 关键：绝不把 scan exit=0 当作 PASS；以 ScanResult.status/gateDecision/authority 为准，
+    // ScanFailure 的 exitCode = CLI 等级（2 输入无效 / 3 未决或拒绝 / 4 信任失败）。
+
+    public static String classifyScanExit(int code) {
+        if (code == 0) return "OK";
+        if (code == 2) return "INVALID_INPUT";
+        if (code == 3) return "INCONCLUSIVE_OR_REFUSED";
+        if (code == 4) return "TRUST_FAILED";
+        return "ERROR";
+    }
+    public static final Map<String, String> SCAN_STATUS_LABELS = Map.of(
+        "PASS", "PASS（Gate 通过）",
+        "FAIL", "FAIL（存在未豁免 finding，Gate 阻止）",
+        "INCONCLUSIVE", "INCONCLUSIVE（证据不足，Gate 未决）",
+        "LOCAL_UNATTESTED", "LOCAL_UNATTESTED（本地未证明，非生产 Gate 证据）");
+
+    public static final class ScanView {
+        public final boolean ok;
+        public final String reason;
+        public final String kind;
+        public final String status;
+        public final String gateDecision;
+        public final String authority;
+        public final String trust;
+        public final String ruleId;
+        public final long planned, executed, failed;
+        public final int exitCode;
+        public final List<Map<String, Object>> findings;
+        public final List<Map<String, Object>> diagnostics;
+        public final String resultDigest;
+        ScanView(boolean ok, String reason, String kind, String status, String gateDecision, String authority,
+                 String trust, String ruleId, long planned, long executed, long failed, int exitCode,
+                 List<Map<String, Object>> findings, List<Map<String, Object>> diagnostics, String resultDigest) {
+            this.ok = ok; this.reason = reason; this.kind = kind; this.status = status; this.gateDecision = gateDecision;
+            this.authority = authority; this.trust = trust; this.ruleId = ruleId; this.planned = planned; this.executed = executed;
+            this.failed = failed; this.exitCode = exitCode; this.findings = findings; this.diagnostics = diagnostics;
+            this.resultDigest = resultDigest;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> anyList(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) if (item instanceof Map<?, ?> map) out.add((Map<String, Object>) map);
+        return List.copyOf(out);
+    }
+    private static long num(Object v) {
+        if (v instanceof Number n) return n.longValue();
+        try { return Long.parseLong(String.valueOf(v)); } catch (NumberFormatException e) { return 0; }
+    }
+    private static String orEmpty(Object v) { return v == null ? "" : String.valueOf(v); }
+    private static String orDefault(Object v, String dflt) { return v == null ? dflt : String.valueOf(v); }
+
+    /** 收敛既有 ScanResult/ScanFailure 结构化对象为归一化视图（closed-world）。 */
+    public static ScanView normalizeScanReport(Map<String, Object> raw) {
+        if (raw == null) return new ScanView(false, "NOT_OBJECT", "", "", "", "", "", "", 0, 0, 0, 0, List.of(), List.of(), "");
+        String forbidden = findForbiddenField(raw);
+        if (forbidden != null) return new ScanView(false, "FORBIDDEN_FIELD:" + forbidden, "", "", "", "", "", "", 0, 0, 0, 0, List.of(), List.of(), "");
+        String kind = String.valueOf(raw.get("kind"));
+        if ("ScanResult".equals(kind)) {
+            List<String> fields = List.of("apiVersion", "kind", "status", "gateDecision", "authority", "trust", "ruleId", "findingRecords", "diagnostics", "progress", "resultDigest");
+            for (String f : fields) if (!raw.containsKey(f)) return new ScanView(false, "SCAN_RESULT_INCOMPLETE", "", "", "", "", "", "", 0, 0, 0, 0, List.of(), List.of(), "");
+            String status = String.valueOf(raw.get("status"));
+            if (!SCAN_STATUS_LABELS.containsKey(status)) return new ScanView(false, "SCAN_STATUS_UNKNOWN:" + status, "", "", "", "", "", "", 0, 0, 0, 0, List.of(), List.of(), "");
+            return new ScanView(true, null, "ScanResult", status, String.valueOf(raw.get("gateDecision")), String.valueOf(raw.get("authority")),
+                String.valueOf(raw.get("trust")), String.valueOf(raw.get("ruleId")), num(raw.get("planned")), num(raw.get("executed")), num(raw.get("failed")),
+                0, anyList(raw.get("findingRecords")), anyList(raw.get("diagnostics")), String.valueOf(raw.get("resultDigest")));
+        }
+        if ("ScanFailure".equals(kind)) {
+            List<String> fields = List.of("apiVersion", "kind", "exitCode", "diagnostics", "progress", "diagnosticDigest");
+            for (String f : fields) if (!raw.containsKey(f)) return new ScanView(false, "SCAN_FAILURE_INCOMPLETE", "", "", "", "", "", "", 0, 0, 0, 0, List.of(), List.of(), "");
+            return new ScanView(true, null, "ScanFailure", "", "", "", "", "", 0, 0, 0,
+                (int) num(raw.get("exitCode")), List.of(), anyList(raw.get("diagnostics")), "");
+        }
+        return new ScanView(false, "SCAN_KIND_UNKNOWN:" + kind, "", "", "", "", "", "", 0, 0, 0, 0, List.of(), List.of(), "");
+    }
+
+    /** 只读渲染扫描结果；exit 0 绝不显示为 PASS。 */
+    public static String renderScanReport(Map<String, Object> raw, int exitCode, String stderr) {
+        ScanView view = normalizeScanReport(raw);
+        if (!view.ok) return "scan 输出无法按既有 ScanResult/ScanFailure 契约解析：" + view.reason + "\nexit=" + exitCode;
+        StringBuilder progressPart = new StringBuilder();
+        if (stderr != null) {
+            for (String line : stderr.split("\n", -1)) {
+                String t = line.trim();
+                if (!t.startsWith("progress ")) continue;
+                progressPart.append('\n').append(t);
+            }
+        }
+        String step = "next_step=";
+        if ("ScanFailure".equals(view.kind)) {
+            StringBuilder diags = new StringBuilder();
+            for (Map<String, Object> d : view.diagnostics)
+                diags.append("diagnostic code=").append(orEmpty(d.get("code"))).append(" stage=").append(orEmpty(d.get("stage")))
+                    .append(" retry=").append(orEmpty(d.get("retry"))).append(" message=").append(orEmpty(d.get("message")))
+                    .append(" next_step=").append(orEmpty(d.get("nextStep"))).append('\n');
+            return "扫描未完成（ScanFailure）出口码=" + view.exitCode + "（" + classifyScanExit(view.exitCode) + "）\n" + (diags.length() == 0 ? "" : diags.substring(0, diags.length() - 1)) + progressPart;
+        }
+        String statusLine = SCAN_STATUS_LABELS.get(view.status)
+            + (view.gateDecision != null && !view.gateDecision.isEmpty() && !"null".equals(view.gateDecision) ? " · gate=" + view.gateDecision : "")
+            + " · authority=" + view.authority + " · trust=" + view.trust;
+        StringBuilder sb = new StringBuilder("scan ").append(view.status).append(" — 不做成 PASS：请以 status/gate/authority 为准\n")
+            .append(statusLine).append("\nrule_id=").append(view.ruleId)
+            .append(" planned=").append(view.planned).append(" executed=").append(view.executed).append(" failed=").append(view.failed)
+            .append("\nresult_digest=").append(view.resultDigest);
+        StringBuilder findings = new StringBuilder();
+        for (Map<String, Object> f : view.findings) {
+            Object locObj = f.get("location");
+            String where = "identity ";
+            if (locObj instanceof Map<?, ?> loc) {
+                Object p = loc.get("path");
+                if (p != null) where = loc.get("line") != null ? p + ":" + loc.get("line") + ":" + orDefault(loc.get("column"), "1") : String.valueOf(p);
+                else where = "identity " + orEmpty(loc.get("identityDigest"));
+            }
+            findings.append("finding id=").append(orEmpty(f.get("findingId"))).append(" rule=").append(orEmpty(f.get("ruleId")))
+                .append(" location=").append(where).append(" digest=").append(orEmpty(f.get("findingDigest")))
+                .append(" message=").append(orEmpty(f.get("message"))).append('\n');
+        }
+        StringBuilder diags = new StringBuilder();
+        for (Map<String, Object> d : view.diagnostics)
+            diags.append("diagnostic code=").append(orEmpty(d.get("code"))).append(" stage=").append(orEmpty(d.get("stage")))
+                .append(" retry=").append(orEmpty(d.get("retry"))).append(" message=").append(orEmpty(d.get("message")))
+                .append(" next_step=").append(orEmpty(d.get("nextStep"))).append('\n');
+        sb.append("\n").append(findings.length() == 0 ? "findings：无" : "findings：\n" + findings.substring(0, findings.length() - 1));
+        if (diags.length() > 0) sb.append("\ndiagnostics：\n").append(diags.substring(0, diags.length() - 1));
+        sb.append("\nexit=").append(exitCode).append(progressPart);
+        return sb.toString();
+    }
+
+
 }

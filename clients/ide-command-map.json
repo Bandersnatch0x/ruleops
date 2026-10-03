@@ -39,6 +39,120 @@
       "outputTypes": [
         "configuration_file",
         "text"
+      ],
+      "params": [
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "output",
+          "label": "配置文件输出路径",
+          "kind": "path",
+          "required": false,
+          "flag": "--output"
+        },
+        {
+          "name": "language",
+          "label": "语言",
+          "kind": "enum",
+          "required": false,
+          "flag": "--language",
+          "values": [
+            "java"
+          ]
+        },
+        {
+          "name": "buildSystem",
+          "label": "构建系统",
+          "kind": "enum",
+          "required": false,
+          "flag": "--build-system",
+          "values": [
+            "maven",
+            "gradle"
+          ]
+        },
+        {
+          "name": "executionMode",
+          "label": "执行模式",
+          "kind": "enum",
+          "required": false,
+          "flag": "--execution-mode",
+          "values": [
+            "connected",
+            "offline",
+            "enterprise-air-gapped",
+            "standalone",
+            "standalone-developer"
+          ]
+        },
+        {
+          "name": "modules",
+          "label": "modules（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--module"
+        },
+        {
+          "name": "sourceRoots",
+          "label": "source roots（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--source-root"
+        },
+        {
+          "name": "testRoots",
+          "label": "test roots（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--test-root"
+        },
+        {
+          "name": "generatedRoots",
+          "label": "generated roots（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--generated-root"
+        },
+        {
+          "name": "vendorRoots",
+          "label": "vendor roots（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--vendor-root"
+        },
+        {
+          "name": "include",
+          "label": "include（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--include"
+        },
+        {
+          "name": "exclude",
+          "label": "exclude（逗号分隔）",
+          "kind": "csv",
+          "required": false,
+          "flag": "--exclude"
+        },
+        {
+          "name": "nonInteractive",
+          "label": "非交互",
+          "kind": "bool",
+          "required": false,
+          "flag": "--non-interactive"
+        },
+        {
+          "name": "force",
+          "label": "强制覆盖",
+          "kind": "bool",
+          "required": false,
+          "flag": "--force"
+        }
       ]
     },
     {
@@ -57,6 +171,40 @@
         "diagnostics",
         "text",
         "json"
+      ],
+      "params": [
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "config",
+          "label": "配置文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--config"
+        },
+        {
+          "name": "scanProbe",
+          "label": "scan probe 命令（显式确认）",
+          "kind": "path",
+          "required": false,
+          "flag": "--scan-probe"
+        },
+        {
+          "name": "format",
+          "label": "输出格式",
+          "kind": "enum",
+          "required": false,
+          "flag": "--format",
+          "values": [
+            "text",
+            "json"
+          ]
+        }
       ]
     },
     {
@@ -73,6 +221,22 @@
       "outputTypes": [
         "validation_result",
         "text"
+      ],
+      "params": [
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "config",
+          "label": "配置文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--config"
+        }
       ]
     },
     {
@@ -92,6 +256,33 @@
         "effective_configuration",
         "text",
         "json"
+      ],
+      "params": [
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "config",
+          "label": "配置文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--config"
+        },
+        {
+          "name": "format",
+          "label": "输出格式",
+          "kind": "enum",
+          "required": false,
+          "flag": "--format",
+          "values": [
+            "text",
+            "json"
+          ]
+        }
       ]
     },
     {
@@ -112,6 +303,54 @@
       "outputTypes": [
         "registry_page",
         "json"
+      ],
+      "params": [
+        {
+          "name": "resource",
+          "label": "资源类型",
+          "kind": "enum",
+          "required": true,
+          "values": [
+            "rules",
+            "standards"
+          ],
+          "positional": 1
+        },
+        {
+          "name": "server",
+          "label": "Server endpoint（与 profile 互斥）",
+          "kind": "text",
+          "required": false,
+          "flag": "--server"
+        },
+        {
+          "name": "connectionProfile",
+          "label": "connection profile FILE（与 server 互斥）",
+          "kind": "file",
+          "required": false,
+          "flag": "--connection-profile"
+        },
+        {
+          "name": "timeoutMs",
+          "label": "超时毫秒",
+          "kind": "number",
+          "required": false,
+          "flag": "--timeout-ms"
+        },
+        {
+          "name": "cursor",
+          "label": "cursor（上一页 cursor，JSON）",
+          "kind": "json",
+          "required": false,
+          "flag": "--cursor-json"
+        },
+        {
+          "name": "limit",
+          "label": "每页条数",
+          "kind": "number",
+          "required": false,
+          "flag": "--limit"
+        }
       ]
     },
     {
@@ -134,6 +373,61 @@
         "registry_version",
         "pin_verification",
         "json"
+      ],
+      "params": [
+        {
+          "name": "resource",
+          "label": "资源类型",
+          "kind": "enum",
+          "required": true,
+          "values": [
+            "rules",
+            "standards"
+          ],
+          "positional": 1
+        },
+        {
+          "name": "id",
+          "label": "资源身份 id",
+          "kind": "text",
+          "required": true,
+          "positional": 2
+        },
+        {
+          "name": "version",
+          "label": "版本",
+          "kind": "text",
+          "required": true,
+          "flag": "--version"
+        },
+        {
+          "name": "expectedDigest",
+          "label": "独立 expected-digest",
+          "kind": "digest",
+          "required": true,
+          "flag": "--expected-digest"
+        },
+        {
+          "name": "server",
+          "label": "Server endpoint（与 profile 互斥）",
+          "kind": "text",
+          "required": false,
+          "flag": "--server"
+        },
+        {
+          "name": "connectionProfile",
+          "label": "connection profile FILE（与 server 互斥）",
+          "kind": "file",
+          "required": false,
+          "flag": "--connection-profile"
+        },
+        {
+          "name": "timeoutMs",
+          "label": "超时毫秒",
+          "kind": "number",
+          "required": false,
+          "flag": "--timeout-ms"
+        }
       ]
     },
     {
@@ -160,6 +454,74 @@
         "offline_availability",
         "provenance",
         "json"
+      ],
+      "params": [
+        {
+          "name": "resource",
+          "label": "资源类型（仅 rules）",
+          "kind": "enum",
+          "required": true,
+          "values": [
+            "rules"
+          ],
+          "positional": 1
+        },
+        {
+          "name": "id",
+          "label": "不可变规则身份 id",
+          "kind": "text",
+          "required": true,
+          "positional": 2
+        },
+        {
+          "name": "version",
+          "label": "版本",
+          "kind": "text",
+          "required": true,
+          "flag": "--version"
+        },
+        {
+          "name": "expectedDigest",
+          "label": "独立 expected-digest",
+          "kind": "digest",
+          "required": true,
+          "flag": "--expected-digest"
+        },
+        {
+          "name": "deliveryDescriptor",
+          "label": "外部签名 delivery descriptor",
+          "kind": "file",
+          "required": true,
+          "flag": "--delivery-descriptor"
+        },
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "server",
+          "label": "Server endpoint（与 profile 互斥）",
+          "kind": "text",
+          "required": false,
+          "flag": "--server"
+        },
+        {
+          "name": "connectionProfile",
+          "label": "connection profile FILE（与 server 互斥）",
+          "kind": "file",
+          "required": false,
+          "flag": "--connection-profile"
+        },
+        {
+          "name": "timeoutMs",
+          "label": "超时毫秒",
+          "kind": "number",
+          "required": false,
+          "flag": "--timeout-ms"
+        }
       ]
     },
     {
@@ -175,6 +537,16 @@
       "outputTypes": [
         "validation_result",
         "text"
+      ],
+      "params": [
+        {
+          "name": "files",
+          "label": "标准文件（可多选）",
+          "kind": "path",
+          "required": true,
+          "positional": 1,
+          "repeatable": true
+        }
       ]
     },
     {
@@ -190,6 +562,16 @@
       "outputTypes": [
         "validation_result",
         "text"
+      ],
+      "params": [
+        {
+          "name": "files",
+          "label": "RuleIntent 等文件（可多选）",
+          "kind": "path",
+          "required": true,
+          "positional": 1,
+          "repeatable": true
+        }
       ]
     },
     {
@@ -206,6 +588,22 @@
       "outputTypes": [
         "candidate_directory",
         "text"
+      ],
+      "params": [
+        {
+          "name": "intent",
+          "label": "RuleIntent YAML",
+          "kind": "file",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "outputDir",
+          "label": "candidate 输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 2
+        }
       ]
     },
     {
@@ -223,6 +621,22 @@
         "evidence_bundle",
         "verification_result",
         "text"
+      ],
+      "params": [
+        {
+          "name": "candidateDir",
+          "label": "candidate 目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "outputDir",
+          "label": "evidence 输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 2
+        }
       ]
     },
     {
@@ -239,6 +653,15 @@
         "coverage_report",
         "evidence_links",
         "text"
+      ],
+      "params": [
+        {
+          "name": "outputDir",
+          "label": "报告/证据输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        }
       ]
     },
     {
@@ -255,6 +678,15 @@
         "pilot_report",
         "evidence_links",
         "text"
+      ],
+      "params": [
+        {
+          "name": "outputDir",
+          "label": "试点报告输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        }
       ]
     },
     {
@@ -271,6 +703,15 @@
         "check_result",
         "logs",
         "evidence_links"
+      ],
+      "params": [
+        {
+          "name": "outputDir",
+          "label": "检查输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        }
       ]
     },
     {
@@ -286,6 +727,167 @@
       "outputTypes": [
         "baseline_artifact",
         "text"
+      ],
+      "params": [
+        {
+          "name": "repository",
+          "label": "试点仓库标识",
+          "kind": "text",
+          "required": true,
+          "flag": "--repository"
+        },
+        {
+          "name": "commit",
+          "label": "commit",
+          "kind": "text",
+          "required": true,
+          "flag": "--commit"
+        },
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "candidate",
+          "label": "candidate 目录",
+          "kind": "dir",
+          "required": true,
+          "flag": "--candidate"
+        },
+        {
+          "name": "host",
+          "label": "host 命令",
+          "kind": "text",
+          "required": true,
+          "flag": "--host"
+        },
+        {
+          "name": "resolver",
+          "label": "resolver 命令",
+          "kind": "text",
+          "required": true,
+          "flag": "--resolver"
+        },
+        {
+          "name": "output",
+          "label": "baseline 输出文件",
+          "kind": "file",
+          "required": true,
+          "flag": "--output"
+        },
+        {
+          "name": "projectConfig",
+          "label": "project config 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--project-config"
+        },
+        {
+          "name": "hostArg",
+          "label": "host 额外参数",
+          "kind": "text",
+          "required": false,
+          "flag": "--host-arg",
+          "repeatable": true
+        },
+        {
+          "name": "resolverArg",
+          "label": "resolver 额外参数",
+          "kind": "text",
+          "required": false,
+          "flag": "--resolver-arg",
+          "repeatable": true
+        },
+        {
+          "name": "baseline",
+          "label": "既有 baseline 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--baseline"
+        },
+        {
+          "name": "exceptionFingerprint",
+          "label": "exception 指纹",
+          "kind": "text",
+          "required": false,
+          "flag": "--exception-fingerprint",
+          "repeatable": true
+        },
+        {
+          "name": "blockingRuleId",
+          "label": "blocking rule id",
+          "kind": "text",
+          "required": false,
+          "flag": "--blocking-rule-id",
+          "repeatable": true
+        },
+        {
+          "name": "mode",
+          "label": "模式",
+          "kind": "text",
+          "required": false,
+          "flag": "--mode"
+        },
+        {
+          "name": "policyDigest",
+          "label": "policy digest",
+          "kind": "text",
+          "required": false,
+          "flag": "--policy-digest"
+        },
+        {
+          "name": "executionLockDigest",
+          "label": "execution lock digest",
+          "kind": "text",
+          "required": false,
+          "flag": "--execution-lock-digest"
+        },
+        {
+          "name": "runnerReleaseDigest",
+          "label": "runner release digest",
+          "kind": "text",
+          "required": false,
+          "flag": "--runner-release-digest"
+        },
+        {
+          "name": "journal",
+          "label": "journal 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--journal"
+        },
+        {
+          "name": "measurementId",
+          "label": "measurement id",
+          "kind": "text",
+          "required": false,
+          "flag": "--measurement-id"
+        },
+        {
+          "name": "observedAt",
+          "label": "observed-at（epoch 秒）",
+          "kind": "number",
+          "required": false,
+          "flag": "--observed-at"
+        },
+        {
+          "name": "actor",
+          "label": "actor（真实身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--actor",
+          "identity": true
+        },
+        {
+          "name": "reason",
+          "label": "理由",
+          "kind": "text",
+          "required": false,
+          "flag": "--reason"
+        }
       ]
     },
     {
@@ -302,6 +904,146 @@
         "observation_result",
         "journal",
         "text"
+      ],
+      "params": [
+        {
+          "name": "repository",
+          "label": "试点仓库标识",
+          "kind": "text",
+          "required": true,
+          "flag": "--repository"
+        },
+        {
+          "name": "commit",
+          "label": "commit",
+          "kind": "text",
+          "required": true,
+          "flag": "--commit"
+        },
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "candidate",
+          "label": "candidate 目录",
+          "kind": "dir",
+          "required": true,
+          "flag": "--candidate"
+        },
+        {
+          "name": "host",
+          "label": "host 命令",
+          "kind": "text",
+          "required": true,
+          "flag": "--host"
+        },
+        {
+          "name": "resolver",
+          "label": "resolver 命令",
+          "kind": "text",
+          "required": true,
+          "flag": "--resolver"
+        },
+        {
+          "name": "journal",
+          "label": "journal 文件",
+          "kind": "file",
+          "required": true,
+          "flag": "--journal"
+        },
+        {
+          "name": "mode",
+          "label": "模式",
+          "kind": "text",
+          "required": true,
+          "flag": "--mode"
+        },
+        {
+          "name": "output",
+          "label": "观测输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        },
+        {
+          "name": "projectConfig",
+          "label": "project config 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--project-config"
+        },
+        {
+          "name": "hostArg",
+          "label": "host 额外参数",
+          "kind": "text",
+          "required": false,
+          "flag": "--host-arg",
+          "repeatable": true
+        },
+        {
+          "name": "resolverArg",
+          "label": "resolver 额外参数",
+          "kind": "text",
+          "required": false,
+          "flag": "--resolver-arg",
+          "repeatable": true
+        },
+        {
+          "name": "baseline",
+          "label": "既有 baseline 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--baseline"
+        },
+        {
+          "name": "exceptionFingerprint",
+          "label": "exception 指纹",
+          "kind": "text",
+          "required": false,
+          "flag": "--exception-fingerprint",
+          "repeatable": true
+        },
+        {
+          "name": "blockingRuleId",
+          "label": "blocking rule id",
+          "kind": "text",
+          "required": false,
+          "flag": "--blocking-rule-id",
+          "repeatable": true
+        },
+        {
+          "name": "measurementId",
+          "label": "measurement id",
+          "kind": "text",
+          "required": false,
+          "flag": "--measurement-id"
+        },
+        {
+          "name": "observedAt",
+          "label": "observed-at（epoch 秒）",
+          "kind": "number",
+          "required": false,
+          "flag": "--observed-at"
+        },
+        {
+          "name": "actor",
+          "label": "actor（真实身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--actor",
+          "identity": true
+        },
+        {
+          "name": "reason",
+          "label": "理由",
+          "kind": "text",
+          "required": false,
+          "flag": "--reason"
+        }
       ]
     },
     {
@@ -317,6 +1059,69 @@
       "outputTypes": [
         "journal",
         "text"
+      ],
+      "params": [
+        {
+          "name": "journal",
+          "label": "journal 文件",
+          "kind": "file",
+          "required": true,
+          "flag": "--journal"
+        },
+        {
+          "name": "measurementId",
+          "label": "measurement id",
+          "kind": "text",
+          "required": true,
+          "flag": "--measurement-id"
+        },
+        {
+          "name": "classification",
+          "label": "分类",
+          "kind": "enum",
+          "required": true,
+          "flag": "--classification",
+          "values": [
+            "valid",
+            "documentation",
+            "scope",
+            "false-positive"
+          ]
+        },
+        {
+          "name": "regression",
+          "label": "回归状态",
+          "kind": "enum",
+          "required": false,
+          "flag": "--regression",
+          "values": [
+            "pending",
+            "clean",
+            "finding"
+          ]
+        },
+        {
+          "name": "actor",
+          "label": "actor（真实身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--actor",
+          "identity": true
+        },
+        {
+          "name": "reason",
+          "label": "理由",
+          "kind": "text",
+          "required": false,
+          "flag": "--reason"
+        },
+        {
+          "name": "observedAt",
+          "label": "observed-at（epoch 秒）",
+          "kind": "number",
+          "required": false,
+          "flag": "--observed-at"
+        }
       ]
     },
     {
@@ -332,6 +1137,65 @@
       "outputTypes": [
         "journal",
         "text"
+      ],
+      "params": [
+        {
+          "name": "journal",
+          "label": "journal 文件",
+          "kind": "file",
+          "required": true,
+          "flag": "--journal"
+        },
+        {
+          "name": "measurementId",
+          "label": "measurement id",
+          "kind": "text",
+          "required": true,
+          "flag": "--measurement-id"
+        },
+        {
+          "name": "rollbackCount",
+          "label": "rollback count",
+          "kind": "number",
+          "required": true,
+          "flag": "--rollback-count"
+        },
+        {
+          "name": "activeExceptionCount",
+          "label": "active exception count",
+          "kind": "number",
+          "required": true,
+          "flag": "--active-exception-count"
+        },
+        {
+          "name": "oldestExceptionAgeSecs",
+          "label": "oldest exception age（秒）",
+          "kind": "number",
+          "required": true,
+          "flag": "--oldest-exception-age-secs"
+        },
+        {
+          "name": "actor",
+          "label": "actor（真实身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--actor",
+          "identity": true
+        },
+        {
+          "name": "reason",
+          "label": "理由",
+          "kind": "text",
+          "required": false,
+          "flag": "--reason"
+        },
+        {
+          "name": "observedAt",
+          "label": "observed-at（epoch 秒）",
+          "kind": "number",
+          "required": false,
+          "flag": "--observed-at"
+        }
       ]
     },
     {
@@ -347,6 +1211,71 @@
       "outputTypes": [
         "window_report",
         "text"
+      ],
+      "params": [
+        {
+          "name": "journal",
+          "label": "journal 文件",
+          "kind": "file",
+          "required": true,
+          "flag": "--journal"
+        },
+        {
+          "name": "output",
+          "label": "窗口报告输出文件",
+          "kind": "file",
+          "required": true,
+          "flag": "--output"
+        },
+        {
+          "name": "mode",
+          "label": "模式",
+          "kind": "text",
+          "required": true,
+          "flag": "--mode"
+        },
+        {
+          "name": "windowStart",
+          "label": "window start（epoch 秒）",
+          "kind": "number",
+          "required": true,
+          "flag": "--window-start"
+        },
+        {
+          "name": "windowEnd",
+          "label": "window end（epoch 秒）",
+          "kind": "number",
+          "required": true,
+          "flag": "--window-end"
+        },
+        {
+          "name": "expectedRepositories",
+          "label": "expected repositories",
+          "kind": "number",
+          "required": true,
+          "flag": "--expected-repositories"
+        },
+        {
+          "name": "registeredSample",
+          "label": "registered sample 文件（shadow 模式必需）",
+          "kind": "file",
+          "required": false,
+          "flag": "--registered-sample"
+        },
+        {
+          "name": "latencyBaselineMillis",
+          "label": "latency baseline（毫秒）",
+          "kind": "number",
+          "required": false,
+          "flag": "--latency-baseline-millis"
+        },
+        {
+          "name": "memoryBaselineBytes",
+          "label": "memory baseline（字节）",
+          "kind": "number",
+          "required": false,
+          "flag": "--memory-baseline-bytes"
+        }
       ]
     },
     {
@@ -364,6 +1293,36 @@
       "outputTypes": [
         "pilot_evidence_package",
         "text"
+      ],
+      "params": [
+        {
+          "name": "input",
+          "label": "证据输入",
+          "kind": "path",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "output",
+          "label": "包输出位置",
+          "kind": "file",
+          "required": true,
+          "positional": 2
+        },
+        {
+          "name": "contractDigest",
+          "label": "既有批准合同 digest",
+          "kind": "digest",
+          "required": true,
+          "flag": "--contract-digest"
+        },
+        {
+          "name": "sampleDigest",
+          "label": "样本 digest",
+          "kind": "digest",
+          "required": true,
+          "flag": "--sample-digest"
+        }
       ]
     },
     {
@@ -382,6 +1341,44 @@
       "outputTypes": [
         "pilot_adjudication",
         "text"
+      ],
+      "params": [
+        {
+          "name": "package",
+          "label": "证据包",
+          "kind": "path",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "output",
+          "label": "裁决输出位置",
+          "kind": "file",
+          "required": true,
+          "positional": 2
+        },
+        {
+          "name": "owner",
+          "label": "owner（真实治理身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--owner",
+          "identity": true
+        },
+        {
+          "name": "contractDigest",
+          "label": "既有批准合同 digest",
+          "kind": "digest",
+          "required": true,
+          "flag": "--contract-digest"
+        },
+        {
+          "name": "sampleDigest",
+          "label": "样本 digest",
+          "kind": "digest",
+          "required": true,
+          "flag": "--sample-digest"
+        }
       ]
     },
     {
@@ -401,6 +1398,58 @@
       "outputTypes": [
         "decision_evidence",
         "text"
+      ],
+      "params": [
+        {
+          "name": "inputDigest",
+          "label": "输入证据摘要（hex）",
+          "kind": "digest",
+          "required": true,
+          "positional": 1,
+          "hexDigest": true
+        },
+        {
+          "name": "signal",
+          "label": "观测信号（u64）",
+          "kind": "number",
+          "required": true,
+          "positional": 2
+        },
+        {
+          "name": "now",
+          "label": "事实时间 now（epoch 秒）",
+          "kind": "number",
+          "required": true,
+          "positional": 3
+        },
+        {
+          "name": "output",
+          "label": "决策证据输出文件",
+          "kind": "file",
+          "required": true,
+          "positional": 4
+        },
+        {
+          "name": "nearMiss",
+          "label": "near-miss",
+          "kind": "bool",
+          "required": false,
+          "flag": "--near-miss"
+        },
+        {
+          "name": "providerUnavailable",
+          "label": "provider-unavailable",
+          "kind": "bool",
+          "required": false,
+          "flag": "--provider-unavailable"
+        },
+        {
+          "name": "conflict",
+          "label": "conflict",
+          "kind": "bool",
+          "required": false,
+          "flag": "--conflict"
+        }
       ]
     },
     {
@@ -417,6 +1466,15 @@
         "check_result",
         "logs",
         "evidence_links"
+      ],
+      "params": [
+        {
+          "name": "outputDir",
+          "label": "检查输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        }
       ]
     },
     {
@@ -438,6 +1496,61 @@
         "explanation",
         "text",
         "json"
+      ],
+      "params": [
+        {
+          "name": "finding",
+          "label": "FindingView JSON",
+          "kind": "file",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "ruleMeta",
+          "label": "规则元数据文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--rule-meta"
+        },
+        {
+          "name": "result",
+          "label": "ExecutionResult 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--result"
+        },
+        {
+          "name": "authorityTrust",
+          "label": "独立 authority trust 文件（须与 result 成对）",
+          "kind": "file",
+          "required": false,
+          "flag": "--authority-trust"
+        },
+        {
+          "name": "assessment",
+          "label": "assessment 文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--assessment"
+        },
+        {
+          "name": "format",
+          "label": "输出格式",
+          "kind": "enum",
+          "required": false,
+          "flag": "--format",
+          "values": [
+            "text",
+            "json"
+          ]
+        },
+        {
+          "name": "output",
+          "label": "输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        }
       ]
     },
     {
@@ -457,6 +1570,50 @@
       "outputTypes": [
         "feedback_draft",
         "json"
+      ],
+      "params": [
+        {
+          "name": "finding",
+          "label": "FindingView JSON",
+          "kind": "file",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "classification",
+          "label": "分类",
+          "kind": "enum",
+          "required": true,
+          "flag": "--classification",
+          "values": [
+            "true-fp",
+            "not-fp",
+            "scope-issue",
+            "documentation"
+          ]
+        },
+        {
+          "name": "reason",
+          "label": "理由",
+          "kind": "text",
+          "required": true,
+          "flag": "--reason"
+        },
+        {
+          "name": "actor",
+          "label": "actor（真实身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--actor",
+          "identity": true
+        },
+        {
+          "name": "output",
+          "label": "草稿输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        }
       ]
     },
     {
@@ -476,6 +1633,44 @@
       "outputTypes": [
         "exception_request",
         "json"
+      ],
+      "params": [
+        {
+          "name": "finding",
+          "label": "FindingView JSON",
+          "kind": "file",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "scope",
+          "label": "scope glob",
+          "kind": "text",
+          "required": true,
+          "flag": "--scope"
+        },
+        {
+          "name": "reason",
+          "label": "理由",
+          "kind": "text",
+          "required": true,
+          "flag": "--reason"
+        },
+        {
+          "name": "actor",
+          "label": "actor（真实身份，不代填）",
+          "kind": "text",
+          "required": true,
+          "flag": "--actor",
+          "identity": true
+        },
+        {
+          "name": "output",
+          "label": "申请输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        }
       ]
     },
     {
@@ -494,6 +1689,36 @@
       "outputTypes": [
         "submission_receipt",
         "json"
+      ],
+      "params": [
+        {
+          "name": "request",
+          "label": "已保存 FeedbackDraft",
+          "kind": "file",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "server",
+          "label": "Server endpoint（显式）",
+          "kind": "text",
+          "required": true,
+          "flag": "--server"
+        },
+        {
+          "name": "timeoutMs",
+          "label": "超时毫秒",
+          "kind": "number",
+          "required": false,
+          "flag": "--timeout-ms"
+        },
+        {
+          "name": "output",
+          "label": "回执输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        }
       ]
     },
     {
@@ -512,6 +1737,36 @@
       "outputTypes": [
         "submission_receipt",
         "json"
+      ],
+      "params": [
+        {
+          "name": "request",
+          "label": "已保存 ExceptionRequest",
+          "kind": "file",
+          "required": true,
+          "positional": 1
+        },
+        {
+          "name": "server",
+          "label": "Server endpoint（显式）",
+          "kind": "text",
+          "required": true,
+          "flag": "--server"
+        },
+        {
+          "name": "timeoutMs",
+          "label": "超时毫秒",
+          "kind": "number",
+          "required": false,
+          "flag": "--timeout-ms"
+        },
+        {
+          "name": "output",
+          "label": "回执输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        }
       ]
     },
     {
@@ -530,6 +1785,43 @@
       "outputTypes": [
         "submission_status",
         "json"
+      ],
+      "params": [
+        {
+          "name": "server",
+          "label": "Server endpoint（显式）",
+          "kind": "text",
+          "required": true,
+          "flag": "--server"
+        },
+        {
+          "name": "requestId",
+          "label": "request-id（与 artifact-digest 互斥）",
+          "kind": "text",
+          "required": false,
+          "flag": "--request-id"
+        },
+        {
+          "name": "artifactDigest",
+          "label": "artifact-digest（与 request-id 互斥）",
+          "kind": "text",
+          "required": false,
+          "flag": "--artifact-digest"
+        },
+        {
+          "name": "timeoutMs",
+          "label": "超时毫秒",
+          "kind": "number",
+          "required": false,
+          "flag": "--timeout-ms"
+        },
+        {
+          "name": "output",
+          "label": "状态输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        }
       ]
     },
     {
@@ -546,6 +1838,15 @@
         "check_result",
         "logs",
         "evidence_links"
+      ],
+      "params": [
+        {
+          "name": "outputDir",
+          "label": "检查输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        }
       ]
     },
     {
@@ -562,6 +1863,15 @@
         "check_result",
         "logs",
         "evidence_links"
+      ],
+      "params": [
+        {
+          "name": "outputDir",
+          "label": "检查输出目录",
+          "kind": "dir",
+          "required": true,
+          "positional": 1
+        }
       ]
     },
     {
@@ -587,7 +1897,132 @@
         "json",
         "sarif",
         "progress"
+      ],
+      "params": [
+        {
+          "name": "repoRoot",
+          "label": "仓库根目录",
+          "kind": "path",
+          "required": true,
+          "flag": "--repo-root"
+        },
+        {
+          "name": "route",
+          "label": "扫描路线",
+          "kind": "enum",
+          "required": true,
+          "values": [
+            "rule-id",
+            "candidate",
+            "delivery-descriptor"
+          ],
+          "routeSelector": true
+        },
+        {
+          "name": "ruleId",
+          "label": "rule id（route=rule-id）",
+          "kind": "text",
+          "required": false,
+          "flag": "--rule-id"
+        },
+        {
+          "name": "candidate",
+          "label": "candidate 目录（route=candidate）",
+          "kind": "dir",
+          "required": false,
+          "flag": "--candidate"
+        },
+        {
+          "name": "deliveryDescriptor",
+          "label": "delivery descriptor（route=delivery-descriptor）",
+          "kind": "file",
+          "required": false,
+          "flag": "--delivery-descriptor"
+        },
+        {
+          "name": "runtimeHome",
+          "label": "runtime home（高级覆盖）",
+          "kind": "dir",
+          "required": false,
+          "flag": "--runtime-home"
+        },
+        {
+          "name": "host",
+          "label": "host 命令（高级覆盖）",
+          "kind": "text",
+          "required": false,
+          "flag": "--host"
+        },
+        {
+          "name": "resolver",
+          "label": "resolver 命令（高级覆盖）",
+          "kind": "text",
+          "required": false,
+          "flag": "--resolver"
+        },
+        {
+          "name": "format",
+          "label": "输出格式",
+          "kind": "enum",
+          "required": false,
+          "flag": "--format",
+          "values": [
+            "text",
+            "json",
+            "sarif"
+          ]
+        },
+        {
+          "name": "progress",
+          "label": "进度输出",
+          "kind": "enum",
+          "required": false,
+          "flag": "--progress",
+          "values": [
+            "text",
+            "json",
+            "none"
+          ]
+        },
+        {
+          "name": "output",
+          "label": "结果输出文件",
+          "kind": "file",
+          "required": false,
+          "flag": "--output"
+        },
+        {
+          "name": "deadlineMs",
+          "label": "任务 deadline 毫秒（默认不截断）",
+          "kind": "number",
+          "required": false,
+          "flag": "--deadline-ms"
+        },
+        {
+          "name": "base",
+          "label": "base revision（与 head 成对）",
+          "kind": "text",
+          "required": false,
+          "flag": "--base",
+          "pairWith": "head"
+        },
+        {
+          "name": "head",
+          "label": "head revision（与 base 成对）",
+          "kind": "text",
+          "required": false,
+          "flag": "--head",
+          "pairWith": "base"
+        }
       ]
     }
-  ]
+  ],
+  "consumption": {
+    "source": "clients/ide-command-map.json#commands[].params",
+    "consumers": [
+      "clients/vscode/src/core.js",
+      "clients/intellij/src/main/java/io/ruleops/ide/core/ThinClientCore.java"
+    ],
+    "note": "两端以同一 params 渲染有类型面板并机械构造 rf argv；params 不定义 wire schema，也不新增网络/业务流程。identity=true 的字段（actor/owner）不得由 IDE 代填。"
+  }
 }

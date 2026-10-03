@@ -13,6 +13,9 @@ for command in \
   'rf doctor' \
   'rf config validate' \
   'rf config show' \
+  'rf registry list' \
+  'rf registry show' \
+  'rf registry sync' \
   'rf standard validate' \
   'rf rule validate' \
   'rf rule generate' \
@@ -34,11 +37,39 @@ for command in \
   'rf exception request' \
   'rf feedback submit' \
   'rf exception submit' \
+  'rf submission status' \
   'rf status contract-check' \
   'rf status deployment-check' \
   'rf scan'; do
   rg -Fq "$command" "$out_dir/help.txt" || { echo "missing CLI help entry: $command" >&2; exit 1; }
 done
+
+# Map ↔ help mapping-consistency assertion: every command in the shared
+# ide-command-map must (a) appear in this loop's authoritative CLI list and
+# (b) appear in real `rf --help` output via its first three template tokens
+# (e.g. "rf registry sync"). Catches a map entry that drifts from the CLI.
+python3 - "$out_dir" <<'PYMAPCHECK'
+import json, sys
+out_dir = sys.argv[1]
+doc = json.load(open("clients/ide-command-map.json", encoding="utf-8"))
+help_text = open(f"{out_dir}/help.txt", encoding="utf-8").read()
+errors = []
+for cmd in doc["commands"]:
+    cid = cmd["commandId"]
+    template = cmd.get("commandTemplate", "")
+    tokens = template.split()
+    prefix = " ".join(tokens[:3])
+    if prefix not in help_text:
+        errors.append(f"map command {cid}: help prefix '{prefix}' missing from rf --help")
+    if not cmd.get("params"):
+        errors.append(f"map command {cid}: params schema missing")
+if len(doc["commands"]) != 32:
+    errors.append(f"expected 32 mapped commands, found {len(doc['commands'])}")
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    sys.exit(1)
+print(f"map-consistency=PASS commands={len(doc['commands'])}")
+PYMAPCHECK
 
 ./rf standard validate specs/standard/SEC-JAVA-017.yaml > "$out_dir/standard-validate.txt"
 rg -q '^OK specs/standard/SEC-JAVA-017\.yaml$' "$out_dir/standard-validate.txt"

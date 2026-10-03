@@ -10,6 +10,10 @@ const SCENARIOS = [
   { id: 'erf.showFinding', label: '显示 Finding', section: 'scan_findings', fields: [] },
   { id: 'erf.navigateToLocation', label: '跳转到 Finding', section: 'scan_findings', fields: [] },
   { id: 'erf.explainFinding', cli: 'rf.explain', label: '解释 Finding', section: 'scan_findings', fields: [] },
+  { id: 'erf.scan', cli: 'rf.scan', label: '扫描结果工作台', section: 'scan_findings',
+    fields: ['route', 'ruleId', 'candidate', 'deliveryDescriptor', 'format', 'progress', 'output', 'deadlineMs', 'base', 'head', 'host', 'resolver', 'runtimeHome'],
+    scan: true, preview: true, autoRepoRoot: true,
+    previewNote: '将委托 rf-runner 执行扫描；可能运行 Backend/Resolver 并写缓存/输出文件。exit=0 不代表 Gate PASS，以结果 status/gate/authority 为准。' },
   { id: 'erf.draftFeedback', cli: 'rf.feedback.draft', label: '保存反馈草稿', section: 'feedback_exceptions', fields: ['classification', 'reason', 'actor'] },
   { id: 'erf.requestException', cli: 'rf.exception.request', label: '保存例外申请', section: 'feedback_exceptions', fields: ['scope', 'reason', 'actor'] },
   { id: 'erf.submitFeedback', cli: 'rf.feedback.submit', label: '提交反馈', section: 'feedback_exceptions', fields: ['request'], server: true },
@@ -18,9 +22,21 @@ const SCENARIOS = [
   { id: 'erf.registryList', cli: 'rf.registry.list', label: '浏览规则库（元数据）', section: 'registry', fields: ['resource', 'limit'], registry: true },
   { id: 'erf.registryShow', cli: 'rf.registry.show', label: '核对独立发布 pin', section: 'registry', fields: ['resource', 'pin'], registry: true },
   { id: 'erf.registrySync', cli: 'rf.registry.sync', label: '缓存签名规则包', section: 'registry', fields: ['resource', 'pin'], registry: true },
+  { id: 'erf.doctor', cli: 'rf.doctor', label: '环境诊断', section: 'workspace', fields: ['format', 'scanProbe'], preview: true, autoRepoRoot: true,
+    previewNote: '只读诊断；仅在显式填写 scan-probe 时执行该外部命令。' },
+  { id: 'erf.configValidate', cli: 'rf.config.validate', label: '校验工作区配置', section: 'workspace', fields: ['config'], autoRepoRoot: true },
+  { id: 'erf.configShow', cli: 'rf.config.show', label: '查看有效配置', section: 'workspace', fields: ['config', 'format'], autoRepoRoot: true },
+  { id: 'erf.standardValidate', cli: 'rf.standard.validate', label: '校验标准文件', section: 'authoring_coverage', fields: ['files'], preview: true,
+    previewNote: '运行创作校验器（只读输入）；仓库脚本可能准备 Maven classpath/临时文件。' },
+  { id: 'erf.ruleValidate', cli: 'rf.rule.validate', label: '校验规则文件', section: 'authoring_coverage', fields: ['files'], preview: true,
+    previewNote: '运行创作校验器（只读输入）；仓库脚本可能准备 Maven classpath/临时文件。' },
 ];
 const LABELS = { ready: '就绪', unconfigured: '未配置', unavailable: '不可用', running: '运行中', failed: '失败', cancelled: '已取消', completed: '已完成（非批准）' };
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// 需要 digest-only FindingView 输入的场景；其余场景（scan/config/doctor/校验）不挑 Finding。
+const FINDING_SCENES = new Set(['erf.showFinding', 'erf.navigateToLocation', 'erf.explainFinding', 'erf.draftFeedback', 'erf.requestException']);
+const needsFindingScene = id => FINDING_SCENES.has(id);
 
 function validateMessage(message, scene) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('INVALID_MESSAGE');
@@ -177,7 +193,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
   } });
   async function open(id, object) {
     if (controller) { await vscode.commands.executeCommand('erf.details.focus'); return; }
-    const next = SCENARIOS.find(s => s.id === id) || commandMap.commands.find(c => c.commandId === id);
+    const next = SCENARIOS.find(s => s.id === id || s.cli === id) || commandMap.commands.find(c => c.commandId === id);
     if (!next) throw new Error('UNKNOWN_SCENE');
     scene = next.id ? next : { ...next, id: next.commandId, label: next.commandTemplate };
     fields = Object.fromEntries(Object.entries(fields).filter(([key]) => scene.fields?.includes(key)));
@@ -185,12 +201,14 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     if (scene.id === 'erf.requestException' && !fields.scope) fields.scope = scopes[0]?.value || '';
     if (scene.registry) { fields.resource = registryType; if (scene.id === 'erf.registryList') fields.limit ||= '50'; }
     if (scene.server) { fields.request = selectedRequestPath || ''; fields.selector = 'requestId'; }
+    if (scene.scan) { fields.route ||= 'rule-id'; fields.format ||= 'json'; fields.progress ||= 'none'; }
+    if (scene.id === 'erf.configShow' || scene.id === 'erf.doctor') fields.format ||= 'text';
     generation++;
     refresh();
     await vscode.commands.executeCommand('workbench.view.extension.erf');
     await tree.reveal(scene, { select: true, focus: false });
     await vscode.commands.executeCommand('erf.details.focus');
-    if (object?.fsPath && !scene.server && !scene.registry) await selectFinding(object);
+    if (object?.fsPath && !scene.server && !scene.registry && !scene.scan && needsFindingScene(scene.id)) await selectFinding(object);
   }
   async function execute(input, cursor) {
     if (controller) return;
@@ -211,7 +229,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     const version = generation;
     setState('running', selected.label);
     try {
-      const finding = selected.server || selected.registry ? null : await readFinding();
+      const finding = needsFindingScene(selected.id) ? await readFinding() : null;
       let pin;
       let saved;
       let output;
@@ -240,6 +258,24 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
           setState('completed', finding.location.path); return;
         }
         case 'erf.explainFinding': args = core.buildExplainArgs(file, { format: 'text', ...authority }); break;
+        case 'erf.scan': case 'erf.doctor': case 'erf.configValidate': case 'erf.configShow':
+        case 'erf.standardValidate': case 'erf.ruleValidate': {
+          // 统一命令面：同一 map params 机械构造 argv（含 scan 路线互斥/base-head 成对校验）。
+          const cmd = core.mapCommand(commandMap, selected.cli);
+          if (!cmd) throw new Error('COMMAND_MAP_MISSING:' + selected.cli);
+          const values = { ...input };
+          if (selected.autoRepoRoot) {
+            if (!runRoot) throw new Error('WORKSPACE_REQUIRED_FOR_REPO_ROOT');
+            values.repoRoot = runRoot; // 来自工作区选择，不由用户键入。
+          }
+          args = core.buildMappedArgs(cmd, values);
+          if (selected.preview) {
+            const preview = `${selected.previewNote}\nCLI argv：${JSON.stringify(args)}\n执行权威在 rf CLI；工作台只构造与展示。`;
+            if (await vscode.window.showWarningMessage(preview, { modal: true }, '确认执行') !== '确认执行') return setState('cancelled', '未执行；表单保留。');
+            if (abort.signal.aborted || generation !== version || disposed) return;
+          }
+          break;
+        }
         case 'erf.draftFeedback': case 'erf.requestException': {
           const kind = selected.id === 'erf.draftFeedback' ? 'feedback' : 'exception';
           if (kind === 'exception') {
@@ -287,6 +323,13 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
       if (generation !== version || disposed) return;
       if (result.reason === 'CANCELLED' || abort.signal.aborted) return setState('cancelled', '已停止；远端请求可能已经接收，取消不代表回滚，请查询状态。');
       if (result.reason === 'UNAVAILABLE') return setState('unavailable', result.stderr);
+      if (selected.scan) {
+        // 扫描工作台：exit 0/2/3/4 全部按既有 ScanResult/ScanFailure 契约渲染；
+        // 绝不把 exit=0 当作通过，由结构化 status/gate/authority 决定展示。
+        if (result.reason) return setState('failed', result.reason + '\n' + result.stderr);
+        setState('completed', core.renderScanReport(core.parseScanStdout(result.stdout), result.code, result.stderr));
+        return;
+      }
       if (result.reason || core.classifyExitCode(result.code) !== 'OK') return setState('failed', `${selected.registry ? 'UNKNOWN · 未安装 · ' : selected.server ? 'UNKNOWN/PENDING · ' : ''}${result.reason || core.classifyExitCode(result.code)} · exit=${result.code}\n${result.stderr || result.stdout}`);
       let detail = result.stdout;
       if (selected.registry) {
@@ -380,7 +423,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
         if (!result?.length || generation !== version) return;
         const trust = await vscode.window.showOpenDialog({ canSelectMany: false, title: '选择独立 AuthorityTrust JSON', filters: { JSON: ['json'] } });
         if (trust?.length && generation === version) { authority = { result: result[0].fsPath, authorityTrust: trust[0].fsPath }; publish(); }
-      } else if (m.type === 'pickFile' && !scene.server) {
+      } else if (m.type === 'pickFile' && needsFindingScene(scene.id)) {
         const picked = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { JSON: ['json'] }, defaultUri: root ? vscode.Uri.file(root) : undefined });
         if (picked?.length && generation === version) await selectFinding(picked[0]);
       } else if (m.type === 'workspace') {
@@ -394,7 +437,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     const busy = !!controller;
     const disabled = busy ? 'disabled' : '';
     const options = (name, values) => `<select name="${name}" ${disabled}><option value="">请选择</option>${fields[name] && !values.some(v => v.value === fields[name]) ? `<option data-invalid="true" selected value="${escape(fields[name])}">已失效：${escape(fields[name])}</option>` : ''}${values.map(v => `<option value="${escape(v.value)}" ${fields[name] === v.value ? 'selected' : ''}>${escape(v.label)}</option>`).join('')}</select>`;
-    const labels = { reason: '理由（多行）', actor: 'actor（保存前须本人确认）', classification: '分类（本地 CLI 契约）', scope: 'scope（实际范围）', request: '当前已保存请求', selector: '查询选择器', resource: 'registry 类型', limit: '每页条数', pin: '独立发布记录：身份 / 版本 / 摘要 / provenance（完整绑定）' };
+    const labels = { reason: '理由（多行）', actor: 'actor（保存前须本人确认）', classification: '分类（本地 CLI 契约）', scope: 'scope（实际范围）', request: '当前已保存请求', selector: '查询选择器', resource: 'registry 类型', limit: '每页条数', pin: '独立发布记录：身份 / 版本 / 摘要 / provenance（完整绑定）', route: '扫描路线（互斥）', ruleId: 'rule id（route=rule-id）', candidate: 'candidate 目录（route=candidate）', deliveryDescriptor: 'delivery descriptor（route=delivery-descriptor）', format: '输出格式', progress: '进度输出', output: '结果/回执输出文件', deadlineMs: 'deadline 毫秒（缺省不截断）', base: 'base revision（与 head 成对）', head: 'head revision（与 base 成对）', host: 'host 命令（高级覆盖）', resolver: 'resolver 命令（高级覆盖）', runtimeHome: 'runtime home（高级覆盖）', config: '工作区配置文件（缺省 .ruleops/config.yaml）', scanProbe: 'scan-probe 外部命令（显式确认才执行）', files: '待校验文件（逗号分隔路径）' };
     const choices = {
       resource: (scene.id === 'erf.registrySync' ? ['rules'] : ['rules', 'standards']).map(value => ({ value, label: value })),
       limit: ['10', '50', '100', '256'].map(value => ({ value, label: value })),
@@ -403,8 +446,13 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
       scope: scopes.map(o => ({ value: o.value, label: `${o.value} · ${o.source} · 匹配当前文件${o.broader ? ' · 扩大范围需确认' : ''}` })),
       request: availableRequests().map(r => ({ value: r.path, label: `${r.kind} · ${r.savedAt} · ${r.status} · ${r.path} · ${r.requestId}` })),
       selector: ['requestId', 'artifactDigest'].map(value => ({ value, label: value })),
+      route: [{ value: 'rule-id', label: 'rule-id（规则身份）' }, { value: 'candidate', label: 'candidate（本地候选）' }, { value: 'delivery-descriptor', label: 'delivery-descriptor（发布描述符）' }],
+      format: (scene.scan ? ['text', 'json', 'sarif'] : ['text', 'json']).map(value => ({ value, label: value })),
+      progress: ['text', 'json', 'none'].map(value => ({ value, label: value })),
     };
-    const canRun = !busy && !!scene.fields && !!(scene.registry || (scene.server ? choices.request.length : file))
+    const needsFile = !!scene.fields && !scene.server && !scene.registry && !scene.scan
+      && !['erf.doctor', 'erf.configValidate', 'erf.configShow', 'erf.standardValidate', 'erf.ruleValidate'].includes(scene.id);
+    const canRun = !busy && !!scene.fields && !!(scene.registry || scene.scan || (scene.server ? choices.request.length : !needsFile || file))
       && ['ready', 'failed', 'completed', 'cancelled'].includes(state.phase);
     const validChoices = (scene.fields || []).every(name => !choices[name] || choices[name].some(choice => choice.value === fields[name]));
     const controls = (scene.fields || []).map(name => {
@@ -413,7 +461,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
       else control = name === 'reason' ? `<textarea name="${name}" ${disabled}>${escape(fields[name])}</textarea>` : `<input name="${name}" value="${escape(fields[name])}" ${disabled}>`;
       return `<label>${labels[name]}${control}</label>`;
     }).join('');
-    return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><meta name="viewport" content="width=device-width,initial-scale=1"><style nonce="${nonce}">body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px}button,input,textarea,select{font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px;margin:4px 0}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}input,textarea,select{box-sizing:border-box;width:100%}label{display:block;margin-top:12px}pre,p{white-space:pre-wrap;overflow-wrap:anywhere}h2{font-size:1.1em}:focus-visible{outline:2px solid var(--vscode-focusBorder)}</style></head><body><button data-action="workspace" ${disabled}>选择工作区</button><p>${escape(root || '未选择工作区')}<br>Server：${config().serverEndpoint ? '已配置（连接由 CLI 校验）' : '未配置'}</p><h2>${escape(scene.label)}</h2><p role="status">${LABELS[state.phase]}</p>${scene.fields && !scene.server && !scene.registry ? `<button data-action="pickFile" ${disabled}>选择 FindingView JSON</button><p>${escape(file || '未选择文件')}</p>` : ''}${scene.id === 'erf.explainFinding' ? `<button data-action="pickAuthority" ${disabled}>选择结果与独立信任根</button><button data-action="clearAuthority" ${disabled}>清除配对</button><p>${escape(authority.result || '无权威配对')} ${escape(authority.authorityTrust || '')}</p>` : ''}${scene.id === 'erf.requestException' ? `<p>${escape(scopeNote || (scopes.length ? '默认当前文件；扩范围须确认；预览不授予例外权威。' : '无可靠 scope 候选，请选择有效 Finding。'))}</p>` : ''}${scene.registry ? `<p>连接：${escape(config().connectionProfile ? 'profile FILE：' + config().connectionProfile + '（优先于 endpoint；失败不回退）' : '显式 Server endpoint（由 CLI 校验）')}<br>FORMAT_ONLY / PIN_MATCH · authority=UNKNOWN；不是安装。</p><button data-action="pickReleasePins" ${disabled}>选择独立发布记录（非信任根）</button><p>${escape(releaseSource || '缺少独立发布来源，不能核对/同步')}</p>${scene.id === 'erf.registrySync' ? `<button data-action="pickDescriptor" ${disabled}>选择外部签名 descriptor</button><p>${escape(descriptor || releasePins.find((_, index) => String(index) === fields.pin)?.deliveryDescriptor || '缺少 descriptor；禁止从响应构造')}</p>` : ''}${scene.id === 'erf.registryList' ? `<button data-action="nextPage" ${busy || !registryPage?.hasMore ? 'disabled' : ''}>下一页</button><p>${escape(registryPage ? '当前页 ' + registryPage.items.length + ' 条 · UNKNOWN' : '尚未浏览')}</p>` : ''}` : ''}<form>${controls}<button type="submit" ${!canRun || !validChoices ? 'disabled' : ''}>${scene.id === 'erf.registryList' ? '读取/刷新第一页' : scene.id === 'erf.registryShow' ? '核对独立 pin' : scene.id === 'erf.registrySync' ? '确认缓存签名包' : '执行所选场景'}</button></form><button data-action="cancel" ${busy ? '' : 'disabled'}>取消</button><button data-action="refresh" ${disabled}>刷新</button><button data-action="settings" ${disabled}>设置</button><p>提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。</p><pre aria-live="polite">${escape(state.detail)}</pre><script nonce="${nonce}">const api=acquireVsCodeApi();document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>api.postMessage({type:b.dataset.action})));document.querySelector('form').addEventListener('input',e=>{e.currentTarget.querySelector('[type=submit]').disabled=!${canRun}||[...e.currentTarget.querySelectorAll('select')].some(s=>!s.value||s.selectedOptions[0]?.dataset.invalid);api.postMessage({type:'edit',fields:Object.fromEntries(new FormData(e.currentTarget))});});document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();api.postMessage({type:'run',fields:Object.fromEntries(new FormData(e.target))});});</script></body></html>`;
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><meta name="viewport" content="width=device-width,initial-scale=1"><style nonce="${nonce}">body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px}button,input,textarea,select{font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px;margin:4px 0}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}input,textarea,select{box-sizing:border-box;width:100%}label{display:block;margin-top:12px}pre,p{white-space:pre-wrap;overflow-wrap:anywhere}h2{font-size:1.1em}:focus-visible{outline:2px solid var(--vscode-focusBorder)}</style></head><body><button data-action="workspace" ${disabled}>选择工作区</button><p>${escape(root || '未选择工作区')}<br>Server：${config().serverEndpoint ? '已配置（连接由 CLI 校验）' : '未配置'}</p><h2>${escape(scene.label)}</h2><p role="status">${LABELS[state.phase]}</p>${needsFile ? `<button data-action="pickFile" ${disabled}>选择 FindingView JSON</button><p>${escape(file || '未选择文件')}</p>` : ''}${scene.id === 'erf.explainFinding' ? `<button data-action="pickAuthority" ${disabled}>选择结果与独立信任根</button><button data-action="clearAuthority" ${disabled}>清除配对</button><p>${escape(authority.result || '无权威配对')} ${escape(authority.authorityTrust || '')}</p>` : ''}${scene.id === 'erf.requestException' ? `<p>${escape(scopeNote || (scopes.length ? '默认当前文件；扩范围须确认；预览不授予例外权威。' : '无可靠 scope 候选，请选择有效 Finding。'))}</p>` : ''}${scene.registry ? `<p>连接：${escape(config().connectionProfile ? 'profile FILE：' + config().connectionProfile + '（优先于 endpoint；失败不回退）' : '显式 Server endpoint（由 CLI 校验）')}<br>FORMAT_ONLY / PIN_MATCH · authority=UNKNOWN；不是安装。</p><button data-action="pickReleasePins" ${disabled}>选择独立发布记录（非信任根）</button><p>${escape(releaseSource || '缺少独立发布来源，不能核对/同步')}</p>${scene.id === 'erf.registrySync' ? `<button data-action="pickDescriptor" ${disabled}>选择外部签名 descriptor</button><p>${escape(descriptor || releasePins.find((_, index) => String(index) === fields.pin)?.deliveryDescriptor || '缺少 descriptor；禁止从响应构造')}</p>` : ''}${scene.id === 'erf.registryList' ? `<button data-action="nextPage" ${busy || !registryPage?.hasMore ? 'disabled' : ''}>下一页</button><p>${escape(registryPage ? '当前页 ' + registryPage.items.length + ' 条 · UNKNOWN' : '尚未浏览')}</p>` : ''}` : ''}<form>${controls}<button type="submit" ${!canRun || !validChoices ? 'disabled' : ''}>${scene.id === 'erf.registryList' ? '读取/刷新第一页' : scene.id === 'erf.registryShow' ? '核对独立 pin' : scene.id === 'erf.registrySync' ? '确认缓存签名包' : '执行所选场景'}</button></form><button data-action="cancel" ${busy ? '' : 'disabled'}>取消</button><button data-action="refresh" ${disabled}>刷新</button><button data-action="settings" ${disabled}>设置</button><p>提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。</p><pre aria-live="polite">${escape(state.detail)}</pre><script nonce="${nonce}">const api=acquireVsCodeApi();document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>api.postMessage({type:b.dataset.action})));document.querySelector('form').addEventListener('input',e=>{e.currentTarget.querySelector('[type=submit]').disabled=!${canRun}||[...e.currentTarget.querySelectorAll('select')].some(s=>!s.value||s.selectedOptions[0]?.dataset.invalid);api.postMessage({type:'edit',fields:Object.fromEntries(new FormData(e.currentTarget))});});document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();api.postMessage({type:'run',fields:Object.fromEntries(new FormData(e.target))});});</script></body></html>`;
   }
   const register = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   register('erf.selectScene', open);

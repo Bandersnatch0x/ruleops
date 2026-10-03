@@ -181,6 +181,28 @@ public final class CoreSelfTest {
         assertReason("view.identity.required", ThinClientCore.validateFindingView(missingIdentity), "INVALID_FIELD:fingerprint");
         var unknownLocation = goodView(); castMap(unknownLocation.get("location")).put("extra", "x");
         assertReason("view.location.closed", ThinClientCore.validateFindingView(unknownLocation), "LOCATION_FIELDS");
+        // ---- 阶段 4：统一命令面 argv + 扫描结果语义（与 core.js 对齐） ----
+        List<ThinClientCore.Param> initParams = List.of(
+            new ThinClientCore.Param("repoRoot", "path", "--repo-root", true, List.of(), false, false, false, false),
+            new ThinClientCore.Param("language", "enum", "--language", false, List.of("java"), false, false, false, false));
+        Map<String, String> initValues = new LinkedHashMap<>();
+        initValues.put("repoRoot", "src"); initValues.put("language", "java");
+        String initTemplate = "rf init --repo-root PATH [--non-interactive] [OPTIONS]";
+        assertEq("mapped.prefix", String.join("|", ThinClientCore.commandPrefix(initTemplate)), "init");
+        assertEq("mapped.init", String.join("|", ThinClientCore.buildMappedArgs(initTemplate, initParams, initValues)), "init|--repo-root|src|--language|java");
+        assertThrows("mapped.required", "MISSING_ARG:repoRoot",
+            () -> ThinClientCore.buildMappedArgs(initParams, Map.of("language", "java")));
+        assertThrows("mapped.enum", "BAD_ENUM:language=scala",
+            () -> ThinClientCore.buildMappedArgs(initParams, Map.of("repoRoot", "src", "language", "scala")));
+        assertEq("scan.exit.0", ThinClientCore.classifyScanExit(0), "OK");
+        assertEq("scan.exit.2", ThinClientCore.classifyScanExit(2), "INVALID_INPUT");
+        assertEq("scan.exit.3", ThinClientCore.classifyScanExit(3), "INCONCLUSIVE_OR_REFUSED");
+        assertEq("scan.exit.4", ThinClientCore.classifyScanExit(4), "TRUST_FAILED");
+        String failRender = ThinClientCore.renderScanReport(ParityHarness.scanFailFixture(), 0, "");
+        assertOk("scan.fail.notpass", !failRender.contains("PASS（Gate 通过）") && failRender.contains("FAIL（存在未豁免 finding"));
+        assertOk("scan.fail.gate", failRender.contains("gate=FAIL"));
+        String failureRender = ThinClientCore.renderScanReport(ParityHarness.scanFailureFixture(), 2, "");
+        assertOk("scan.failure.class", failureRender.contains("ScanFailure") && failureRender.contains("CLI_INPUT_INVALID"));
         System.out.println("intellij-core-selftest: pass=" + passed + " fail=" + failed);
         if (failed != 0) {
             System.exit(1);

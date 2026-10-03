@@ -32,6 +32,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
     public enum Scene {
         SHOW("显示 Finding", "scan_findings", null), NAVIGATE("跳转到 Finding", "scan_findings", null),
         EXPLAIN("解释 Finding", "scan_findings", "rf.explain"),
+        SCAN("扫描结果工作台", "scan_findings", "rf.scan"),
         FEEDBACK("起草反馈", "feedback_exceptions", "rf.feedback.draft"),
         EXCEPTION("申请例外", "feedback_exceptions", "rf.exception.request"),
         SUBMIT_FEEDBACK("提交反馈", "feedback_exceptions", "rf.feedback.submit"),
@@ -39,11 +40,24 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         STATUS("查询提交状态", "feedback_exceptions", "rf.submission.status"),
         REGISTRY_LIST("浏览规则库（元数据）", "registry", "rf.registry.list"),
         REGISTRY_SHOW("核对独立发布 pin", "registry", "rf.registry.show"),
-        REGISTRY_SYNC("缓存签名规则包", "registry", "rf.registry.sync");
+        REGISTRY_SYNC("缓存签名规则包", "registry", "rf.registry.sync"),
+        DOCTOR("环境诊断", "workspace", "rf.doctor"),
+        CONFIG_VALIDATE("校验工作区配置", "workspace", "rf.config.validate"),
+        CONFIG_SHOW("查看有效配置", "workspace", "rf.config.show"),
+        STANDARD_VALIDATE("校验标准文件", "authoring_coverage", "rf.standard.validate"),
+        RULE_VALIDATE("校验规则文件", "authoring_coverage", "rf.rule.validate");
         final String title, section, cli;
-        Scene(String title, String section, String cli) { this.title = title; this.section = section; this.cli = cli; }
+        final java.util.List<String> mappedFields;
+        Scene(String title, String section, String cli) { this(title, section, cli, java.util.List.of()); }
+        Scene(String title, String section, String cli, java.util.List<String> mappedFields) {
+            this.title = title; this.section = section; this.cli = cli; this.mappedFields = mappedFields;
+        }
         boolean registry() { return this == REGISTRY_LIST || this == REGISTRY_SHOW || this == REGISTRY_SYNC; }
         boolean server() { return this == SUBMIT_FEEDBACK || this == SUBMIT_EXCEPTION || this == STATUS; }
+        /** 统一命令面场景：由同一 map params 驱动表单与 argv（ThinClientCore.buildMappedArgs）。 */
+        boolean mapped() { return this == SCAN || this == DOCTOR || this == CONFIG_VALIDATE || this == CONFIG_SHOW
+            || this == STANDARD_VALIDATE || this == RULE_VALIDATE; }
+        boolean scan() { return this == SCAN; }
         @Override public String toString() { return title; }
     }
     @Override public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
@@ -97,6 +111,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private final JTextField registryDescriptor = new JTextField();
         private final JLabel registrySource = new JLabel("缺少独立发布来源");
         private final JButton nextPage = new JButton("下一页");
+        private final java.util.LinkedHashMap<String, javax.swing.JComponent> mappedInputs = new java.util.LinkedHashMap<>();
+        private final JTextArea scanProgress = new JTextArea(3, 20);
         private boolean updatingRegistry;
         private Scene scene = Scene.SHOW;
         private RfInvoker.Job job;
@@ -106,6 +122,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private String scopeFinding = "", lastScope;
         private boolean updatingScope;
         private String scopeEvidence = "尚未加载经过验证的范围";
+        private JsonObject commandMap;
 
         Panel(Project project) {
             super(new BorderLayout(8, 8)); this.project = project;
@@ -113,6 +130,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             try (InputStream stream = ErfToolWindowFactory.class.getResourceAsStream("/ide-command-map.json")) {
                 if (stream == null) throw new IllegalStateException("MISSING_IDE_COMMAND_MAP");
                 JsonObject map = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
+                commandMap = map;
                 for (Map.Entry<String, JsonElement> entry : map.getAsJsonObject("sections").entrySet()) {
                     DefaultMutableTreeNode section = new DefaultMutableTreeNode(entry.getValue().getAsString()); root.add(section);
                     for (Scene s : Scene.values()) if (s.section.equals(entry.getKey())) section.add(new DefaultMutableTreeNode(s));
@@ -212,8 +230,10 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private void setScene(Scene next) {
             var previousArtifact = (ErfArtifactIndex.Entry) artifacts.getSelectedItem();
             scene = next; generation++; form.removeAll();
+            mappedInputs.clear();
             form.add(new JLabel(next.title));
-            if (!next.server() && !next.registry()) { form.add(pick); form.add(file); }
+            if (next.mapped()) { mappedForm(next); }
+            if (!next.server() && !next.registry() && !next.mapped()) { form.add(pick); form.add(file); }
             if (next.registry()) registryForm(next);
             if (next == Scene.FEEDBACK) field("分类", classification);
             if (next == Scene.FEEDBACK || next == Scene.EXCEPTION) {
@@ -272,7 +292,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             configureRegistry();
             context.setText("工作区：" + project.getBasePath() + "\nServer：" + (endpoint.isBlank() ? "未配置" : "已配置（由 CLI 校验连接）") + "\n提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。");
             cancel.setEnabled(false);
-            boolean ready = scene != null && project.getBasePath() != null && !c.rfPath.isBlank() && c.requestTimeoutMs > 0 && (!scene.server() || !endpoint.isBlank()) && (!scene.registry() || !c.connectionProfile.isBlank() || !endpoint.isBlank());
+            boolean ready = scene != null && project.getBasePath() != null && !c.rfPath.isBlank() && c.requestTimeoutMs > 0 && (!scene.server() || !endpoint.isBlank()) && (!scene.registry() || !c.connectionProfile.isBlank() || !endpoint.isBlank())
+                && (!scene.mapped() || scene == Scene.STANDARD_VALIDATE || scene == Scene.RULE_VALIDATE || project.getBasePath() != null);
             nextPage.setEnabled(ready && scene == Scene.REGISTRY_LIST && registry.hasMore());
             execute.setEnabled(ready && (scene != Scene.EXCEPTION || scope.getSelectedItem() != null));
             if (scene == null) setState("不可用", "尚未提供此场景参数面板。");
@@ -337,6 +358,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             if (job != null || scene == null) return;
             refresh(); if (!execute.isEnabled()) return;
             if (scene.registry()) { executeRegistry(false); return; }
+            if (scene.mapped()) { executeMapped(); return; }
             try {
                 Scene selected = scene; var c = project.getService(ErfSettings.class).snapshot();
                 String base = project.getBasePath();
@@ -413,6 +435,125 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 if (version != generation) { refresh(); return; }
                 setState("来源无效", error.toString());
             }, () -> { job = null; if (!disposed) { busy(false); refresh(); setState("已取消", "未改变独立发布记录"); } });
+        }
+        /** 统一命令面表单：直接消费同一 map 的 params（kind→输入控件），不在此定义 wire schema。 */
+        private void mappedForm(Scene next) {
+            JsonObject command = findCommand(next.cli);
+            if (command == null || !command.has("params")) { setState("不可用", "map 缺少 " + next.cli + " 的 params"); return; }
+            String basePath = project.getBasePath() == null ? "" : project.getBasePath();
+            for (var element : command.getAsJsonArray("params")) {
+                JsonObject p = element.getAsJsonObject();
+                String name = p.get("name").getAsString();
+                String kind = p.get("kind").getAsString();
+                boolean required = p.has("required") && p.get("required").getAsBoolean();
+                if ("bool".equals(kind)) {
+                    JCheckBox box = new JCheckBox(required ? name + "（必选）" : name);
+                    if (required) box.setSelected(true);
+                    mappedInputs.put(name, box); form.add(box);
+                    continue;
+                }
+                if (p.has("values")) {
+                    JComboBox<String> combo = new JComboBox<>();
+                    for (var v : p.getAsJsonArray("values")) combo.addItem(v.getAsString());
+                    if (!required) combo.insertItemAt("", 0);
+                    combo.setSelectedItem(required ? combo.getItemAt(0) : "");
+                    mappedInputs.put(name, combo); field(name + (required ? "（必选）" : ""), combo);
+                    continue;
+                }
+                JTextField input = new JTextField();
+                // repoRoot 来自当前工作区选择，不由用户键入。
+                if ("repoRoot".equals(name)) { input.setText(basePath); input.setEditable(false); }
+                if ("route".equals(name)) input.setText("rule-id");
+                mappedInputs.put(name, input);
+                field(name + (required ? "（必选）" : "") + ("number".equals(kind) ? "（数字）" : ""), input);
+            }
+            if (next.scan()) {
+                scanProgress.setEditable(false); scanProgress.setLineWrap(true);
+                form.add(new JLabel("扫描进度（stderr progress 行；长任务不按 5 秒截断）"));
+                form.add(new JScrollPane(scanProgress));
+            }
+            execute.setText(next.scan() ? "预览并扫描（结果不等于 PASS）" : "预览并执行");
+        }
+        private JsonObject findCommand(String commandId) {
+            if (commandMap == null) return null;
+            for (var element : commandMap.getAsJsonArray("commands")) {
+                JsonObject command = element.getAsJsonObject();
+                if (commandId.equals(command.get("commandId").getAsString())) return command;
+            }
+            return null;
+        }
+        private void executeMapped() {
+            if (job != null || scene == null || !scene.mapped()) return;
+            try {
+                JsonObject command = findCommand(scene.cli);
+                if (command == null) throw new IllegalArgumentException("COMMAND_MAP_MISSING:" + scene.cli);
+                java.util.LinkedHashMap<String, ThinClientCore.Param> params = new java.util.LinkedHashMap<>();
+                java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+                for (var element : command.getAsJsonArray("params")) {
+                    JsonObject p = element.getAsJsonObject();
+                    String name = p.get("name").getAsString();
+                    params.put(name, new ThinClientCore.Param(name, p.get("kind").getAsString(),
+                        p.has("flag") ? p.get("flag").getAsString() : null,
+                        p.has("required") && p.get("required").getAsBoolean(),
+                        p.has("values") ? toList(p.getAsJsonArray("values")) : List.of(),
+                        p.has("hexDigest") && p.get("hexDigest").getAsBoolean(),
+                        p.has("repeatable") && p.get("repeatable").getAsBoolean(),
+                        p.has("identity") && p.get("identity").getAsBoolean(),
+                        p.has("routeSelector") && p.get("routeSelector").getAsBoolean()));
+                    if (mappedInputs.get(name) instanceof JCheckBox box) { if (box.isSelected()) values.put(name, "true"); }
+                    else if (mappedInputs.get(name) instanceof JComboBox<?> combo) {
+                        Object selected = combo.getSelectedItem();
+                        if (selected != null && !String.valueOf(selected).isEmpty()) values.put(name, String.valueOf(selected));
+                    } else if (mappedInputs.get(name) instanceof JTextField input) {
+                        String text = input.getText().trim();
+                        if (!text.isEmpty()) values.put(name, text);
+                    }
+                }
+                String template = command.get("commandTemplate").getAsString();
+                List<String> argv = scene.scan()
+                    ? ThinClientCore.buildScanArgs(template, params.values().stream().toList(), values)
+                    : ThinClientCore.buildMappedArgs(template, List.copyOf(params.values()), values);
+                String preview = "rf 参数数组（无 shell）：\n" + new GsonBuilder().setPrettyPrinting().create().toJson(argv)
+                    + (scene.scan() ? "\nexit=0 不代表 Gate PASS；结果以结构化 status/gate/authority 为准。" : "");
+                JTextArea text = new JTextArea(preview, 16, 65); text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+                if (JOptionPane.showConfirmDialog(this, new JScrollPane(text), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                long version = generation;
+                var c = project.getService(ErfSettings.class).snapshot();
+                var invoker = project.getService(RfInvoker.class);
+                String base = project.getBasePath();
+                busy(true); setState("运行中", scene.title);
+                job = invoker.submit(project, indicator -> invoker.run(c.rfPath, argv, base, c.requestTimeoutMs, indicator), result -> {
+                    job = null; if (disposed) return; busy(false);
+                    if (version != generation) { refresh(); return; }
+                    if (scene.scan()) {
+                        scanProgress.setText(result.stderr() == null ? "" : result.stderr());
+                        try {
+                            var parsed = ErfWorkflow.object(result.stdout());
+                            // exit=0 也按结构化 status 渲染；绝不显示为简单通过。
+                            finish("扫描结果 " + parsed.get("status") + "（非 PASS 判定）",
+                                ThinClientCore.renderScanReport(parsed, result.exitCode(), result.stderr()));
+                        } catch (RuntimeException parseError) {
+                            finish("扫描输出无法解析", "exit=" + result.exitCode() + "\n" + result.stdout() + "\n" + result.stderr());
+                        }
+                        return;
+                    }
+                    finish(result.exitCode() == 0 ? "完成（无批准权威）" : "失败 exit=" + result.exitCode(),
+                        result.exitCode() == 0 ? result.stdout() : (result.stderr().isBlank() ? result.stdout() : result.stderr()));
+                }, error -> {
+                    job = null; if (disposed) return; busy(false);
+                    if (version != generation) { refresh(); return; }
+                    finish(error instanceof RfInvoker.UnavailableException ? "不可用" : "失败", error.toString() + "\n表单保留。");
+                }, () -> {
+                    job = null; if (disposed) return; busy(false);
+                    if (version != generation) { refresh(); return; }
+                    finish("已取消", "表单保留；扫描如有缓存写入，以再次扫描结果为准。");
+                });
+            } catch (IllegalArgumentException error) { setState("输入无效", error.getMessage() + "\n表单内容已保留。"); }
+        }
+        private static List<String> toList(com.google.gson.JsonArray array) {
+            List<String> out = new ArrayList<>();
+            for (var element : array) out.add(element.getAsString());
+            return out;
         }
         private void executeRegistry(boolean next) {
             if (job != null || scene == null || !scene.registry()) return;

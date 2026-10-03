@@ -2,9 +2,11 @@ package io.ruleops.ide.core;
 
 // 跨端一致性 harness（零依赖）：与 clients/vscode/test/parity-harness.js 逐行对齐。
 // 由 scripts/ide-client-check.sh 编译运行并 diff 两端输出（EXECUTABLE 证据）。
+// 阶段 4 追加：统一命令面 battery（同一 Param 列表构造 argv）与扫描结果语义 battery。
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +28,7 @@ public final class ParityHarness {
         ThinClientCore.ReceiptView violate =
             ThinClientCore.renderReceiptGuards("RECEIVED_ONLY", false, false, true);
 
-        String[] lines = new String[] {
+        List<String> lines = new ArrayList<>(List.of(
             "explain-args=" + String.join("|", ThinClientCore.buildExplainArgs("f.json", eo)),
             "feedback-args=" + String.join("|", ThinClientCore.buildFeedbackDraftArgs(
                 "f.json", "true-fp", "why", "alice", null)),
@@ -51,15 +53,113 @@ public final class ParityHarness {
             "parse-finding_id=" + orEmpty(parsed.get("finding_id")),
             "parse-rule_id=" + orEmpty(parsed.get("rule_id")),
             "parse-authority_status=" + orEmpty(parsed.get("authority_status")),
-            "parse-authoritative=" + orEmpty(parsed.get("authoritative")),
-        };
+            "parse-authoritative=" + orEmpty(parsed.get("authoritative"))));
+        lines.addAll(mapBatteryLines());
+        lines.add("scan-classify-0=" + ThinClientCore.classifyScanExit(0));
+        lines.add("scan-classify-2=" + ThinClientCore.classifyScanExit(2));
+        lines.add("scan-classify-3=" + ThinClientCore.classifyScanExit(3));
+        lines.add("scan-classify-4=" + ThinClientCore.classifyScanExit(4));
+        lines.add("scan-render-fail=" + oneLine(ThinClientCore.renderScanReport(scanFailFixture(), 0, "")));
+        lines.add("scan-render-failure=" + oneLine(ThinClientCore.renderScanReport(scanFailureFixture(), 2, "")));
+
         System.out.print(String.join("\n", lines) + "\n");
         for (String line : scopeFixtureLines(args.length > 1 ? Path.of(args[1]) : Path.of("clients/testdata/scope-options.tsv")))
             System.out.println(line);
     }
 
+    private static ThinClientCore.Param par(String name, String kind, String flag, boolean required) {
+        return new ThinClientCore.Param(name, kind, flag, required, List.of(), false, false, false, false);
+    }
+    private static ThinClientCore.Param par(String name, String kind, String flag, boolean required, List<String> values) {
+        return new ThinClientCore.Param(name, kind, flag, required, values, false, false, false, false);
+    }
+    private static ThinClientCore.Param parHex(String name) {
+        return new ThinClientCore.Param(name, "digest", null, true, List.of(), true, false, false, false);
+    }
+    private static ThinClientCore.Param parRepeat(String name) {
+        return new ThinClientCore.Param(name, "path", null, true, List.of(), false, true, false, false);
+    }
+    private static ThinClientCore.Param parIdentity(String name, String flag) {
+        return new ThinClientCore.Param(name, "text", flag, true, List.of(), false, false, true, false);
+    }
+    private static Map<String, String> m(String... kv) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < kv.length; i += 2) out.put(kv[i], kv[i + 1]);
+        return out;
+    }
+    private static String oneLine(String text) { return text.replace("\n", "\\n"); }
+
+    /** 与 parity-harness.js#mapBatteryLines 一一对应，顺序与取值必须相同。 */
+    static List<String> mapBatteryLines() {
+        List<String> out = new ArrayList<>();
+        out.add("map-init=" + String.join("|", ThinClientCore.buildMappedArgs(
+            "rf init --repo-root PATH [--non-interactive] [OPTIONS]",
+            List.of(
+            par("repoRoot", "path", "--repo-root", true), par("output", "path", "--output", false),
+            par("language", "enum", "--language", false, List.of("java")),
+            par("buildSystem", "enum", "--build-system", false, List.of("maven", "gradle")),
+            par("nonInteractive", "bool", "--non-interactive", false)),
+            m("repoRoot", "src", "language", "java", "buildSystem", "maven", "nonInteractive", "true"))));
+        out.add("map-rule-generate=" + String.join("|", ThinClientCore.buildMappedArgs(
+            "rf rule generate INTENT.yaml OUTPUT_DIR",
+            List.of(
+            par("intent", "file", null, true), par("outputDir", "dir", null, true)),
+            m("intent", "src/i.yaml", "outputDir", "src/out"))));
+        out.add("map-standard-validate=" + String.join("|", ThinClientCore.buildMappedArgs(
+            "rf standard validate FILE...",
+            List.of(parRepeat("files")), m("files", "src/a.yaml,src/b.yaml"))));
+        out.add("map-registry-show=" + String.join("|", ThinClientCore.buildMappedArgs(
+            "rf registry show rules|standards ID --version VERSION --expected-digest SHA256 (--server URL | --connection-profile FILE) [--timeout-ms N]",
+            List.of(
+            par("resource", "enum", null, true, List.of("rules", "standards")), par("id", "text", null, true),
+            par("version", "text", "--version", true), par("expectedDigest", "digest", "--expected-digest", true)),
+            m("resource", "rules", "id", "corp.java.x", "version", "1.0.0", "expectedDigest", "sha256:" + "a".repeat(64)))));
+        out.add("map-decision-evaluate=" + String.join("|", ThinClientCore.buildMappedArgs(
+            "rf decision evaluate INPUT_DIGEST SIGNAL NOW OUTPUT [OPTIONS]",
+            List.of(
+            parHex("inputDigest"), par("signal", "number", null, true), par("now", "number", null, true),
+            par("output", "file", null, true), par("nearMiss", "bool", "--near-miss", false)),
+            m("inputDigest", "b".repeat(64), "signal", "5", "now", "100", "output", "src/o.json", "nearMiss", "true"))));
+        out.add("map-pilot-feedback=" + String.join("|", ThinClientCore.buildMappedArgs(
+            "rf pilot feedback OBSERVER_OPTIONS...",
+            List.of(
+            par("journal", "file", "--journal", true), par("measurementId", "text", "--measurement-id", true),
+            par("classification", "enum", "--classification", true, List.of("valid", "documentation", "scope", "false-positive")),
+            parIdentity("actor", "--actor")),
+            m("journal", "src/j.jsonl", "measurementId", "m1", "classification", "scope", "actor", "alice"))));
+        return out;
+    }
+
+    static Map<String, Object> scanFailFixture() {
+        Map<String, Object> loc = new LinkedHashMap<>();
+        loc.put("kind", "SOURCE_SPAN"); loc.put("path", "src/Main.java"); loc.put("line", 3);
+        loc.put("column", 1); loc.put("identityDigest", "IDG");
+        Map<String, Object> f = new LinkedHashMap<>();
+        f.put("findingId", "f1"); f.put("ruleId", "corp.java.smoke"); f.put("fingerprint", "fp1");
+        f.put("findingDigest", "DDG"); f.put("message", "system exit"); f.put("location", loc);
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("code", "FINDINGS_PRESENT"); d.put("stage", "gate"); d.put("message", "contains findings");
+        d.put("retry", "Never"); d.put("nextStep", "review");
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("apiVersion", "rulefactory.io/v1"); r.put("kind", "ScanResult"); r.put("status", "FAIL");
+        r.put("gateDecision", "FAIL"); r.put("authority", "LOCAL_UNATTESTED"); r.put("trust", "LOCAL_UNATTESTED");
+        r.put("ruleId", "corp.java.smoke"); r.put("planned", 1L); r.put("executed", 1L); r.put("failed", 0L);
+        r.put("findingRecords", List.of(f)); r.put("diagnostics", List.of(d)); r.put("progress", List.of());
+        r.put("resultDigest", "RDG");
+        return r;
+    }
+    static Map<String, Object> scanFailureFixture() {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("code", "CLI_INPUT_INVALID"); d.put("stage", "input"); d.put("message", "bad input");
+        d.put("retry", "FixInput"); d.put("nextStep", "fix");
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("apiVersion", "rulefactory.io/v1"); r.put("kind", "ScanFailure"); r.put("exitCode", 2);
+        r.put("diagnostics", List.of(d)); r.put("progress", List.of()); r.put("diagnosticDigest", "X");
+        return r;
+    }
+
     public static List<String> scopeFixtureLines(Path fixture) throws Exception {
-        List<String> output = new java.util.ArrayList<>();
+        List<String> output = new ArrayList<>();
         var rows = Files.readAllLines(fixture);
         for (String line : rows.subList(1, rows.size())) {
             if (line.isBlank()) continue;
