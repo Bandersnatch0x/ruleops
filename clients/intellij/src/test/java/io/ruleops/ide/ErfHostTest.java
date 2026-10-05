@@ -163,6 +163,22 @@ public final class ErfHostTest extends LightPlatformTestCase {
         } finally { panel.dispose(); }
     }
 
+    public void testNativeSceneSearchFindsCollapsedScenesWithoutExecuting() {
+        var panel = new ErfToolWindowFactory.Panel(getProject());
+        try {
+            JTree tree = find(panel, JTree.class, value -> true);
+            for (int row = tree.getRowCount() - 1; row >= 0; row--) tree.collapseRow(row);
+            var search = com.intellij.ui.speedSearch.SpeedSearchSupply.getSupply(tree, true);
+            assertNotNull(search);
+            search.findAndSelectElement("校验规则文件");
+            var selected = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
+            assertNotNull(selected);
+            assertEquals(ErfToolWindowFactory.Scene.RULE_VALIDATE, selected.getUserObject());
+            assertTrue(tree.isVisible(new TreePath(selected.getPath())));
+            assertNotNull(find(panel, JButton.class, button -> "预览并执行".equals(button.getText())));
+        } finally { panel.dispose(); }
+    }
+
     public void testNativeScrollableFormAccessibilityAndEscape() {
         var panel = new ErfToolWindowFactory.Panel(getProject());
         try {

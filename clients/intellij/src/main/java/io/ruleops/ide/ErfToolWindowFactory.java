@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.icons.AllIcons;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
@@ -167,6 +168,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 }
             } catch (IOException error) { throw new IllegalStateException("IDE_COMMAND_MAP_READ_FAILED", error); }
             root.add(runs); tree = new Tree(root); tree.setRootVisible(false);
+            TreeSpeedSearch.installOn(tree, true, path -> path.getLastPathComponent().toString());
             tree.setCellRenderer(new DefaultTreeCellRenderer() {
                 @Override public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
                         boolean expanded, boolean leaf, int row, boolean focus) {

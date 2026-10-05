@@ -144,10 +144,20 @@ test('actual DOM update preserves input/caret and live region, validates require
   actor.value = '   '; reason.value = 'reason';
   const form = dom.get('fields'); dom.event('submit', form);
   assert.equal(form.checked, true); assert.notEqual(dom.sent.at(-1).type, 'run'); assert.ok(actor.validationMessage);
+  assert.equal(actor['aria-invalid'], 'true');
+  assert.equal(dom.get('field-actor-error').textContent, '请填写此必填项。');
   actor.value = 'confirmed'; dom.event('input', form); dom.event('submit', form);
+  assert.equal(actor['aria-invalid'], 'false');
+  assert.equal(dom.get('field-actor-error').textContent, '');
   assert.equal(dom.sent.at(-1).type, 'run'); assert.equal(dom.sent.at(-1).fields.actor, 'confirmed');
   dom.update({ ...webview.update, detail: '<img src=x onerror=evil()>' });
   assert.equal(dom.get('output').textContent, '<img src=x onerror=evil()>');
+});
+
+test('invalid fields use the native theme error border without replacing focus or validation', () => {
+  const webview = attachWebview(host());
+  assert.match(webview.html, /input\[aria-invalid="true"\],textarea\[aria-invalid="true"\],select\[aria-invalid="true"\]\{border-color:var\(--vscode-inputValidation-errorBorder,var\(--vscode-errorForeground\)\)\}/);
+  assert.match(webview.html, /:focus-visible\{outline:2px solid var\(--vscode-focusBorder\)/);
 });
 
 test('webview has independent scroll panes, theme buttons/editor font, progress and keyboard output', () => {
