@@ -13,6 +13,27 @@
 
 ---
 
+## 已真机验证的核心流程（2026-10-05）
+
+截止 2026-10-05，两端**核心 happy path** 已在真机人工验收，证据记录于 #139（comment-5986528053 等）与提交 `709c44b`。清单 24 项为负例/边界聚焦，**任何一项未在下方列出前不得视为已真机验收**。
+
+| 端 | 核心流程 | 结果 | 真机环境 |
+|----|----------|------|----------|
+| IntelliJ | 展示 Finding（SHOW 场景，扫描 Findings 完整字段渲染） | PASS | IDEA 2026.2，`io.ruleops.ide` 插件 Gradle 8.10.2 `buildPlugin` → Install Plugin from Disk，日志确认加载 |
+| IntelliJ | 导航到位置（NAVIGATE） | PASS | 打开 `CliScanSample.java:1:1` |
+| IntelliJ | ERF 工具窗统一渲染（SCAN 工作台表单+argv+执行） | PASS | 工具窗 Find Action 第 2 项（第 1 项为菜单组） |
+| VS Code | 显示 Finding | PASS | Remote-WSL extension host，digest-only FindingView |
+| VS Code | 跳转到 Finding（NAVIGATE） | PASS | 编辑器打开目标文件，窗口标题显示 `CliScanSample.java` |
+| VS Code | 扫描工作台（SCAN 表单 → rf 执行 → 结果渲染） | PASS | ScanFailure exitCode=2 fail-closed 展示 |
+
+真机环境备注（踩坑记录，供后续人工项参考）：
+
+- IntelliJ 构建需 Gradle **8.10.2**（系统 Gradle 9.0.0 与 `org.jetbrains.intellij:1.17.4` 不兼容引发 `DefaultArtifactPublicationSet` 缺失）。
+- Windows 前台锁：后台进程 `SetForegroundWindow` 无效，需 `AttachThreadInput` 绕过（`foreground.ps1`）。
+- Find Action 第一项是 ERF 菜单组（非工具窗），需 Down 一次再 Enter。
+
+---
+
 ## A. 工作区与配置
 
 | # | 场景 | 预期行为 | 复现方法 | 状态 |
@@ -54,7 +75,7 @@
 
 | # | 场景 | 预期行为 | 复现方法 | 状态 |
 |---|------|----------|----------|------|
-| E1 | 恶意路径（`..\`、绝对、控制字符、symlink） | FindingView location 或输出路径全部拒绝：ABSOLUTE_PATH/DOT_SEGMENT/CONTROL_CHAR/SYMLINK_COMPONENT | 构造含上述路径的 FindingView；导航与保存场景分别尝试 | 离线已测（两端路径负例 + symlink 测试）/ **待人工：真实 IDE 导航行为** |
+| E1 | 恶意路径（`..\`、绝对、控制字符、symlink） | FindingView location 或输出路径全部拒绝：ABSOLUTE_PATH/DOT_SEGMENT/CONTROL_CHAR/SYMLINK_COMPONENT | 构造含上述路径的 FindingView；导航与保存场景分别尝试 | 离线已测（两端路径负例 + symlink 测试）；正常导航路径真机 PASS（2026-10-05，见上表）；**恶意路径负例待人工：真实 IDE 导航行为** |
 | E2 | 写文件失败（权限/占用） | 失败展示，不产出请求索引，表单保留原输入 | 目标目录只读后执行保存 | 离线已测（exit=2 保留表单测试）/ **待人工：真实文件系统权限** |
 | E3 | 输出覆盖已存在文件 | 显式确认对话框；覆盖 Finding/输入文件被拒（OUTPUT_OVERWRITES_INPUT） | 保存到已有文件；保存到 Finding 自身路径 | 离线已测 / **待人工：真实保存对话框** |
 
@@ -81,9 +102,14 @@
 | 项 | 原因 |
 |----|------|
 | B3 鉴权失败 | 离线无法建立真实鉴权 registry；失败透传逻辑有 CLI 契约背书，端内不伪造 |
-| IntelliJ 插件打包 | `org.jetbrains.intellij:1.17.4` 离线不可解析（阶段 2/5 两次确认） |
+| C1-C5 registry 分页/独立 pin（真实服务语义） | 需真实 registry server 返回多页/特殊 cursor/发布资产；当前无可用测试服务 |
+| D3/D4 真实回执状态 | 需真实 server/CLI 返回 UNKNOWN/PENDING/RECEIVED_ONLY |
 | SDK 宿主测试（ErfHostTest） | 需真实 IntelliJ SDK test application + Gradle 环境 |
-| 所有 `待人工` 项 | 真实 IDE 交互（进程取消、重启、主题渲染、屏幕阅读器）无法离线表达 |
+| 清单 24 项中其余全部 `待人工` | 真实 IDE 交互（multi-root、断网、取消、重启、保存对话框、主题缩放、屏幕阅读器等）无法离线表达，且截至 2026-10-05 未在真机逐个执行 |
+
+**已解决（原 INCONCLUSIVE）**：
+
+- `org.jetbrains.intellij:1.17.4` **离线不可解析** → 已用本机 Gradle 8.10.2 wrapper 缓存解析并 `buildPlugin` 成功；插件已真机安装加载（IDEA 2026.2）。
 
 ## 已知跨端分歧（不影响 parity harness）
 
