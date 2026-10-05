@@ -2,6 +2,14 @@ package io.ruleops.ide;
 
 import com.google.gson.*;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.icons.AllIcons;
+import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.JBTextArea;
+import com.intellij.ui.components.JBTextField;
+import com.intellij.ui.treeStructure.Tree;
+import com.intellij.util.ui.JBUI;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
@@ -19,6 +27,9 @@ import com.intellij.ui.content.ContentFactory;
 import io.ruleops.ide.core.ThinClientCore;
 import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
+import javax.accessibility.*;
+import java.awt.event.ActionEvent;
+import java.time.Instant;
 import javax.swing.tree.*;
 import java.awt.*;
 import java.io.*;
@@ -31,7 +42,7 @@ import java.util.Map;
 public final class ErfToolWindowFactory implements ToolWindowFactory {
     private static final Key<Panel> PANEL = Key.create("erf.toolWindow.panel");
     public enum Scene {
-        SHOW("显示 Finding", "scan_findings", null), NAVIGATE("跳转到 Finding", "scan_findings", null),
+        SHOW("展示 Finding", "scan_findings", null), NAVIGATE("导航到位置", "scan_findings", null),
         EXPLAIN("解释 Finding", "scan_findings", "rf.explain"),
         SCAN("扫描结果工作台", "scan_findings", "rf.scan"),
         FEEDBACK("起草反馈", "feedback_exceptions", "rf.feedback.draft"),
@@ -59,6 +70,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         boolean mapped() { return this == SCAN || this == DOCTOR || this == CONFIG_VALIDATE || this == CONFIG_SHOW
             || this == STANDARD_VALIDATE || this == RULE_VALIDATE; }
         boolean scan() { return this == SCAN; }
+        boolean needsFinding() { return this == SHOW || this == NAVIGATE || this == EXPLAIN || this == FEEDBACK || this == EXCEPTION; }
         @Override public String toString() { return title; }
     }
     @Override public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
@@ -82,23 +94,33 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         if (panel != null) panel.settingsChanged();
     }
     private record Unavailable(String template) { @Override public String toString() { return template + " · 不可用"; } }
+    record RunRecord(Scene scene, String phase, String detail, Instant finishedAt) {
+        @Override public String toString() { return scene.title + " · " + phase + " · " + finishedAt; }
+    }
     static final class Panel extends JPanel implements Disposable {
         private final Project project;
         private final JTree tree;
-        private final JTextArea context = new JTextArea();
-        private final JTextArea output = new JTextArea();
-        private final JLabel status = new JLabel();
+        private final JTextArea context = new JBTextArea();
+        private final JTextArea output = new JBTextArea();
+        private final JLabel status = new JLabel() {
+            @Override public AccessibleContext getAccessibleContext() {
+                if (accessibleContext == null) accessibleContext = new AccessibleJLabel() {
+                    @Override public AccessibleRole getAccessibleRole() { return AccessibleRole.STATUS_BAR; }
+                };
+                return accessibleContext;
+            }
+        };
         private final JPanel form = new JPanel();
-        private final JTextField file = new JTextField();
-        private final JTextField actor = new JTextField();
-        private final JTextArea reason = new JTextArea(3, 20);
+        private final JTextField file = new JBTextField();
+        private final JTextField actor = new JBTextField();
+        private final JTextArea reason = new JBTextArea(3, 20);
         private final JComboBox<ThinClientCore.ScopeOption> scope = new JComboBox<>();
         private final JCheckBox actorConfirmed = new JCheckBox("我确认此 actor 是本次真实提交者");
         private final JCheckBox broaderConfirmed = new JCheckBox("我确认将申请范围扩大至所选 glob（非批准）");
         private final JComboBox<ErfArtifactIndex.Entry> artifacts = new JComboBox<>();
         private final JComboBox<String> selector = new JComboBox<>(new String[]{"requestId", "artifactDigest"});
-        private final JTextField resultFile = new JTextField();
-        private final JTextField trustFile = new JTextField();
+        private final JTextField resultFile = new JBTextField();
+        private final JTextField trustFile = new JBTextField();
         private final JComboBox<String> classification = new JComboBox<>(ThinClientCore.CLASSIFICATIONS.toArray(String[]::new));
         private final JButton execute = new JButton("执行所选场景");
         private final JButton cancel = new JButton("取消");
@@ -109,11 +131,11 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private final JComboBox<String> registryResource = new JComboBox<>(new String[]{"rules", "standards"});
         private final JComboBox<Integer> registryLimit = new JComboBox<>(new Integer[]{10, 50, 100, 256});
         private final JComboBox<ThinClientCore.RegistryPin> registryPins = new JComboBox<>();
-        private final JTextField registryDescriptor = new JTextField();
+        private final JTextField registryDescriptor = new JBTextField();
         private final JLabel registrySource = new JLabel("缺少独立发布来源");
         private final JButton nextPage = new JButton("下一页");
         private final java.util.LinkedHashMap<String, javax.swing.JComponent> mappedInputs = new java.util.LinkedHashMap<>();
-        private final JTextArea scanProgress = new JTextArea(3, 20);
+        private final JTextArea scanProgress = new JBTextArea(3, 20);
         private boolean updatingRegistry;
         private Scene scene = Scene.SHOW;
         private RfInvoker.Job job;
@@ -126,7 +148,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         private JsonObject commandMap;
 
         Panel(Project project) {
-            super(new BorderLayout(8, 8)); this.project = project;
+            super(new BorderLayout(JBUI.scale(8), JBUI.scale(8))); this.project = project;
+            setBorder(JBUI.Borders.empty(8));
             DefaultMutableTreeNode root = new DefaultMutableTreeNode("ERF");
             try (InputStream stream = ErfToolWindowFactory.class.getResourceAsStream("/ide-command-map.json")) {
                 if (stream == null) throw new IllegalStateException("MISSING_IDE_COMMAND_MAP");
@@ -143,21 +166,60 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                     }
                 }
             } catch (IOException error) { throw new IllegalStateException("IDE_COMMAND_MAP_READ_FAILED", error); }
-            root.add(runs); tree = new JTree(root); tree.setRootVisible(false);
-            JPanel right = new JPanel(new BorderLayout(6, 6));
+            root.add(runs); tree = new Tree(root); tree.setRootVisible(false);
+            tree.setCellRenderer(new DefaultTreeCellRenderer() {
+                @Override public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
+                        boolean expanded, boolean leaf, int row, boolean focus) {
+                    putClientProperty("html.disable", Boolean.TRUE);
+                    super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, focus);
+                    Object item = ((DefaultMutableTreeNode) value).getUserObject();
+                    setIcon(item instanceof Scene ? AllIcons.Actions.Execute : item instanceof RunRecord
+                        ? AllIcons.Actions.Refresh : AllIcons.Nodes.Folder);
+                    getAccessibleContext().setAccessibleName(item.toString());
+                    return this;
+                }
+            });
+            accessible(tree, "ERF 场景与运行记录");
+            accessible(form, "场景参数");
+            accessible(context, "当前工作区、连接与治理边界");
+            accessible(output, "执行回执与输出日志");
+            accessible(file, "当前选定的 FindingView 文件路径");
+            accessible(scanProgress, "扫描实时进度");
+            accessible(status, "运行状态");
+            JPanel right = new JPanel(new BorderLayout(JBUI.scale(6), JBUI.scale(6)));
             context.setEditable(false); context.setLineWrap(true); context.setWrapStyleWord(true);
             right.add(context, BorderLayout.NORTH);
             form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
             output.setEditable(false); output.setLineWrap(true); output.setWrapStyleWord(true);
-            JPanel details = new JPanel(new BorderLayout(6, 6)); details.add(form, BorderLayout.NORTH);
-            details.add(new JScrollPane(output), BorderLayout.CENTER); right.add(details, BorderLayout.CENTER);
-            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEADING));
-            JButton settings = new JButton("ERF 设置");
+            JBScrollPane formScroll = new JBScrollPane(form);
+            formScroll.setBorder(JBUI.Borders.empty());
+            accessible(formScroll, "场景参数（可滚动）");
+            formScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+            formScroll.setMinimumSize(new Dimension(0, 0));
+            JBScrollPane outputScroll = new JBScrollPane(output);
+            outputScroll.setMinimumSize(new Dimension(0, 0));
+            accessible(outputScroll, "执行回执（可滚动）");
+            OnePixelSplitter details = new OnePixelSplitter(true, .55f);
+            details.setFirstComponent(formScroll); details.setSecondComponent(outputScroll);
+            right.add(details, BorderLayout.CENTER);
+            JPanel buttons = new JPanel(new GridLayout(0, 2, JBUI.scale(6), JBUI.scale(6)));
+            JButton settings = new JButton("ERF 设置", AllIcons.General.Settings);
+            execute.setIcon(AllIcons.Actions.Execute); cancel.setIcon(AllIcons.Actions.Suspend);
+            refresh.setIcon(AllIcons.Actions.Refresh); pick.setIcon(AllIcons.Nodes.Folder);
             for (JButton button : List.of(execute, cancel, refresh, settings)) buttons.add(button);
             JPanel footer = new JPanel(new BorderLayout()); footer.add(status, BorderLayout.NORTH); footer.add(buttons, BorderLayout.SOUTH);
             right.add(footer, BorderLayout.SOUTH);
-            JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(tree), right);
-            split.setResizeWeight(.3); add(split);
+            OnePixelSplitter split = new OnePixelSplitter(true, .25f);
+            split.setFirstComponent(new JBScrollPane(tree)); split.setSecondComponent(right); add(split);
+            getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke("ESCAPE"), "cancelErf");
+            getActionMap().put("cancelErf", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent event) { if (job != null) job.cancel(); }
+            });
+            file.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                public void insertUpdate(javax.swing.event.DocumentEvent e) { refresh(); }
+                public void removeUpdate(javax.swing.event.DocumentEvent e) { refresh(); }
+                public void changedUpdate(javax.swing.event.DocumentEvent e) { refresh(); }
+            });
             file.setEditable(false);
             pick.addActionListener(e -> {
                 var chosen = FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFileDescriptor("json"), project, null);
@@ -167,6 +229,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 if (job != null) return;
                 var node = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
                 if (node != null && node.getUserObject() instanceof Scene s) setScene(s);
+                else if (node != null && node.getUserObject() instanceof RunRecord record)
+                    setState("运行记录 · " + record.phase(), record.scene().title + "\n时间：" + record.finishedAt() + "\n" + record.detail());
                 else if (node != null && node.getUserObject() instanceof Unavailable unavailable) {
                     scene = null; form.removeAll(); form.revalidate(); form.repaint();
                     setState("不可用", "尚未提供此命令的参数面板，不执行模板或自动准备安装资产。\n" + unavailable.template()); execute.setEnabled(false);
@@ -180,7 +244,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 var selected = (ThinClientCore.ScopeOption) scope.getSelectedItem();
                 broaderConfirmed.setEnabled(selected != null && selected.broader());
                 if (selected != null) lastScope = selected.value();
-                if (scene == Scene.EXCEPTION && job == null) execute.setEnabled(selected != null);
+                if (scene == Scene.EXCEPTION && job == null) updateActions();
                 if (selected != null) output.setText("将传入 scope：" + selected.value() + "\n来源：" + selected.source()
                     + "\n当前文件匹配：是（执行前复验）\n" + scopeEvidence);
             });
@@ -234,11 +298,11 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             mappedInputs.clear();
             form.add(new JLabel(next.title));
             if (next.mapped()) { mappedForm(next); }
-            if (!next.server() && !next.registry() && !next.mapped()) { form.add(pick); form.add(file); }
+            if (!next.server() && !next.registry() && !next.mapped()) { form.add(pick); field("FindingView 文件路径", file); }
             if (next.registry()) registryForm(next);
             if (next == Scene.FEEDBACK) field("分类", classification);
             if (next == Scene.FEEDBACK || next == Scene.EXCEPTION) {
-                field("提交者", actor); form.add(actorConfirmed); field("理由（原文传 CLI；当前 CLI 不接受换行/控制符）", new JScrollPane(reason));
+                field("提交者", actor); form.add(actorConfirmed); field("理由（原文传 CLI；当前 CLI 不接受换行/控制符）", new JBScrollPane(reason));
             }
             if (next == Scene.EXCEPTION) { field("scope（文件最窄默认；目录/module 须确认）", scope); form.add(broaderConfirmed); }
             if (next == Scene.EXPLAIN) {
@@ -249,11 +313,19 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             }
             if (next.server()) { field("本工作区已保存请求 / 回执（无需手选 JSON）", artifacts); refreshArtifacts(previousArtifact); }
             if (next == Scene.STATUS) field("查询身份（从所选对象读取）", selector);
-            execute.setText(next == Scene.REGISTRY_LIST ? "读取/刷新第一页" : next == Scene.REGISTRY_SHOW ? "核对独立 pin" : next == Scene.REGISTRY_SYNC ? "确认缓存签名包" : next == Scene.FEEDBACK || next == Scene.EXCEPTION ? "预览并保存草稿/申请" : "预览并执行");
+            execute.setText(next.scan() ? "预览并扫描（结果不等于 PASS）" : next == Scene.REGISTRY_LIST ? "读取/刷新第一页" : next == Scene.REGISTRY_SHOW ? "核对独立发布 pin" : next == Scene.REGISTRY_SYNC ? "确认缓存签名包" : next == Scene.FEEDBACK || next == Scene.EXCEPTION ? "预览并保存草稿/申请" : "预览并执行");
             form.revalidate(); form.repaint(); refresh();
             if (next == Scene.EXCEPTION && !file.getText().isBlank()) loadScopes();
         }
-        private void field(String text, JComponent input) { JLabel label = new JLabel(text); label.setLabelFor(input); form.add(label); form.add(input); }
+        private static void accessible(JComponent component, String name) {
+            component.getAccessibleContext().setAccessibleName(name);
+            component.getAccessibleContext().setAccessibleDescription(name);
+        }
+        private void field(String text, JComponent input) {
+            JComponent target = input instanceof JScrollPane scroll ? (JComponent) scroll.getViewport().getView() : input;
+            JLabel label = new JLabel(text); label.setLabelFor(target); accessible(target, text);
+            label.setBorder(JBUI.Borders.emptyTop(6)); form.add(label); form.add(input);
+        }
         private void fileField(String label, JTextField input) {
             input.setEditable(false); field(label, input);
             JButton choose = new JButton("选择 " + label.split("（")[0]);
@@ -293,26 +365,42 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             configureRegistry();
             context.setText("工作区：" + project.getBasePath() + "\nServer：" + (endpoint.isBlank() ? "未配置" : "已配置（由 CLI 校验连接）") + "\n提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。");
             cancel.setEnabled(false);
-            boolean ready = scene != null && project.getBasePath() != null && !c.rfPath.isBlank() && c.requestTimeoutMs > 0 && (!scene.server() || !endpoint.isBlank()) && (!scene.registry() || !c.connectionProfile.isBlank() || !endpoint.isBlank())
-                && (!scene.mapped() || scene == Scene.STANDARD_VALIDATE || scene == Scene.RULE_VALIDATE || project.getBasePath() != null);
-            nextPage.setEnabled(ready && scene == Scene.REGISTRY_LIST && registry.hasMore());
-            execute.setEnabled(ready && (scene != Scene.EXCEPTION || scope.getSelectedItem() != null));
+            boolean ready = ready();
+            updateActions();
             if (scene == null) setState("不可用", "尚未提供此场景参数面板。");
+            else if (scene.needsFinding() && file.getText().isBlank()) setState("缺少 Finding", "请选择 FindingView JSON 文件后执行。");
             else if (scene == Scene.EXCEPTION && scope.getSelectedItem() == null) setState("范围未就绪", scopeEvidence + "；请选择 Finding 并刷新上下文，不回退整仓库。");
             else setState(ready ? "就绪" : "未配置", ready ? "参数将在执行前预览；保存后才可选择同一对象提交。" : "请配置工作区、rf 路径、正整数超时及所需 Server endpoint。");
+        }
+        private boolean ready() {
+            var c = project.getService(ErfSettings.class).snapshot();
+            return scene != null && project.getBasePath() != null && !c.rfPath.isBlank() && c.requestTimeoutMs > 0
+                && (!scene.needsFinding() || !file.getText().isBlank())
+                && (!scene.server() || !endpoint.isBlank())
+                && (!scene.registry() || !c.connectionProfile.isBlank() || !endpoint.isBlank());
+        }
+        private void updateActions() {
+            boolean ready = job == null && ready();
+            execute.setEnabled(ready && (scene != Scene.EXCEPTION || scope.getSelectedItem() != null));
+            nextPage.setEnabled(ready && scene == Scene.REGISTRY_LIST && registry.hasMore());
         }
         private void clearScopes() {
             updatingScope = true; scope.removeAllItems(); updatingScope = false;
             broaderConfirmed.setSelected(false); scopeEvidence = "尚无可靠 scope 选项";
         }
-        private void setState(String phase, String detail) { status.setText(phase); output.setText(detail); }
+        private void setState(String phase, String detail) {
+            String previous = status.getText(); status.setText(phase); output.setText(detail); output.setCaretPosition(0);
+            status.getAccessibleContext().setAccessibleName("运行状态：" + phase);
+            status.getAccessibleContext().firePropertyChange(AccessibleContext.ACCESSIBLE_VISIBLE_DATA_PROPERTY, previous, phase);
+        }
         private static void enableTree(Component component, boolean enabled) {
             component.setEnabled(enabled);
             if (component instanceof Container container) for (Component child : container.getComponents()) enableTree(child, enabled);
         }
         private void busy(boolean value) {
-            execute.setEnabled(!value); cancel.setEnabled(value); tree.setEnabled(!value); refresh.setEnabled(!value); enableTree(form, !value);
-            nextPage.setEnabled(!value && scene == Scene.REGISTRY_LIST && registry.hasMore());
+            cancel.setEnabled(value); tree.setEnabled(!value); refresh.setEnabled(!value); enableTree(form, !value);
+            if (value) { execute.setEnabled(false); nextPage.setEnabled(false); cancel.requestFocusInWindow(); }
+            else updateActions();
         }
         private void loadScopes() {
             if (job != null || disposed) return;
@@ -331,7 +419,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 scope.setSelectedItem(restored); updatingScope = false; scopeFinding = input;
                 if (restored != null) lastScope = restored.value();
                 broaderConfirmed.setSelected(false); broaderConfirmed.setEnabled(restored != null && restored.broader());
-                execute.setEnabled(restored != null);
+                updateActions();
                 if (restored == null) scopeEvidence = "原选择已失效或无可靠范围；请明确重新选择，不自动替换。" + scopeEvidence;
                 setState(restored != null ? "范围已验证" : "范围不可用", scopeEvidence);
             }, error -> {
@@ -388,8 +476,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 String preview = "rf：" + c.rfPath + "\n参数数组（无 shell）：\n" + new GsonBuilder().setPrettyPrinting().create().toJson(argv);
                 if (entry != null) preview += "\nendpoint：" + entry.endpoint + "\nrequestId：" + entry.requestId + "\nartifactDigest：" + entry.artifactDigest
                     + "\n数据范围：digest-only 请求字段、actor、reason、classification/scope，不传源码。\n仅接收，非批准；未知结果只查状态、不自动重提。";
-                JTextArea previewText = new JTextArea(preview, 18, 65); previewText.setEditable(false); previewText.setLineWrap(true); previewText.setWrapStyleWord(true);
-                if (JOptionPane.showConfirmDialog(this, new JScrollPane(previewText), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                JTextArea previewText = new JBTextArea(preview, 18, 65); accessible(previewText, "实际 CLI 参数预览"); previewText.setEditable(false); previewText.setLineWrap(true); previewText.setWrapStyleWord(true);
+                if (JOptionPane.showConfirmDialog(this, new JBScrollPane(previewText), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
                 if (submit) { entry.status = "UNKNOWN"; index().remember(entry); }
                 run(request);
             } catch (IllegalArgumentException error) { setState("输入无效", error.getMessage() + "\n表单内容已保留。"); }
@@ -445,10 +533,12 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
             for (var element : command.getAsJsonArray("params")) {
                 JsonObject p = element.getAsJsonObject();
                 String name = p.get("name").getAsString();
+                String label = name.equals("deadlineMs") ? "deadline 毫秒（缺省 600 秒）"
+                    : p.has("label") ? p.get("label").getAsString() : name;
                 String kind = p.get("kind").getAsString();
                 boolean required = p.has("required") && p.get("required").getAsBoolean();
                 if ("bool".equals(kind)) {
-                    JCheckBox box = new JCheckBox(required ? name + "（必选）" : name);
+                    JCheckBox box = new JCheckBox(required ? label + "（必选）" : label);
                     if (required) box.setSelected(true);
                     mappedInputs.put(name, box); form.add(box);
                     continue;
@@ -458,22 +548,23 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                     for (var v : p.getAsJsonArray("values")) combo.addItem(v.getAsString());
                     if (!required) combo.insertItemAt("", 0);
                     combo.setSelectedItem(required ? combo.getItemAt(0) : "");
-                    mappedInputs.put(name, combo); field(name + (required ? "（必选）" : ""), combo);
+                    if (next.scan() && name.equals("progress")) combo.setSelectedItem("text");
+                    if (next.scan() && name.equals("format")) combo.setSelectedItem("json");
+                    mappedInputs.put(name, combo); field(label + (required ? "（必选）" : ""), combo);
                     continue;
                 }
-                JTextField input = new JTextField();
+                JTextField input = new JBTextField();
                 // repoRoot 来自当前工作区选择，不由用户键入。
                 if ("repoRoot".equals(name)) { input.setText(basePath); input.setEditable(false); }
                 if ("route".equals(name)) input.setText("rule-id");
                 mappedInputs.put(name, input);
-                field(name + (required ? "（必选）" : "") + ("number".equals(kind) ? "（数字）" : ""), input);
+                field(label + (required ? "（必选）" : "") + ("number".equals(kind) ? "（数字）" : ""), input);
             }
             if (next.scan()) {
                 scanProgress.setEditable(false); scanProgress.setLineWrap(true);
                 form.add(new JLabel("扫描进度（stderr progress 行；长任务不按 5 秒截断）"));
-                form.add(new JScrollPane(scanProgress));
+                form.add(new JBScrollPane(scanProgress));
             }
-            execute.setText(next.scan() ? "预览并扫描（结果不等于 PASS）" : "预览并执行");
         }
         private JsonObject findCommand(String commandId) {
             if (commandMap == null) return null;
@@ -516,14 +607,19 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                     : ThinClientCore.buildMappedArgs(template, List.copyOf(params.values()), values);
                 String preview = "rf 参数数组（无 shell）：\n" + new GsonBuilder().setPrettyPrinting().create().toJson(argv)
                     + (scene.scan() ? "\nexit=0 不代表 Gate PASS；结果以结构化 status/gate/authority 为准。" : "");
-                JTextArea text = new JTextArea(preview, 16, 65); text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
-                if (JOptionPane.showConfirmDialog(this, new JScrollPane(text), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                JTextArea text = new JBTextArea(preview, 16, 65); accessible(text, "实际 CLI 参数预览"); text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+                if (JOptionPane.showConfirmDialog(this, new JBScrollPane(text), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
                 long version = generation;
                 var c = project.getService(ErfSettings.class).snapshot();
                 var invoker = project.getService(RfInvoker.class);
                 String base = project.getBasePath();
-                busy(true); setState("运行中", scene.title);
-                job = invoker.submit(project, indicator -> invoker.run(c.rfPath, argv, base, c.requestTimeoutMs, indicator), result -> {
+                busy(true); scanProgress.setText(""); setState("运行中", scene.title);
+                job = invoker.submit(project, indicator -> invoker.run(c.rfPath, argv, base, c.requestTimeoutMs, indicator,
+                    line -> ApplicationManager.getApplication().invokeLater(() -> {
+                        if (disposed || version != generation || job == null) return;
+                        if (scene.scan()) scanProgress.append(line + "\n");
+                        else output.append("\n" + line);
+                    })), result -> {
                     job = null; if (disposed) return; busy(false);
                     if (version != generation) { refresh(); return; }
                     if (scene.scan()) {
@@ -565,8 +661,8 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
                 var c = project.getService(ErfSettings.class).snapshot(); String base = project.getBasePath(); long version = generation;
                 String preview = new GsonBuilder().setPrettyPrinting().create().toJson(request.args()) + "\n独立来源：" + (request.pin() == null ? "无（仅浏览）" : request.pin().provenance())
                     + "\n只调用 CLI。PIN_MATCH 不是安装；sync 仅按外部 descriptor 缓存，后续扫描仍须验证。";
-                JTextArea text = new JTextArea(preview, 16, 65); text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
-                if (JOptionPane.showConfirmDialog(this, new JScrollPane(text), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                JTextArea text = new JBTextArea(preview, 16, 65); accessible(text, "实际 CLI 参数预览"); text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+                if (JOptionPane.showConfirmDialog(this, new JBScrollPane(text), "确认实际 CLI 参数", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
                 if (version != generation || disposed) return;
                 var invoker = project.getService(RfInvoker.class); busy(true); setState("运行中", "registry " + action);
                 job = invoker.submit(project, indicator -> {
@@ -625,7 +721,7 @@ public final class ErfToolWindowFactory implements ToolWindowFactory {
         }
         private void finish(String phase, String detail) {
             setState(phase, detail);
-            runs.insert(new DefaultMutableTreeNode(scene.title + " · " + phase), 0);
+            runs.insert(new DefaultMutableTreeNode(new RunRecord(scene, phase, detail, Instant.now())), 0);
             if (runs.getChildCount() > 20) runs.remove(20);
             ((DefaultTreeModel) tree.getModel()).reload(runs);
         }

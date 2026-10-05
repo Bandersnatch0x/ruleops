@@ -5,17 +5,18 @@ const { randomBytes, createHash } = require('node:crypto');
 const core = require('./core');
 const { resolveSafeWorkspaceFile, resolveSafeWorkspaceDirectory, resolveSafeSelectedPath } = require('./path-safety');
 const { runRf } = require('./rf-invoker');
+const { html } = require('./sidebar-webview');
 
 const SCENARIOS = [
-  { id: 'erf.showFinding', label: '显示 Finding', section: 'scan_findings', fields: [] },
-  { id: 'erf.navigateToLocation', label: '跳转到 Finding', section: 'scan_findings', fields: [] },
+  { id: 'erf.showFinding', label: '展示 Finding', section: 'scan_findings', fields: [] },
+  { id: 'erf.navigateToLocation', label: '导航到位置', section: 'scan_findings', fields: [] },
   { id: 'erf.explainFinding', cli: 'rf.explain', label: '解释 Finding', section: 'scan_findings', fields: [] },
   { id: 'erf.scan', cli: 'rf.scan', label: '扫描结果工作台', section: 'scan_findings',
     fields: ['route', 'ruleId', 'candidate', 'deliveryDescriptor', 'format', 'progress', 'output', 'deadlineMs', 'base', 'head', 'host', 'resolver', 'runtimeHome'],
     scan: true, preview: true, autoRepoRoot: true,
     previewNote: '将委托 rf-runner 执行扫描；可能运行 Backend/Resolver 并写缓存/输出文件。exit=0 不代表 Gate PASS，以结果 status/gate/authority 为准。' },
-  { id: 'erf.draftFeedback', cli: 'rf.feedback.draft', label: '保存反馈草稿', section: 'feedback_exceptions', fields: ['classification', 'reason', 'actor'] },
-  { id: 'erf.requestException', cli: 'rf.exception.request', label: '保存例外申请', section: 'feedback_exceptions', fields: ['scope', 'reason', 'actor'] },
+  { id: 'erf.draftFeedback', cli: 'rf.feedback.draft', label: '起草反馈', section: 'feedback_exceptions', fields: ['classification', 'reason', 'actor'] },
+  { id: 'erf.requestException', cli: 'rf.exception.request', label: '申请例外', section: 'feedback_exceptions', fields: ['scope', 'reason', 'actor'] },
   { id: 'erf.submitFeedback', cli: 'rf.feedback.submit', label: '提交反馈', section: 'feedback_exceptions', fields: ['request'], server: true },
   { id: 'erf.submitException', cli: 'rf.exception.submit', label: '提交例外', section: 'feedback_exceptions', fields: ['request'], server: true },
   { id: 'erf.submissionStatus', cli: 'rf.submission.status', label: '查询提交状态', section: 'feedback_exceptions', fields: ['request', 'selector'], server: true },
@@ -32,7 +33,7 @@ const SCENARIOS = [
     previewNote: '运行创作校验器（只读输入）；仓库脚本可能准备 Maven classpath/临时文件。' },
 ];
 const LABELS = { ready: '就绪', unconfigured: '未配置', unavailable: '不可用', running: '运行中', failed: '失败', cancelled: '已取消', completed: '已完成（非批准）' };
-const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sceneIcon = scene => scene.scan ? 'search' : scene.registry ? 'package' : scene.server ? 'cloud-upload' : scene.section === 'feedback_exceptions' ? 'edit' : scene.section === 'workspace' ? 'tools' : scene.section === 'authoring_coverage' ? 'checklist' : scene.id === 'erf.navigateToLocation' ? 'go-to-file' : 'inspect';
 
 // 需要 digest-only FindingView 输入的场景；其余场景（scan/config/doctor/校验）不挑 Finding。
 const FINDING_SCENES = new Set(['erf.showFinding', 'erf.navigateToLocation', 'erf.explainFinding', 'erf.draftFeedback', 'erf.requestException']);
@@ -41,12 +42,17 @@ const needsFindingScene = id => FINDING_SCENES.has(id);
 function validateMessage(message, scene) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('INVALID_MESSAGE');
   const keys = Object.keys(message);
-  if (['pickFile', 'workspace', 'cancel', 'refresh', 'settings', 'pickAuthority', 'clearAuthority', 'pickReleasePins', 'pickDescriptor', 'nextPage'].includes(message.type) && keys.length === 1) return message;
+  if (['ready', 'pickFile', 'workspace', 'cancel', 'refresh', 'settings', 'pickAuthority', 'clearAuthority', 'pickReleasePins', 'pickDescriptor', 'nextPage'].includes(message.type) && keys.length === 1) return message;
   if (!['run', 'edit'].includes(message.type) || keys.length !== 2 || !keys.includes('fields') || !scene) throw new Error('INVALID_MESSAGE');
   const fields = message.fields;
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw new Error('INVALID_FIELDS');
   for (const [key, value] of Object.entries(fields)) {
     if (!scene.fields.includes(key) || typeof value !== 'string' || value.length > 16384 || value.includes('\0')) throw new Error('INVALID_FIELD:' + key);
+  }
+  if (message.type === 'run') {
+    for (const name of ['actor', 'reason']) {
+      if (scene.fields.includes(name) && !fields[name]?.trim()) throw new Error('MISSING_ARG:' + name);
+    }
   }
   return message;
 }
@@ -147,6 +153,8 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     return { path: picked.fsPath, modified: previous?.mtimeNs ?? null };
   }
   let view;
+  let progress = '';
+  let runSequence = 0;
   let controller;
   let disposed = false;
   let generation = 0;
@@ -160,9 +168,12 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     if (disposed) return;
     events.fire();
     void vscode.commands.executeCommand('setContext', 'erf.running', !!controller);
-    if (view) view.webview.html = html();
+    if (view) void view.webview.postMessage(viewState());
   };
-  const setState = (phase, detail = '') => { state = { phase, detail }; publish(); };
+  const setState = (phase, detail = '') => {
+    if (['ready', 'unconfigured', 'running'].includes(phase)) progress = '';
+    state = { phase, detail }; publish();
+  };
   function refresh() {
     if (controller) return;
     const c = config();
@@ -176,13 +187,19 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     onDidChangeTreeData: events.event,
     getChildren(node) {
       if (!node) return [...Object.entries(commandMap.sections).map(([id, label]) => ({ id, label, group: true })), { id: 'runs', label: '运行记录', group: true }];
-      if (node.id === 'runs') return history.map((run, i) => ({ id: 'run-' + i, label: run }));
+      if (node.id === 'runs') return history.map(run => ({ id: run.id, label: run.label + ' · ' + LABELS[run.phase], run }));
       return [...SCENARIOS.filter(s => s.section === node.id), ...commandMap.commands.filter(c => c.section === node.id && !SCENARIOS.some(s => s.cli === c.commandId)).map(c => ({ ...c, id: c.commandId, label: c.commandTemplate, unavailable: true }))];
     },
     getTreeItem(node) {
       const collapsed = ['pilot_governance', 'operations_status', 'runs'].includes(node.id);
       const item = new vscode.TreeItem(node.label, node.group ? (collapsed ? 1 : 2) : 0);
       item.id = node.id;
+      item.iconPath = new vscode.ThemeIcon(node.group ? (node.id === 'runs' ? 'history' : 'folder') : node.run ? 'history' : sceneIcon(node));
+      if (node.run) {
+        item.command = { command: 'erf.showRun', title: '查看运行回执', arguments: [node.id] };
+        item.description = node.run.timestamp;
+        item.tooltip = node.run.label + '\n' + node.run.timestamp;
+      }
       if (node.section) {
         item.command = { command: 'erf.selectScene', title: node.label, arguments: [node.id] };
         item.description = node.unavailable ? '不可用 · 待后续阶段' : scene.id === node.id ? LABELS[state.phase] : '';
@@ -201,7 +218,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     if (scene.id === 'erf.requestException' && !fields.scope) fields.scope = scopes[0]?.value || '';
     if (scene.registry) { fields.resource = registryType; if (scene.id === 'erf.registryList') fields.limit ||= '50'; }
     if (scene.server) { fields.request = selectedRequestPath || ''; fields.selector = 'requestId'; }
-    if (scene.scan) { fields.route ||= 'rule-id'; fields.format ||= 'json'; fields.progress ||= 'none'; }
+    if (scene.scan) { fields.route ||= 'rule-id'; fields.format ||= 'json'; fields.progress ||= 'text'; }
     if (scene.id === 'erf.configShow' || scene.id === 'erf.doctor') fields.format ||= 'text';
     generation++;
     refresh();
@@ -212,13 +229,14 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
   }
   async function execute(input, cursor) {
     if (controller) return;
+    validateMessage({ type: 'edit', fields: input }, scene);
+    input = Object.fromEntries(Object.entries({ ...fields, ...input }).filter(([key]) => scene.fields.includes(key)));
     validateMessage({ type: 'run', fields: input }, scene);
     refresh();
     if (state.phase !== 'ready') return;
     const selected = scene;
     const c = config();
     const runRoot = root;
-    input = Object.fromEntries(Object.entries({ ...fields, ...input }).filter(([key]) => selected.fields.includes(key)));
     if (selected.registry) {
       if (fields.pin !== input.pin) descriptor = '';
       if (input.resource !== registryType) { registryType = input.resource; registryPage = null; }
@@ -319,7 +337,11 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
         if (await vscode.window.showWarningMessage(preview, { modal: true }, '确认执行') !== '确认执行') return setState('cancelled', '未执行；独立 pin 与表单保留。');
         if (abort.signal.aborted || generation !== version || disposed) return;
       }
-      const result = await invoke(args, c, runRoot, abort.signal);
+      const result = await invoke(args, c, runRoot, abort.signal, { onStderrLine(line) {
+        if (generation !== version || disposed || abort.signal.aborted) return;
+        progress += (progress ? '\n' : '') + line;
+        publish();
+      } });
       if (generation !== version || disposed) return;
       if (result.reason === 'CANCELLED' || abort.signal.aborted) return setState('cancelled', '已停止；远端请求可能已经接收，取消不代表回滚，请查询状态。');
       if (result.reason === 'UNAVAILABLE') return setState('unavailable', result.stderr);
@@ -371,7 +393,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
       controller = null;
       if (generation === version && !disposed) {
         if (abort.signal.aborted) state = { phase: 'cancelled', detail: '已取消；远端副作用未知，必要时查询回执。' };
-        history.unshift(selected.label + ' · ' + LABELS[state.phase]);
+        history.unshift(Object.freeze({ id: 'run-' + (++runSequence), label: selected.label, timestamp: new Date().toISOString(), phase: state.phase, detail: state.detail }));
         history.splice(20);
         publish();
       } else refresh();
@@ -380,6 +402,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
   async function message(raw) {
     try {
       const m = validateMessage(raw, scene);
+      if (m.type === 'ready') { publish(); return; }
       if (m.type === 'cancel') { controller?.abort(); return; }
       if (controller) return;
       if (m.type === 'edit') {
@@ -432,12 +455,9 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
       }
     } catch (error) { if (!controller) setState('failed', error.message); }
   }
-  function html() {
-    const nonce = randomBytes(18).toString('base64');
+  function viewState() {
     const busy = !!controller;
-    const disabled = busy ? 'disabled' : '';
-    const options = (name, values) => `<select name="${name}" ${disabled}><option value="">请选择</option>${fields[name] && !values.some(v => v.value === fields[name]) ? `<option data-invalid="true" selected value="${escape(fields[name])}">已失效：${escape(fields[name])}</option>` : ''}${values.map(v => `<option value="${escape(v.value)}" ${fields[name] === v.value ? 'selected' : ''}>${escape(v.label)}</option>`).join('')}</select>`;
-    const labels = { reason: '理由（多行）', actor: 'actor（保存前须本人确认）', classification: '分类（本地 CLI 契约）', scope: 'scope（实际范围）', request: '当前已保存请求', selector: '查询选择器', resource: 'registry 类型', limit: '每页条数', pin: '独立发布记录：身份 / 版本 / 摘要 / provenance（完整绑定）', route: '扫描路线（互斥）', ruleId: 'rule id（route=rule-id）', candidate: 'candidate 目录（route=candidate）', deliveryDescriptor: 'delivery descriptor（route=delivery-descriptor）', format: '输出格式', progress: '进度输出', output: '结果/回执输出文件', deadlineMs: 'deadline 毫秒（缺省不截断）', base: 'base revision（与 head 成对）', head: 'head revision（与 base 成对）', host: 'host 命令（高级覆盖）', resolver: 'resolver 命令（高级覆盖）', runtimeHome: 'runtime home（高级覆盖）', config: '工作区配置文件（缺省 .ruleops/config.yaml）', scanProbe: 'scan-probe 外部命令（显式确认才执行）', files: '待校验文件（逗号分隔路径）' };
+    const labels = { reason: '理由（多行）', actor: 'actor（保存前须本人确认）', classification: '分类（本地 CLI 契约）', scope: 'scope（实际范围）', request: '当前已保存请求', selector: '查询选择器', resource: 'registry 类型', limit: '每页条数', pin: '独立发布记录：身份 / 版本 / 摘要 / provenance（完整绑定）', route: '扫描路线（互斥）', ruleId: 'rule id（route=rule-id）', candidate: 'candidate 目录（route=candidate）', deliveryDescriptor: 'delivery descriptor（route=delivery-descriptor）', format: '输出格式', progress: '进度输出', output: '结果/回执输出文件', deadlineMs: 'deadline 毫秒（缺省 600 秒）', base: 'base revision（与 head 成对）', head: 'head revision（与 base 成对）', host: 'host 命令（高级覆盖）', resolver: 'resolver 命令（高级覆盖）', runtimeHome: 'runtime home（高级覆盖）', config: '工作区配置文件（缺省 .ruleops/config.yaml）', scanProbe: 'scan-probe 外部命令（显式确认才执行）', files: '待校验文件（逗号分隔路径）' };
     const choices = {
       resource: (scene.id === 'erf.registrySync' ? ['rules'] : ['rules', 'standards']).map(value => ({ value, label: value })),
       limit: ['10', '50', '100', '256'].map(value => ({ value, label: value })),
@@ -450,21 +470,45 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
       format: (scene.scan ? ['text', 'json', 'sarif'] : ['text', 'json']).map(value => ({ value, label: value })),
       progress: ['text', 'json', 'none'].map(value => ({ value, label: value })),
     };
-    const needsFile = !!scene.fields && !scene.server && !scene.registry && !scene.scan
-      && !['erf.doctor', 'erf.configValidate', 'erf.configShow', 'erf.standardValidate', 'erf.ruleValidate'].includes(scene.id);
+    const needsFile = needsFindingScene(scene.id);
     const canRun = !busy && !!scene.fields && !!(scene.registry || scene.scan || (scene.server ? choices.request.length : !needsFile || file))
       && ['ready', 'failed', 'completed', 'cancelled'].includes(state.phase);
     const validChoices = (scene.fields || []).every(name => !choices[name] || choices[name].some(choice => choice.value === fields[name]));
+    const params = core.mapCommand(commandMap, scene.cli)?.params || [];
     const controls = (scene.fields || []).map(name => {
-      let control;
-      if (choices[name]) control = options(name, choices[name]);
-      else control = name === 'reason' ? `<textarea name="${name}" ${disabled}>${escape(fields[name])}</textarea>` : `<input name="${name}" value="${escape(fields[name])}" ${disabled}>`;
-      return `<label>${labels[name]}${control}</label>`;
-    }).join('');
-    return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><meta name="viewport" content="width=device-width,initial-scale=1"><style nonce="${nonce}">body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px}button,input,textarea,select{font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);padding:6px;margin:4px 0}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}input,textarea,select{box-sizing:border-box;width:100%}label{display:block;margin-top:12px}pre,p{white-space:pre-wrap;overflow-wrap:anywhere}h2{font-size:1.1em}:focus-visible{outline:2px solid var(--vscode-focusBorder)}</style></head><body><button data-action="workspace" ${disabled}>选择工作区</button><p>${escape(root || '未选择工作区')}<br>Server：${config().serverEndpoint ? '已配置（连接由 CLI 校验）' : '未配置'}</p><h2>${escape(scene.label)}</h2><p role="status">${LABELS[state.phase]}</p>${needsFile ? `<button data-action="pickFile" ${disabled}>选择 FindingView JSON</button><p>${escape(file || '未选择文件')}</p>` : ''}${scene.id === 'erf.explainFinding' ? `<button data-action="pickAuthority" ${disabled}>选择结果与独立信任根</button><button data-action="clearAuthority" ${disabled}>清除配对</button><p>${escape(authority.result || '无权威配对')} ${escape(authority.authorityTrust || '')}</p>` : ''}${scene.id === 'erf.requestException' ? `<p>${escape(scopeNote || (scopes.length ? '默认当前文件；扩范围须确认；预览不授予例外权威。' : '无可靠 scope 候选，请选择有效 Finding。'))}</p>` : ''}${scene.registry ? `<p>连接：${escape(config().connectionProfile ? 'profile FILE：' + config().connectionProfile + '（优先于 endpoint；失败不回退）' : '显式 Server endpoint（由 CLI 校验）')}<br>FORMAT_ONLY / PIN_MATCH · authority=UNKNOWN；不是安装。</p><button data-action="pickReleasePins" ${disabled}>选择独立发布记录（非信任根）</button><p>${escape(releaseSource || '缺少独立发布来源，不能核对/同步')}</p>${scene.id === 'erf.registrySync' ? `<button data-action="pickDescriptor" ${disabled}>选择外部签名 descriptor</button><p>${escape(descriptor || releasePins.find((_, index) => String(index) === fields.pin)?.deliveryDescriptor || '缺少 descriptor；禁止从响应构造')}</p>` : ''}${scene.id === 'erf.registryList' ? `<button data-action="nextPage" ${busy || !registryPage?.hasMore ? 'disabled' : ''}>下一页</button><p>${escape(registryPage ? '当前页 ' + registryPage.items.length + ' 条 · UNKNOWN' : '尚未浏览')}</p>` : ''}` : ''}<form>${controls}<button type="submit" ${!canRun || !validChoices ? 'disabled' : ''}>${scene.id === 'erf.registryList' ? '读取/刷新第一页' : scene.id === 'erf.registryShow' ? '核对独立 pin' : scene.id === 'erf.registrySync' ? '确认缓存签名包' : '执行所选场景'}</button></form><button data-action="cancel" ${busy ? '' : 'disabled'}>取消</button><button data-action="refresh" ${disabled}>刷新</button><button data-action="settings" ${disabled}>设置</button><p>提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。</p><pre aria-live="polite">${escape(state.detail)}</pre><script nonce="${nonce}">const api=acquireVsCodeApi();document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>api.postMessage({type:b.dataset.action})));document.querySelector('form').addEventListener('input',e=>{e.currentTarget.querySelector('[type=submit]').disabled=!${canRun}||[...e.currentTarget.querySelectorAll('select')].some(s=>!s.value||s.selectedOptions[0]?.dataset.invalid);api.postMessage({type:'edit',fields:Object.fromEntries(new FormData(e.currentTarget))});});document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();api.postMessage({type:'run',fields:Object.fromEntries(new FormData(e.target))});});</script></body></html>`;
+      const value = fields[name] || '';
+      const available = choices[name];
+      // The shared deadline label still claims no cutoff; the local process has a 600s budget.
+      return { name, value, label: name === 'deadlineMs' ? labels[name] : params.find(param => param.name === name)?.label || labels[name],
+        required: ['actor', 'reason'].includes(name) || !!available,
+        ...(available ? { choices: [{ value: '', label: '请选择' },
+          ...(value && !available.some(choice => choice.value === value) ? [{ value, label: '已失效：' + value, invalid: true }] : []), ...available] } : {}) };
+    });
+    const c = config();
+    return { type: 'update', contextKey: `${scene.id}:${root}:${generation}`, title: scene.label, status: LABELS[state.phase],
+      detail: state.detail, busy, progress, controls, canRun, validChoices, hasMore: !!registryPage?.hasMore,
+      workspace: (root || '未选择工作区') + '\nServer：' + (c.serverEndpoint ? '已配置（连接由 CLI 校验）' : '未配置'),
+      file: file || '未选择文件', authority: (authority.result || '无权威配对') + ' ' + (authority.authorityTrust || ''),
+      scopeNote: scopeNote || (scopes.length ? '默认当前文件；扩范围须确认；预览不授予例外权威。' : '无可靠 scope 候选，请选择有效 Finding。'),
+      registryNote: '连接：' + (c.connectionProfile ? 'profile FILE：' + c.connectionProfile + '（优先于 endpoint；失败不回退）' : '显式 Server endpoint（由 CLI 校验）') + '\nFORMAT_ONLY / PIN_MATCH · authority=UNKNOWN；不是安装。',
+      releaseNote: releaseSource || '缺少独立发布来源，不能核对/同步',
+      descriptorNote: descriptor || releasePins.find((_, index) => String(index) === fields.pin)?.deliveryDescriptor || '缺少 descriptor；禁止从响应构造',
+      pageNote: registryPage ? '当前页 ' + registryPage.items.length + ' 条 · UNKNOWN' : '尚未浏览',
+      executeLabel: scene.id === 'erf.registryList' ? '读取/刷新第一页' : scene.id === 'erf.registryShow' ? '核对独立发布 pin'
+        : scene.id === 'erf.registrySync' ? '确认缓存签名包' : ['erf.draftFeedback', 'erf.requestException'].includes(scene.id) ? '预览并保存草稿/申请' : '执行所选场景',
+      visible: { 'finding-section': needsFile, 'authority-section': scene.id === 'erf.explainFinding', 'scope-note': scene.id === 'erf.requestException',
+        'registry-section': !!scene.registry, 'descriptor-section': scene.id === 'erf.registrySync', 'page-section': scene.id === 'erf.registryList' } };
   }
   const register = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   register('erf.selectScene', open);
+  register('erf.showRun', async id => {
+    if (controller) return;
+    const run = history.find(entry => entry.id === id);
+    if (!run) throw new Error('UNKNOWN_RUN');
+    progress = '';
+    setState(run.phase, `运行记录：${run.label}\n时间：${run.timestamp}\n${run.detail}`);
+    await vscode.commands.executeCommand('erf.details.focus');
+  });
   register('erf.refresh', refresh);
   register('erf.cancel', () => controller?.abort());
   register('erf.settings', () => vscode.commands.executeCommand('workbench.action.openSettings', 'erf'));
@@ -472,6 +516,7 @@ function createSidebar(vscode, context, commandMap, invoke = runRf) {
     resolveWebviewView(resolved) {
       view = resolved;
       view.webview.options = { enableScripts: true, localResourceRoots: [] };
+      view.webview.html = html(randomBytes(18).toString('base64'));
       context.subscriptions.push(view.webview.onDidReceiveMessage(message), view.onDidDispose(() => { view = undefined; }));
       publish();
     },

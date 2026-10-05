@@ -18,43 +18,51 @@
     "commands": [
       {
         "command": "erf.showFinding",
-        "title": "ERF: 显示 Finding",
-        "category": "ERF"
+        "title": "ERF: 展示 Finding",
+        "category": "ERF",
+        "icon": "$(inspect)"
       },
       {
         "command": "erf.navigateToLocation",
-        "title": "ERF: 跳转到 Finding 位置",
-        "category": "ERF"
+        "title": "ERF: 导航到位置",
+        "category": "ERF",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "erf.explainFinding",
         "title": "ERF: 解释 Finding",
-        "category": "ERF"
+        "category": "ERF",
+        "icon": "$(inspect)"
       },
       {
         "command": "erf.draftFeedback",
         "title": "ERF: 起草反馈（PROPOSED）",
-        "category": "ERF"
+        "category": "ERF",
+        "icon": "$(edit)"
       },
       {
         "command": "erf.requestException",
         "title": "ERF: 申请例外（REQUESTED）",
-        "category": "ERF"
+        "category": "ERF",
+        "icon": "$(edit)"
       },
       {
         "command": "erf.submitFeedback",
         "title": "ERF: 提交反馈到 Server（RECEIVED_ONLY）",
-        "category": "ERF"
+        "category": "ERF",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "erf.submitException",
         "title": "ERF: 提交例外到 Server（RECEIVED_ONLY）",
-        "category": "ERF"
+        "category": "ERF",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "erf.submissionStatus",
         "title": "ERF: 查询提交状态",
-        "category": "ERF"
+        "category": "ERF",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "erf.refresh",
@@ -72,6 +80,60 @@
         "command": "erf.settings",
         "title": "打开 ERF 设置",
         "icon": "$(settings-gear)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.scan",
+        "title": "ERF: 扫描结果工作台",
+        "icon": "$(search)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.registryList",
+        "title": "ERF: 浏览规则库（元数据）",
+        "icon": "$(package)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.registryShow",
+        "title": "ERF: 核对独立发布 pin",
+        "icon": "$(package)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.registrySync",
+        "title": "ERF: 缓存签名规则包",
+        "icon": "$(package)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.doctor",
+        "title": "ERF: 环境诊断",
+        "icon": "$(tools)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.configValidate",
+        "title": "ERF: 校验工作区配置",
+        "icon": "$(tools)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.configShow",
+        "title": "ERF: 查看有效配置",
+        "icon": "$(tools)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.standardValidate",
+        "title": "ERF: 校验标准文件",
+        "icon": "$(checklist)",
+        "category": "ERF"
+      },
+      {
+        "command": "erf.ruleValidate",
+        "title": "ERF: 校验规则文件",
+        "icon": "$(checklist)",
         "category": "ERF"
       }
     ],
@@ -96,7 +158,7 @@
         "erf.requestTimeoutMs": {
           "type": "number",
           "default": 5000,
-          "description": "提交/状态查询的超时（毫秒）。"
+          "description": "HTTP 提交/状态查询/Registry 请求超时（毫秒）；本地扫描、诊断与校验进程缺省 600 秒，扫描可由 deadlineMs 覆盖。"
         },
         "erf.connectionProfile": {
           "type": "string",

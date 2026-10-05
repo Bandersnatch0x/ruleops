@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const core = require('../src/core');
-const { host, findingFile } = require('./sidebar-host');
+const { host, findingFile, attachWebview } = require('./sidebar-host');
 
 const digest = 'sha256:' + 'a'.repeat(64);
 const other = 'sha256:' + 'b'.repeat(64);
@@ -110,14 +110,13 @@ test('write failure path: CLI error leaves no saved request and shows failed, fo
   const h = host(async () => ({ code: 2, stdout: '', stderr: 'permission denied' }), { file });
   await h.sidebar.open('erf.draftFeedback');
   await h.sidebar.message({ type: 'pickFile' });
-  const webview = { onDidReceiveMessage() { return { dispose() {} }; } };
-  h.providers.webview.resolveWebviewView({ webview, onDidDispose() { return { dispose() {} }; } });
+  const webview = attachWebview(h);
   await h.sidebar.execute({ classification: 'documentation', actor: 'confirmed-user', reason: 'keep' });
   assert.equal(h.sidebar.state.phase, 'failed');
   assert.match(h.sidebar.state.detail, /exit=2/);
   assert.equal(h.sidebar.requests.length, 0);
-  assert.match(webview.html, /keep/);
-  assert.match(webview.html, /confirmed-user/);
+  assert.match(JSON.stringify(webview.update), /keep/);
+  assert.match(JSON.stringify(webview.update), /confirmed-user/);
 });
 
 // ---- scan：schema 非法输出 fail closed，不渲染 PASS ----

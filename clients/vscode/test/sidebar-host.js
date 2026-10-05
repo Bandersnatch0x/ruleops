@@ -12,6 +12,7 @@ function host(invoke, options = {}) {
   const disposable = () => ({ dispose() {} });
   const vscode = {
     EventEmitter: class { constructor() { this.event = () => disposable(); } fire() {} dispose() {} },
+    ThemeIcon: class { constructor(id) { this.id = id; } },
     TreeItem: class { constructor(label, state) { this.label = label; this.collapsibleState = state; } },
     Uri: { file: fsPath => ({ fsPath }) },
     commands: { registerCommand(id, fn) { commands.set(id, fn); return disposable(); }, async executeCommand(...args) { calls.push(args); } },
@@ -49,4 +50,13 @@ function findingFile(t, extra = {}, parent = os.tmpdir()) {
 
 
 
-module.exports = { host, findingFile };
+function attachWebview(h) {
+  const messages = [];
+  const webview = { writes: 0, messages, onDidReceiveMessage(fn) { this.message = fn; return { dispose() {} }; },
+    postMessage(data) { messages.push(data); return Promise.resolve(true); },
+    set html(value) { this.source = value; this.writes++; }, get html() { return this.source; },
+    get update() { return messages.at(-1); } };
+  h.providers.webview.resolveWebviewView({ webview, onDidDispose() { return { dispose() {} }; } });
+  return webview;
+}
+module.exports = { host, findingFile, attachWebview };

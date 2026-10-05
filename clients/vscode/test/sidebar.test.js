@@ -9,7 +9,7 @@ const { createHash } = require('node:crypto');
 const map = require('../../ide-command-map.json');
 const manifest = require('../package.json');
 
-const { host, findingFile } = require('./sidebar-host');
+const { host, findingFile, attachWebview } = require('./sidebar-host');
 
 function requestArtifact(kind = 'feedback', extra = {}) {
   return { apiVersion: 'rulefactory.io/v1', kind: kind === 'feedback' ? 'FeedbackDraft' : 'ExceptionRequest', schemaVersion: kind + (kind === 'feedback' ? '-draft-v1' : '-request-v1'),
@@ -68,8 +68,7 @@ test('messages reject arbitrary paths, commands, unknown fields and prototype ke
 
 test('webview has strict CSP, escaped output and no local resource access', async () => {
   const h = host(undefined, { folders: [] });
-  const webview = { onDidReceiveMessage(fn) { this.message = fn; return { dispose() {} }; } };
-  h.providers.webview.resolveWebviewView({ webview, onDidDispose() { return { dispose() {} }; } });
+  const webview = attachWebview(h);
   assert.match(webview.html, /default-src 'none'/); assert.match(webview.html, /script-src 'nonce-/);
   assert.deepEqual(webview.options.localResourceRoots, []);
   assert.doesNotMatch(webview.html, /unsafe-inline|https?:\/\//);
@@ -197,23 +196,23 @@ test('navigation uses the shared path gate and rejects symlink components before
 
 test('validated form edits survive host renders but not a workspace switch', async () => {
   const h = host(); await h.sidebar.open('erf.draftFeedback');
-  const webview = { onDidReceiveMessage() { return { dispose() {} }; } };
-  h.providers.webview.resolveWebviewView({ webview, onDidDispose() { return { dispose() {} }; } });
+  const webview = attachWebview(h);
   await h.sidebar.message({ type: 'edit', fields: { actor: 'confirmed-person', reason: '<script>private text</script>' } });
   await h.sidebar.message({ type: 'refresh' });
-  assert.match(webview.html, /confirmed-person/); assert.match(webview.html, /&lt;script&gt;private text/);
-  await h.sidebar.message({ type: 'workspace' }); assert.doesNotMatch(webview.html, /confirmed-person/);
+  assert.match(JSON.stringify(webview.update), /confirmed-person/); assert.ok(webview.update.controls.some(field => field.value === '<script>private text</script>'));
+  assert.equal(webview.writes, 1);
+  await h.sidebar.message({ type: 'workspace' }); assert.doesNotMatch(JSON.stringify(webview.update), /confirmed-person/);
 });
 
 
 test('dynamic scope dropdown uses only current verified config; stale selection never picks the first item', async t => {
   const file = findingFile(t); const root = path.dirname(file); const options = { file, effective: { modules: ['src'], source_roots: [] } };
   const h = host(saveCli, options); await h.sidebar.open('erf.requestException'); await h.sidebar.message({ type: 'pickFile' });
-  const webview = { onDidReceiveMessage() { return { dispose() {} }; } }; h.providers.webview.resolveWebviewView({ webview, onDidDispose() { return { dispose() {} }; } });
-  assert.match(webview.html, /select name="scope"/); assert.doesNotMatch(webview.html, /textarea name="scope"/);
+  const webview = attachWebview(h);
+  assert.ok(webview.update.controls.find(field => field.name === 'scope').choices);
   await h.sidebar.message({ type: 'edit', fields: { scope: 'removed/**', actor: 'person', reason: 'private reason' } });
-  await h.sidebar.message({ type: 'refresh' }); assert.match(webview.html, /已失效/);
-  assert.match(webview.html, /button type="submit" disabled/);
+  await h.sidebar.message({ type: 'refresh' }); assert.match(JSON.stringify(webview.update.controls), /已失效/);
+  assert.equal(webview.update.validChoices, false);
   await h.sidebar.execute({}); assert.equal(h.sidebar.state.phase, 'failed'); assert.match(h.sidebar.state.detail, /STALE_SCOPE/);
   assert.equal(fs.existsSync(path.join(root, 'saved-request.json')), false);
 });
@@ -223,12 +222,12 @@ test('save cancellation and output failure preserve form and never claim an arti
     const file = findingFile(t); const options = { file, [failure]: true }; let calls = 0;
     const h = host(async () => { calls++; return failure === 'write-error' ? { code: 2, stderr: 'permission denied' } : { code: 0, stdout: '{}' }; }, options);
     await h.sidebar.open('erf.draftFeedback'); await h.sidebar.message({ type: 'pickFile' });
-    const webview = { onDidReceiveMessage() { return { dispose() {} }; } }; h.providers.webview.resolveWebviewView({ webview, onDidDispose() { return { dispose() {} }; } });
+    const webview = attachWebview(h);
     await h.sidebar.execute({ classification: 'documentation', actor: 'confirmed-user', reason: 'keep this reason' });
     assert.equal(h.sidebar.state.phase, failure.startsWith('cancel') ? 'cancelled' : 'failed');
     assert.equal(calls, failure.startsWith('cancel') ? 0 : 1);
     assert.equal(h.sidebar.requests.length, 0); assert.doesNotMatch(h.sidebar.state.detail, /已保存|已生成申请|已起草/);
-    assert.match(webview.html, /keep this reason/); assert.match(webview.html, /confirmed-user/);
+    assert.match(JSON.stringify(webview.update), /keep this reason/); assert.match(JSON.stringify(webview.update), /confirmed-user/);
   }
 });
 

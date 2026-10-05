@@ -23,11 +23,18 @@ intellij {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
+// IntelliJ 2024.1 runs on Java 17, even when Gradle itself uses JDK 21.
+tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
+
 tasks {
+    test {
+        // Preserve the production Task.Backgroundable lifecycle in the headless SDK host.
+        systemProperty("intellij.progress.task.ignoreHeadless", "true")
+    }
     patchPluginXml {
         sinceBuild.set("241")
         untilBuild.set("")
