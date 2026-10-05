@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<title>JetBrains IntelliJ IDEA - Settings / Preferences (ERF Plugin)</title>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            // Authentic IntelliJ New UI Darcula Palette
+            ide: {
+              main: '#1e1f22',
+              dialog: '#2b2d30',
+              dialogHeader: '#313438',
+              sidebar: '#25262a',
+              input: '#1e1f22',
+              inputBorder: '#43454a',
+              inputFocus: '#3574f0',
+              border: '#393b40',
+              separator: '#35373c',
+              hover: '#313438',
+              active: '#2e3136',
+              primary: '#3574f0',
+              primaryHover: '#3068d9',
+              text: '#dfe1e5',
+              textMuted: '#868a91',
+              textDisabled: '#5a5d63',
+              badge: '#393b40',
+              codeKeyword: '#cc7832',
+              codeType: '#ffc66d',
+              codeFunc: '#56a8f5',
+              codeString: '#6a8759',
+              codeComment: '#7a7e85',
+              codeAnno: '#bbb529',
+              codeNum: '#6897bb'
+            }
+          },
+          borderRadius: {
+            DEFAULT: "0.125rem",
+            lg: "0.25rem",
+            xl: "0.5rem",
+            full: "0.75rem"
+          },
+          fontFamily: {
+            headline: ["Inter", "sans-serif"],
+            display: ["Inter", "sans-serif"],
+            body: ["Inter", "sans-serif"],
+            label: ["Public Sans", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 350, 'GRAD' 0, 'opsz' 20;
+      font-size: 16px;
+      line-height: 1;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #393b40;
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: #4e5157;
+    }
+  </style>
+</head>
+<body class="bg-ide-main text-ide-text font-body text-xs overflow-hidden select-none h-screen w-screen relative">
+<!-- ========================================================================= -->
+<!-- 1. FULL IDE BACKGROUND (IntelliJ IDEA Workspace: dimmed for modal) -->
+<!-- ========================================================================= -->
+<div class="absolute inset-0 flex flex-col pointer-events-none filter blur-[0.4px] brightness-[0.72] select-none z-0">
+<!-- TopNavBar (Shared Component Anchor) -->
+<header class="bg-ide-main text-ide-text font-headline text-xs docked full-width top-0 h-10 border-b border-ide-border flex items-center justify-between px-3 w-full h-10 select-none">
+<div class="flex items-center gap-3">
+<!-- JetBrains Logo / Product Name -->
+<div class="flex items-center gap-2">
+<div class="w-4 h-4 bg-gradient-to-tr from-[#f9354c] via-[#ff782e] to-[#21d789] rounded-sm flex items-center justify-center text-[9px] font-bold text-black font-mono">
+            IJ
+          </div>
+<span class="font-headline font-semibold text-xs text-ide-text">IntelliJ IDEA</span>
+</div>
+<span class="text-ide-border">|</span>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-[#27282c] border border-ide-border text-ide-text font-medium text-[11px]">
+<span class="material-symbols-outlined text-[14px] text-ide-textMuted" data-icon="folder">folder</span>
+<span>project-main</span>
+<span class="material-symbols-outlined text-[13px] text-ide-textMuted" data-icon="expand_more">expand_more</span>
+</div>
+<div class="flex items-center gap-1 text-[11px] text-ide-textMuted px-2 py-0.5 rounded hover:bg-ide-hover">
+<span class="material-symbols-outlined text-[14px]" data-icon="source_environment">source_environment</span>
+<span>git:main</span>
+</div>
+</div>
+<!-- Center Search Bar -->
+<div class="flex items-center bg-[#25262a] border border-ide-border rounded px-3 py-1 text-ide-textMuted w-72 justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px]" data-icon="search">search</span>
+<span class="text-[11px]">Search everywhere (Double Shift)</span>
+</div>
+<kbd class="text-[10px] bg-ide-dialog px-1 rounded border border-ide-border text-ide-textMuted">⇧⇧</kbd>
+</div>
+<!-- Trailing Action Icons -->
+<div class="flex items-center gap-2 text-ide-textMuted">
+<button class="flex items-center gap-1 px-2 py-1 rounded bg-[#2e3c2c] text-[#6cb562] font-mono text-[11px] border border-[#3b5936]">
+<span class="material-symbols-outlined text-[13px] fill-current" data-icon="play_arrow" data-weight="fill" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+<span>run</span>
+</button>
+<button class="p-1 rounded hover:bg-ide-hover text-ide-textMuted">
+<span class="material-symbols-outlined text-[15px]" data-icon="bug_report">bug_report</span>
+</button>
+<span class="w-[1px] h-4 bg-ide-border mx-1"></span>
+<button class="p-1 rounded hover:bg-ide-hover"><span class="material-symbols-outlined" data-icon="settings">settings</span></button>
+<button class="p-1 rounded hover:bg-ide-hover"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<span class="w-[1px] h-4 bg-ide-border mx-1"></span>
+<button class="p-1 hover:bg-ide-hover"><span class="material-symbols-outlined" data-icon="remove">remove</span></button>
+<button class="p-1 hover:bg-ide-hover"><span class="material-symbols-outlined" data-icon="crop_square">crop_square</span></button>
+<button class="p-1 hover:bg-[#c42b1c] hover:text-white"><span class="material-symbols-outlined" data-icon="close">close</span></button>
+</div>
+</header>
+<!-- Main Workspace (Editor + Project Tree) -->
+<div class="flex-1 flex overflow-hidden">
+<!-- SideNavBar (Shared Component Anchor) -->
+<aside class="fixed left-0 top-10 bottom-6 w-12 flex flex-col justify-between items-center py-2 z-40 bg-ide-sidebar border-r border-ide-border">
+<div class="flex flex-col items-center gap-2 w-full">
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-ide-primary border-l-2 border-ide-primary bg-ide-dialog" title="Project">
+<span class="material-symbols-outlined" data-icon="folder">folder</span>
+</button>
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-ide-textMuted hover:bg-ide-hover hover:text-ide-text" title="Commit">
+<span class="material-symbols-outlined" data-icon="commit">commit</span>
+</button>
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-ide-textMuted hover:bg-ide-hover hover:text-ide-text" title="Structure">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+</button>
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-ide-textMuted hover:bg-ide-hover hover:text-ide-text" title="Git">
+<span class="material-symbols-outlined" data-icon="source_environment">source_environment</span>
+</button>
+</div>
+<div class="flex flex-col items-center gap-2 w-full">
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-ide-primary bg-ide-dialog" title="Settings">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-ide-textMuted hover:bg-ide-hover" title="Terminal">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+</button>
+</div>
+</aside>
+<!-- Left Project File Explorer Pane -->
+<div class="ml-12 w-64 bg-[#212226] border-r border-ide-border flex flex-col font-mono text-[11px] text-ide-text">
+<div class="h-8 border-b border-ide-border px-3 flex items-center justify-between text-ide-textMuted font-headline text-xs font-semibold">
+<span>Project</span>
+<span class="material-symbols-outlined text-[14px]" data-icon="more_horiz">more_horiz</span>
+</div>
+<div class="p-2 space-y-1 font-body">
+<div class="flex items-center gap-1.5 py-0.5 text-ide-text">
+<span class="material-symbols-outlined text-[13px] text-ide-textMuted" data-icon="expand_more">expand_more</span>
+<span class="material-symbols-outlined text-[14px] text-ide-textMuted" data-icon="folder">folder</span>
+<span class="font-medium">project-main</span>
+</div>
+<div class="pl-4 space-y-0.5">
+<div class="flex items-center gap-1.5 py-0.5 text-ide-text">
+<span class="material-symbols-outlined text-[13px] text-ide-textMuted" data-icon="expand_more">expand_more</span>
+<span class="material-symbols-outlined text-[14px] text-ide-textMuted" data-icon="folder">folder</span>
+<span>src/main/java</span>
+</div>
+<div class="pl-4 space-y-0.5">
+<div class="flex items-center gap-1.5 py-0.5 text-[#3574f0] bg-[#27292f] rounded px-1">
+<span class="w-3 h-3 bg-[#e06236] text-[8px] font-bold text-white flex items-center justify-center rounded-sm">C</span>
+<span class="font-mono text-xs">OrderPaymentValidator.java</span>
+</div>
+<div class="flex items-center gap-1.5 py-0.5 text-ide-textMuted pl-1">
+<span class="w-3 h-3 bg-[#e06236] text-[8px] font-bold text-white flex items-center justify-center rounded-sm">C</span>
+<span class="font-mono text-xs">RuleExecutionService.java</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Editor Canvas (Code View) -->
+<div class="flex-1 bg-ide-main flex flex-col font-mono">
+<!-- Editor Tabs -->
+<div class="h-9 bg-[#212226] border-b border-ide-border flex items-center px-2 gap-1 text-[11px]">
+<div class="flex items-center gap-2 px-3 py-1.5 bg-ide-main border-t-2 border-ide-primary text-ide-text">
+<span class="w-3 h-3 bg-[#e06236] text-[8px] font-bold text-white flex items-center justify-center rounded-sm font-body">C</span>
+<span>OrderPaymentValidator.java</span>
+<span class="material-symbols-outlined text-[12px] text-ide-textMuted hover:text-white" data-icon="close">close</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 text-ide-textMuted hover:bg-ide-dialog">
+<span>application-prod.yml</span>
+</div>
+</div>
+<!-- Breadcrumb -->
+<div class="h-6 px-4 flex items-center gap-2 text-[10px] text-ide-textMuted border-b border-[#2b2d30] font-sans">
+<span>project-main</span> &gt; <span>src</span> &gt; <span>main</span> &gt; <span>java</span> &gt; <span class="text-ide-text">OrderPaymentValidator</span>
+</div>
+<!-- Code Content -->
+<div class="p-4 space-y-1 text-xs text-[#a9b7c6] leading-relaxed">
+<div><span class="text-ide-codeKeyword">package</span> com.enterprise.ruleengine.validator;</div>
+<div class="text-ide-codeComment">// Managed by Enterprise Rule Factory Plugin (v2.4.1)</div>
+<div><span class="text-ide-codeAnno">@Component</span></div>
+<div><span class="text-ide-codeKeyword">public class</span> <span class="text-ide-codeType">OrderPaymentValidator</span> {</div>
+<div class="pl-4"><span class="text-ide-codeAnno">@Autowired</span></div>
+<div class="pl-4"><span class="text-ide-codeKeyword">private</span> <span class="text-ide-codeType">ERFExecutionClient</span> <span class="text-ide-text">ruleClient</span>;</div>
+<br/>
+<div class="pl-4"><span class="text-ide-codeKeyword">public</span> <span class="text-ide-codeType">ValidationResult</span> <span class="text-ide-codeFunc">validateTransaction</span>(<span class="text-ide-codeType">PaymentPayload</span> payload) {</div>
+<div class="pl-8"><span class="text-ide-codeComment">// Execute ERF enterprise compliance verification</span></div>
+<div class="pl-8"><span class="text-ide-codeKeyword">return</span> ruleClient.evaluateRuleSet(<span class="text-ide-codeString">"PAYMENT_GATEWAY_V1"</span>, payload);</div>
+<div class="pl-4">}</div>
+<div>}</div>
+</div>
+</div>
+</div>
+<!-- Status Bar -->
+<footer class="h-6 bg-[#212226] border-t border-ide-border px-3 flex items-center justify-between text-[11px] text-ide-textMuted font-sans">
+<div class="flex items-center gap-3">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> ERF Daemon: Online</span>
+<span>UTF-8</span>
+<span>4 spaces</span>
+</div>
+<div class="flex items-center gap-3">
+<span>Line 14, Column 32</span>
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle">check_circle</span>
+</div>
+</footer>
+</div>
+<!-- ========================================================================= -->
+<!-- 2. MODAL BACKDROP (Semi-transparent Dimmer) -->
+<!-- ========================================================================= -->
+<div class="absolute inset-0 bg-black/45 backdrop-blur-[1px] z-50 flex items-center justify-center p-4">
+<!-- ======================================================================= -->
+<!-- 3. JETBRAINS SETTINGS / PREFERENCES MODAL DIALOG -->
+<!-- ======================================================================= -->
+<div class="w-full max-w-[880px] h-[580px] bg-ide-dialog text-ide-text rounded-lg border border-ide-border shadow-[0_20px_50px_rgba(0,0,0,0.65)] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-100 font-sans">
+<!-- Modal Window Header / Title Bar -->
+<div class="h-10 bg-ide-dialogHeader border-b border-ide-border flex items-center justify-between px-3 select-none flex-shrink-0">
+<div class="flex items-center gap-3">
+<span class="font-headline font-semibold text-xs tracking-wide text-ide-text">Settings</span>
+</div>
+<!-- Search Field inside Title/Header -->
+<div class="relative w-72">
+<span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[14px] text-ide-textMuted" data-icon="search">search</span>
+<input class="w-full h-7 pl-8 pr-6 text-xs bg-ide-input border border-ide-inputBorder rounded text-ide-text placeholder-ide-textMuted focus:outline-none focus:border-ide-inputFocus transition-colors" placeholder="Search settings (Ctrl+Alt+S)" type="text" value="ERF"/>
+<button class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-[13px] text-ide-textMuted hover:text-white" data-icon="close">close</button>
+</div>
+<!-- Window Controls -->
+<div class="flex items-center gap-1">
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-ide-hover text-ide-textMuted hover:text-ide-text transition-colors">
+<span class="material-symbols-outlined text-[14px]" data-icon="remove">remove</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-ide-hover text-ide-textMuted hover:text-ide-text transition-colors">
+<span class="material-symbols-outlined text-[13px]" data-icon="crop_square">crop_square</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-[#c42b1c] text-ide-textMuted hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[15px]" data-icon="close">close</span>
+</button>
+</div>
+</div>
+<!-- Main Two-Column Split Layout -->
+<div class="flex-1 flex min-h-0 overflow-hidden">
+<!-- =================================================================== -->
+<!-- LEFT COLUMN: Navigation Tree -->
+<!-- =================================================================== -->
+<div class="w-60 bg-[#25262a] border-r border-ide-border flex flex-col py-1 overflow-y-auto custom-scroll select-none flex-shrink-0 text-xs">
+<!-- Category 1: Appearance & Behavior -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+<span>Appearance &amp; Behavior</span>
+</div>
+<!-- Category 2: Keymap -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="w-[14px]"></span>
+<span>Keymap</span>
+</div>
+<!-- Category 3: Editor -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+<span>Editor</span>
+</div>
+<!-- Category 4: Plugins -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="w-[14px]"></span>
+<span>Plugins</span>
+</div>
+<!-- Category 5: Version Control -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+<span>Version Control</span>
+</div>
+<!-- Category 6: Build, Execution, Deployment -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+<span class="truncate">Build, Execution, Deployment</span>
+</div>
+<!-- Category 7: Languages & Frameworks -->
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm mx-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+<span>Languages &amp; Frameworks</span>
+</div>
+<!-- Category 8: Tools (Expanded) -->
+<div class="flex flex-col mt-0.5">
+<div class="flex items-center gap-1.5 px-3 py-1 text-ide-text font-medium hover:bg-ide-hover cursor-pointer rounded-sm mx-1">
+<span class="material-symbols-outlined text-[14px] text-ide-text" data-icon="expand_more">expand_more</span>
+<span>Tools</span>
+</div>
+<!-- Sub-items of Tools -->
+<div class="ml-4 space-y-0.5 pl-2 border-l border-[#35373c]">
+<div class="flex items-center px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm">
+<span>Terminal</span>
+</div>
+<div class="flex items-center px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm">
+<span>Web Browsers and Preview</span>
+</div>
+<div class="flex items-center px-3 py-1 text-ide-textMuted hover:bg-ide-hover hover:text-ide-text cursor-pointer rounded-sm">
+<span>Diff &amp; Merge</span>
+</div>
+<!-- Selected Item: ERF -->
+<div class="flex items-center justify-between px-3 py-1 bg-ide-primary text-white font-medium rounded-sm cursor-pointer shadow-sm">
+<span class="flex items-center gap-1.5">
+<span class="font-bold">ERF</span>
+</span>
+<span class="text-[9px] bg-white/20 px-1 py-0.2 rounded font-mono font-normal">Plugin</span>
+</div>
+</div>
+</div>
+</div>
+<!-- =================================================================== -->
+<!-- RIGHT COLUMN: Configuration Pane (FormBuilder Layout) -->
+<!-- =================================================================== -->
+<div class="flex-1 bg-ide-dialog flex flex-col overflow-y-auto custom-scroll p-6">
+<!-- Top Breadcrumb / Title -->
+<div class="flex items-center gap-1.5 text-[11px] text-ide-textMuted mb-1 font-label">
+<span>Tools</span>
+<span class="text-[10px]">&gt;</span>
+<span class="text-ide-text font-medium">ERF</span>
+</div>
+<!-- Main Pane Header -->
+<div class="flex items-center justify-between pb-3 mb-4">
+<div class="flex items-center gap-2.5">
+<div class="w-6 h-6 rounded bg-[#2c4068] text-ide-primary flex items-center justify-center font-bold text-xs border border-ide-primary/30">
+                ⚡
+              </div>
+<div>
+<h1 class="text-sm font-semibold text-white tracking-tight">Enterprise Rule Factory (ERF) 客户端配置</h1>
+<p class="text-[11px] text-ide-textMuted">配置本地 RuleOps 引擎与企业远程验证集群同步参数</p>
+</div>
+</div>
+<span class="text-[10px] text-ide-textMuted border border-ide-border px-2 py-0.5 rounded bg-ide-input">v2.4.1-final</span>
+</div>
+<!-- ================================================================= -->
+<!-- GROUP SECTION 1: 基本执行参数 (Core Execution) -->
+<!-- ================================================================= -->
+<div class="mb-5">
+<!-- Section Title Separator -->
+<div class="flex items-center gap-2 mb-3">
+<span class="text-xs font-semibold text-ide-text tracking-wide whitespace-nowrap">基本执行参数 (Core Execution)</span>
+<div class="h-[1px] w-full bg-ide-separator"></div>
+</div>
+<div class="space-y-3 pl-1">
+<!-- Row 1: rf 启动器路径 -->
+<div class="grid grid-cols-[170px_1fr] items-center gap-3">
+<label class="text-right text-xs text-ide-text select-none">
+                  rf 启动器路径:
+                </label>
+<div class="flex items-center gap-1.5 max-w-md">
+<div class="relative flex-1">
+<input class="w-full h-7 px-2.5 text-xs font-mono bg-ide-input border border-ide-inputBorder rounded text-ide-text focus:outline-none focus:border-ide-inputFocus transition-colors" type="text" value="/usr/local/bin/rf"/>
+</div>
+<button class="h-7 px-2.5 bg-ide-dialog border border-ide-inputBorder rounded text-ide-text hover:bg-ide-hover hover:border-[#5a5d63] flex items-center justify-center text-xs font-mono transition-colors" title="Browse File...">
+                    ...
+                  </button>
+</div>
+</div>
+<!-- Row 2: Server endpoint -->
+<div class="grid grid-cols-[170px_1fr] items-center gap-3">
+<label class="text-right text-xs text-ide-text select-none">
+                  Server endpoint:
+                </label>
+<div class="flex items-center gap-2 max-w-md">
+<input class="flex-1 h-7 px-2.5 text-xs font-mono bg-ide-input border border-ide-inputBorder rounded text-ide-text focus:outline-none focus:border-ide-inputFocus transition-colors" type="text" value="https://erf-server.corp.internal/v1"/>
+<button class="h-7 px-3 bg-[#313438] border border-ide-inputBorder hover:border-[#52565e] hover:bg-[#383b40] rounded text-ide-text text-xs flex items-center gap-1 whitespace-nowrap transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[13px] text-emerald-400" data-icon="sync">sync</span>
+<span>测试连接 (Test Connection)</span>
+</button>
+</div>
+</div>
+<!-- Row 3: Registry connection profile FILE -->
+<div class="grid grid-cols-[170px_1fr] items-start gap-3 pt-0.5">
+<label class="text-right text-xs text-ide-text select-none pt-1">
+                  Registry connection profile FILE:
+                </label>
+<div class="flex flex-col gap-1 max-w-md">
+<div class="flex items-center gap-1.5 w-full">
+<input class="flex-1 h-7 px-2.5 text-xs font-mono bg-ide-input border border-ide-inputBorder rounded text-ide-text focus:outline-none focus:border-ide-inputFocus transition-colors" type="text" value="/home/kali/.ruleops/registry-profile.json"/>
+<button class="h-7 px-2.5 bg-ide-dialog border border-ide-inputBorder rounded text-ide-text hover:bg-ide-hover hover:border-[#5a5d63] flex items-center justify-center text-xs font-mono transition-colors" title="Browse Registry Profile...">
+                      ...
+                    </button>
+</div>
+<span class="text-[11px] text-ide-textMuted italic pl-0.5">仅路径，不填凭据</span>
+</div>
+</div>
+<!-- Row 4: 请求超时（毫秒） -->
+<div class="grid grid-cols-[170px_1fr] items-start gap-3 pt-0.5">
+<label class="text-right text-xs text-ide-text select-none pt-1">
+                  请求超时（毫秒）:
+                </label>
+<div class="flex flex-col gap-1 max-w-lg">
+<div class="flex items-center gap-3">
+<!-- JSpinner number input with up/down arrows -->
+<div class="relative w-28 h-7 bg-ide-input border border-ide-inputBorder rounded flex items-center overflow-hidden focus-within:border-ide-inputFocus">
+<input class="w-full h-full bg-transparent px-2.5 text-xs font-mono text-ide-text border-0 focus:ring-0 focus:outline-none" type="text" value="5000"/>
+<div class="flex flex-col border-l border-ide-inputBorder h-full w-5 bg-ide-dialog">
+<button class="flex-1 flex items-center justify-center text-ide-textMuted hover:text-ide-text hover:bg-ide-hover text-[9px] border-b border-ide-inputBorder leading-none">▲</button>
+<button class="flex-1 flex items-center justify-center text-ide-textMuted hover:text-ide-text hover:bg-ide-hover text-[9px] leading-none">▼</button>
+</div>
+</div>
+<span class="text-[11px] text-ide-textMuted">ms</span>
+</div>
+<!-- Helper comment text -->
+<span class="text-[11px] text-ide-textMuted">网络短请求超时，本地长任务自动使用 600000ms 独立超时</span>
+</div>
+</div>
+</div>
+</div>
+<!-- ================================================================= -->
+<!-- GROUP SECTION 2: 隐私与安全 (Telemetry & Security) -->
+<!-- ================================================================= -->
+<div class="mb-4">
+<!-- Section Title Separator -->
+<div class="flex items-center gap-2 mb-3">
+<span class="text-xs font-semibold text-ide-text tracking-wide whitespace-nowrap">隐私与安全 (Telemetry &amp; Security)</span>
+<div class="h-[1px] w-full bg-ide-separator"></div>
+</div>
+<div class="space-y-3 pl-1">
+<!-- Checkbox -->
+<div class="flex items-start gap-2.5 ml-[170px]">
+<input checked="" class="w-3.5 h-3.5 mt-0.5 rounded bg-ide-input border-ide-inputBorder text-ide-primary focus:ring-0 focus:ring-offset-0 cursor-pointer" id="telemetry" type="checkbox"/>
+<label class="text-xs text-ide-text cursor-pointer select-none" for="telemetry">
+                  启用匿名使用遥测与诊断上报 (telemetry)
+                </label>
+</div>
+<!-- Contextual Notice Banner / Callout with Bulb Icon -->
+<div class="ml-[170px] max-w-lg bg-[#272a30] border border-ide-border/80 rounded p-2.5 flex items-start gap-2.5 shadow-inner">
+<span class="material-symbols-outlined text-[16px] text-amber-400 mt-0.5 flex-shrink-0" data-icon="lightbulb">lightbulb</span>
+<p class="text-[11px] text-ide-textMuted leading-relaxed">
+                  连接安全与业务校验由 CLI 定义，插件不持有外部证书或权威。
+                </p>
+</div>
+</div>
+</div>
+<!-- Vertical Spacer (IntelliJ addComponentFillVertically behavior) -->
+<div class="flex-1"></div>
+</div>
+</div>
+<!-- =================================================================== -->
+<!-- BOTTOM ACTION BAR -->
+<!-- =================================================================== -->
+<div class="h-12 bg-ide-dialog border-t border-ide-border px-4 flex items-center justify-between flex-shrink-0 select-none">
+<!-- Left: Help question mark button -->
+<button class="w-6 h-6 rounded-full border border-ide-inputBorder bg-ide-dialog text-ide-textMuted hover:text-ide-text hover:bg-ide-hover flex items-center justify-center text-xs font-bold transition-colors" title="Help (F1)">
+          ?
+        </button>
+<!-- Right: Action Buttons (OK, Cancel, Apply) -->
+<div class="flex items-center gap-2 font-sans text-xs">
+<!-- OK Button (Primary Action) -->
+<button class="h-7 px-4 min-w-[72px] bg-ide-primary hover:bg-ide-primaryHover text-white font-medium rounded text-xs transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-ide-primary/50">
+            OK
+          </button>
+<!-- Cancel Button -->
+<button class="h-7 px-4 min-w-[72px] bg-[#313438] hover:bg-[#383b40] border border-ide-inputBorder text-ide-text rounded text-xs transition-colors focus:outline-none">
+            Cancel
+          </button>
+<!-- Apply Button (Enabled) -->
+<button class="h-7 px-4 min-w-[72px] bg-[#313438] hover:bg-[#383b40] border border-ide-inputBorder text-ide-text rounded text-xs transition-colors focus:outline-none">
+            Apply
+          </button>
+</div>
+</div>
+</div>
+</div>
+</body></html>

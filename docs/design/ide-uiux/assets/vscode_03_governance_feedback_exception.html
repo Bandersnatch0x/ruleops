@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VS Code ERF 反馈与例外申请面板 (Webview)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            vscode: {
+              bg: '#1e1e1e',
+              sidebar: '#252526',
+              editor: '#1e1e1e',
+              panel: '#181818',
+              card: '#252526',
+              border: '#3c3c3c',
+              focusBorder: '#007fd4',
+              inputBg: '#3c3c3c',
+              inputBorder: '#3c3c3c',
+              inputText: '#cccccc',
+              errorBorder: '#f14c4c',
+              errorText: '#f14c4c',
+              errorBg: 'rgba(241, 76, 76, 0.1)',
+              warningText: '#cca700',
+              badgeBg: '#2d2d2d',
+              accent: '#007acc',
+              accentHover: '#0062a3',
+              disabledBg: '#333333',
+              disabledText: '#777777',
+              description: '#858585',
+              muted: '#969696',
+              text: '#cccccc',
+              heading: '#e0e0e0',
+              highSev: '#f85149',
+              highSevBg: 'rgba(248, 81, 73, 0.15)',
+              codeBg: '#181818'
+            }
+          },
+          fontFamily: {
+            mono: ['Consolas', 'Fira Code', 'Monaco', 'Courier New', 'monospace'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* VS Code Webview native styling emulation */
+    :root {
+      --vscode-editor-background: #1e1e1e;
+      --vscode-editor-foreground: #cccccc;
+      --vscode-errorForeground: #f14c4c;
+      --vscode-descriptionForeground: #858585;
+      --vscode-input-background: #2b2b2b;
+      --vscode-input-border: #3c3c3c;
+      --vscode-button-background: #0e639c;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #1177bb;
+    }
+    body {
+      background-color: #1e1e1e;
+      color: #cccccc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      user-select: none;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #424242;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #4f4f4f;
+    }
+    input, textarea, select {
+      user-select: text;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-vscode-bg text-vscode-text flex flex-col justify-between selection:bg-[#264f78] selection:text-white antialiased text-[13px]">
+
+  <!-- Top Title / Breadcrumb / Status Bar within Webview -->
+  <header class="border-b border-vscode-border bg-[#181818] px-5 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid fa-shield-halved text-[#007acc] text-base"></i>
+        <h1 class="font-semibold text-vscode-heading text-sm tracking-tight flex items-center gap-2">
+          <span>ERF 治理工作台</span>
+          <span class="text-xs px-2 py-0.5 rounded bg-[#2b2b2b] text-[#858585] border border-vscode-border font-mono">v2.8.4</span>
+        </h1>
+      </div>
+      <span class="text-vscode-border text-xs">/</span>
+      <span class="text-vscode-description text-xs flex items-center gap-1.5 font-medium">
+        <i class="fa-regular fa-file-pen text-xs"></i> 反馈与例外申请表单 (Webview)
+      </span>
+    </div>
+
+    <div class="flex items-center space-x-3 text-xs">
+      <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-600/40 text-emerald-400 font-mono text-[11px]">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        RuleEngine Daemon: Ready (Port 4080)
+      </span>
+      <div class="h-3.5 w-[1px] bg-vscode-border"></div>
+      <button class="hover:text-white text-vscode-description transition-colors p-1" title="刷新 Webview">
+        <i class="fa-solid fa-arrow-rotate-right"></i>
+      </button>
+      <button class="hover:text-white text-vscode-description transition-colors p-1" title="帮助文档">
+        <i class="fa-regular fa-circle-question"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Scrollable Content Area -->
+  <main class="flex-1 max-w-5xl w-full mx-auto p-6 space-y-6 custom-scrollbar">
+
+    <!-- 1. Top Section: Selected Finding Card -->
+    <section aria-labelledby="finding-heading" class="rounded-md border border-vscode-border bg-vscode-card shadow-md overflow-hidden">
+      <!-- Header row of the card -->
+      <div class="px-4 py-2.5 bg-[#2d2d2d] border-b border-vscode-border flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <span class="px-2 py-0.5 text-[11px] font-bold rounded bg-vscode-highSevBg text-vscode-highSev border border-red-500/30 flex items-center gap-1.5">
+            <i class="fa-solid fa-triangle-exclamation text-[10px]"></i> HIGH SEVERITY
+          </span>
+          <span class="font-mono font-medium text-vscode-heading text-xs">
+            sec-014 · AvoidHardcodedSecret
+          </span>
+          <span class="text-[11px] text-vscode-description font-mono">(PMD Engine)</span>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <!-- Quick jump link -->
+          <a href="#" class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded text-[#3794ff] hover:text-[#58a6ff] hover:bg-[#1f242c] transition-colors border border-transparent hover:border-[#3794ff]/30 font-medium group">
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] group-hover:scale-110 transition-transform"></i>
+            <span>在编辑器中跳转到代码</span>
+            <kbd class="px-1.5 py-0.2 rounded bg-[#1e1e1e] border border-[#3c3c3c] text-[10px] font-mono text-neutral-400 ml-0.5">F8</kbd>
+          </a>
+        </div>
+      </div>
+
+      <!-- Card details body -->
+      <div class="p-4 space-y-3">
+        <!-- Target location & summary -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#303030]">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-vscode-description">命中代码位置:</span>
+            <code class="px-2 py-0.5 rounded bg-vscode-codeBg border border-vscode-border text-neutral-200 font-mono font-medium">
+              OrderService.java:42:15
+            </code>
+            <span class="text-neutral-500 font-mono text-[11px]">(Line 42, Col 15)</span>
+          </div>
+
+          <!-- Badges -->
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#1e1e1e] border border-vscode-border text-neutral-300 text-[11px] font-mono">
+              <i class="fa-solid fa-fingerprint text-[#007acc] text-[10px]"></i>
+              <span>Fingerprint:</span>
+              <span class="text-neutral-400 select-all font-semibold">a1b2c3d4e5f6</span>
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#1e1e1e] border border-amber-600/30 text-amber-300 text-[11px] font-medium">
+              <i class="fa-solid fa-lock text-[9px]"></i>
+              <span>Digest-only FindingView</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Code Context Snippet Preview (collapsed digest view) -->
+        <div class="rounded bg-vscode-codeBg border border-[#2e2e2e] p-3 font-mono text-xs text-neutral-300 overflow-x-auto">
+          <div class="text-[11px] text-vscode-description mb-1.5 flex items-center justify-between">
+            <span>// 敏感凭据 AST 模式匹配证据 (脱敏摘要)</span>
+            <span class="text-[10px] text-emerald-400">AST_IDENTIFIED: StringLiteral</span>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="text-neutral-600 select-none text-right w-6">41</span>
+            <span class="text-neutral-400">    public PaymentResult executePayment(Order order) {</span>
+          </div>
+          <div class="flex items-start gap-3 bg-red-950/20 -mx-3 px-3 border-l-2 border-red-500">
+            <span class="text-red-400 select-none text-right w-6">42</span>
+            <span>        String apiKey = <span class="bg-red-900/60 text-red-200 px-1 py-0.5 rounded border border-red-500/40 underline decoration-wavy decoration-red-400">"ak_live_99f2e811bc470a1e"</span>; <span class="text-neutral-500">// [Hardcoded Secret]</span></span>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="text-neutral-600 select-none text-right w-6">43</span>
+            <span class="text-neutral-400">        return gatewayClient.dispatch(apiKey, order);</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Form Section -->
+    <section aria-labelledby="form-heading" class="rounded-md border border-vscode-border bg-vscode-card p-5 shadow-sm space-y-6">
+
+      <!-- Scenario Switcher: Tabs -->
+      <div>
+        <div class="flex items-center justify-between border-b border-vscode-border pb-2.5">
+          <div>
+            <h2 id="form-heading" class="text-sm font-semibold text-vscode-heading flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-[#007acc]"></i>
+              <span>处置方案与意图配置</span>
+            </h2>
+            <p class="text-vscode-description text-xs mt-0.5">请选择对应的业务场景以生成规范的本地草稿，并在审查前完成必填字段录入。</p>
+          </div>
+          <span class="text-[11px] font-mono text-neutral-400 bg-[#1e1e1e] px-2 py-1 rounded border border-vscode-border">
+            Schema: ERF-v2-Form
+          </span>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex space-x-1 mt-4 p-1 bg-[#1a1a1a] rounded border border-vscode-border">
+          <button type="button" class="flex-1 py-2 px-3 rounded text-xs font-medium text-neutral-400 hover:text-white transition-all flex items-center justify-center gap-2 hover:bg-[#252526]">
+            <i class="fa-regular fa-comment-dots"></i>
+            <span>起草反馈</span>
+            <span class="text-[11px] font-mono opacity-60">(rf.feedback.draft)</span>
+          </button>
+          
+          <!-- Active Tab: 申请例外 -->
+          <button type="button" class="flex-1 py-2 px-3 rounded text-xs font-semibold text-white bg-[#0e639c] shadow-sm transition-all flex items-center justify-center gap-2 relative">
+            <i class="fa-solid fa-file-shield text-amber-300"></i>
+            <span>申请例外</span>
+            <span class="text-[11px] font-mono text-sky-100">(rf.exception.request)</span>
+            <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-vscode-card" title="存在待修正字段"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Inputs Grid -->
+      <form class="space-y-5" onsubmit="return false;">
+
+        <!-- Scope / Classification Dropdown -->
+        <div class="space-y-1.5">
+          <label for="scope-select" class="block text-xs font-semibold text-vscode-heading">
+            例外范围 / 判定分类 (Scope / Classification) <span class="text-vscode-highSev">*</span>
+          </label>
+          <div class="relative">
+            <select id="scope-select" class="w-full bg-[#3c3c3c] border border-vscode-border text-vscode-text rounded px-3 py-2 text-xs focus:outline-none focus:border-vscode-focusBorder focus:ring-1 focus:ring-vscode-focusBorder cursor-pointer transition-colors appearance-none font-sans pr-8">
+              <option value="legacy_migration_grace" selected>
+                legacy_migration_grace (技术债务宽限期 - 遗留系统改造迁移中)
+              </option>
+              <option value="rule_false_positive">
+                rule_false_positive (误报 - 规则 AST 匹配不当或测试模拟数据)
+              </option>
+              <option value="compensating_control">
+                compensating_control (已有补偿性安全控制 - WAF/网关白名单拦截)
+              </option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-neutral-400 text-xs">
+              <i class="fa-solid fa-chevron-down text-[10px]"></i>
+            </div>
+          </div>
+          <p class="text-[11px] text-vscode-description">
+            此分类将决定例外审批流由架构委员会或 SecOps 团队主审，并影响豁免时效（默认：30天）。
+          </p>
+        </div>
+
+        <!-- Actor Input with Validation Error State -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label for="actor-input" class="block text-xs font-semibold text-vscode-heading">
+              申请人 / 责任主体 (Actor) <span class="text-vscode-highSev font-bold">*</span>
+            </label>
+            <span class="text-[11px] text-vscode-description font-mono">格式: ldap@enterprise / team-alias</span>
+          </div>
+
+          <!-- Input field with error border -->
+          <div class="relative">
+            <input 
+              type="text" 
+              id="actor-input" 
+              name="actor"
+              aria-invalid="true" 
+              aria-describedby="actor-error"
+              placeholder="例如: alex.chen@corp.internal" 
+              class="w-full bg-[#2b2b2b] border-2 border-vscode-errorBorder text-vscode-inputText rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-vscode-errorBorder transition-colors font-mono pl-8 shadow-inner"
+            />
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-neutral-500">
+              <i class="fa-regular fa-user text-xs"></i>
+            </div>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-vscode-errorText">
+              <i class="fa-solid fa-circle-exclamation text-xs"></i>
+            </div>
+          </div>
+
+          <!-- Error Message Banner / Text in --vscode-errorForeground -->
+          <div id="actor-error" class="flex items-center gap-1.5 text-xs text-vscode-errorText bg-vscode-errorBg border border-vscode-errorBorder/40 rounded px-2.5 py-1.5 mt-1 font-medium animate-fadeIn">
+            <i class="fa-solid fa-circle-xmark text-xs flex-shrink-0"></i>
+            <span>此字段为必填项 (actor 不能为空)</span>
+          </div>
+        </div>
+
+        <!-- Reason Textarea with Validation Error State -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label for="reason-input" class="block text-xs font-semibold text-vscode-heading">
+              申请理由与风险说明 (Reason) <span class="text-vscode-highSev font-bold">*</span>
+            </label>
+            <!-- Character Counter -->
+            <span class="text-[11px] font-mono text-vscode-errorText font-semibold bg-[#2a1a1a] px-2 py-0.5 rounded border border-red-900/50">
+              0 / 500
+            </span>
+          </div>
+
+          <!-- Multi-line Textarea with aria-invalid='true' and error border -->
+          <div class="relative">
+            <textarea 
+              id="reason-input" 
+              name="reason"
+              rows="4" 
+              aria-invalid="true" 
+              aria-describedby="reason-error"
+              placeholder="请详述该硬编码密钥在当前分支的存续背景、预计安全重构里程碑、以及宽限期内的兜底补偿措施..." 
+              class="w-full bg-[#2b2b2b] border-2 border-vscode-errorBorder text-vscode-inputText rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-vscode-errorBorder transition-colors resize-y font-sans leading-relaxed shadow-inner"
+            ></textarea>
+            <div class="pointer-events-none absolute top-2.5 right-2.5 text-vscode-errorText">
+              <i class="fa-solid fa-circle-exclamation text-xs"></i>
+            </div>
+          </div>
+
+          <!-- Inline Error in --vscode-errorForeground -->
+          <div id="reason-error" class="flex items-center justify-between text-xs text-vscode-errorText bg-vscode-errorBg border border-vscode-errorBorder/40 rounded px-2.5 py-1.5 mt-1 font-medium">
+            <div class="flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-xmark text-xs flex-shrink-0"></i>
+              <span>此字段为必填项 (reason 不能为空)</span>
+            </div>
+            <span class="text-[11px] text-red-300/80">最少需输入 10 字符</span>
+          </div>
+        </div>
+
+        <!-- Target Output Draft Path Preview -->
+        <div class="rounded border border-vscode-border bg-[#181818] p-3 text-xs flex items-center justify-between">
+          <div class="flex items-center space-x-2.5 overflow-hidden">
+            <i class="fa-regular fa-file-code text-[#007acc] text-sm flex-shrink-0"></i>
+            <div class="truncate">
+              <span class="text-vscode-description block text-[10px] uppercase tracking-wider font-semibold">目标本地草稿输出路径 (Draft Output Target)</span>
+              <code class="text-neutral-200 font-mono text-xs selection:bg-neutral-700">
+                .scratch/drafts/exception-20261005-001.json
+              </code>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[11px] bg-[#252526] text-neutral-400 border border-vscode-border font-mono whitespace-nowrap ml-2">
+            Local Scratch File
+          </span>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- 3. Action Section & Footer Governance -->
+    <section aria-labelledby="action-heading" class="rounded-md border border-vscode-border bg-vscode-card p-4 shadow-sm space-y-4">
+      
+      <!-- Status Bar Area -->
+      <div 
+        role="status" 
+        aria-live="polite" 
+        class="flex items-center justify-between px-3 py-2 rounded bg-[#2c1d1d] border border-red-700/50 text-xs text-red-200"
+      >
+        <div class="flex items-center space-x-2 font-medium">
+          <span class="flex h-2 w-2 relative">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          </span>
+          <span class="font-semibold text-red-300">表单校验未通过:</span>
+          <span>就绪（请修正表单必填错误）</span>
+        </div>
+        <div class="flex items-center space-x-2 font-mono text-[11px] text-red-300/80">
+          <span>待填项: 2 处</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <!-- Primary Action: Disabled with --vscode-disabledForeground due to validation errors -->
+        <div class="flex items-center space-x-3">
+          <button 
+            type="button" 
+            disabled 
+            aria-disabled="true"
+            title="表单存在必填项校验错误，无法保存" 
+            class="px-4 py-2 rounded text-xs font-semibold bg-[#333333] text-[#777777] border border-[#444444] cursor-not-allowed flex items-center gap-2 shadow-inner select-none transition-none"
+          >
+            <i class="fa-solid fa-floppy-disk text-xs opacity-60"></i>
+            <span>预览并保存草稿/申请</span>
+            <kbd class="px-1.5 py-0.5 rounded bg-[#252526] border border-[#3f3f3f] text-[10px] font-mono text-[#666666]">Ctrl+S</kbd>
+          </button>
+
+          <span class="text-[11px] text-vscode-errorText flex items-center gap-1 font-medium">
+            <i class="fa-solid fa-lock text-[10px]"></i> 请先完善 Actor 与 Reason
+          </span>
+        </div>
+
+        <!-- Secondary Buttons -->
+        <div class="flex items-center space-x-2">
+          <button type="button" class="px-3 py-1.5 rounded text-xs text-neutral-300 bg-[#333333] hover:bg-[#3e3e3e] border border-vscode-border transition-colors flex items-center gap-1.5 font-medium">
+            <i class="fa-solid fa-rotate-left text-[11px]"></i>
+            <span>重置表单</span>
+          </button>
+          <button type="button" class="px-3 py-1.5 rounded text-xs text-neutral-300 bg-[#333333] hover:bg-[#3e3e3e] border border-vscode-border transition-colors flex items-center gap-1.5 font-medium">
+            <i class="fa-solid fa-arrows-rotate text-[11px]"></i>
+            <span>刷新</span>
+          </button>
+          <button type="button" class="px-3 py-1.5 rounded text-xs text-neutral-300 bg-[#333333] hover:bg-[#3e3e3e] border border-vscode-border transition-colors flex items-center gap-1.5 font-medium">
+            <i class="fa-solid fa-gear text-[11px]"></i>
+            <span>设置</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Governance Statement in --vscode-descriptionForeground -->
+      <div class="pt-3 border-t border-vscode-border flex items-start gap-2.5 text-vscode-description text-xs leading-normal">
+        <i class="fa-solid fa-triangle-exclamation text-amber-500/80 text-xs mt-0.5 flex-shrink-0"></i>
+        <p class="font-normal">
+          <strong class="font-semibold text-neutral-300">合规与执行声明：</strong>
+          提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。草稿仅保存在本地待后续显式提交。如需将例外正式生效于 CI/CD Pipeline，须由拥有权限的 Approver 执行独立签名验核。
+        </p>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- VS Code Webview Bottom Status Bar -->
+  <footer class="bg-[#007acc] text-white px-3 py-1 text-xs flex items-center justify-between font-mono select-none">
+    <div class="flex items-center space-x-3 text-[11px]">
+      <span class="flex items-center gap-1.5">
+        <i class="fa-solid fa-code-branch text-[10px]"></i>
+        <span>master*</span>
+      </span>
+      <span>|</span>
+      <span class="flex items-center gap-1">
+        <i class="fa-solid fa-shield-virus text-[10px]"></i>
+        <span>Target: AvoidHardcodedSecret</span>
+      </span>
+    </div>
+    <div class="flex items-center space-x-3 text-[11px]">
+      <span class="text-white/90">Draft Mode: Local-Only</span>
+      <span>|</span>
+      <span class="text-white/90">UTF-8</span>
+    </div>
+  </footer>
+
+</body>
+</html>

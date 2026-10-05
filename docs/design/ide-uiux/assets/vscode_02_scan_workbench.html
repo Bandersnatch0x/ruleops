@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ERF 扫描结果工作台 - VS Code Webview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+      --vscode-editor-font-family: "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
+      --vscode-editor-background: #1e1e1e;
+      --vscode-editor-foreground: #d4d4d4;
+      --vscode-sideBar-background: #252526;
+      --vscode-sideBar-border: #333333;
+      --vscode-panel-background: #1e1e1e;
+      --vscode-panel-border: #2d2d2d;
+      --vscode-input-background: #3c3c3c;
+      --vscode-input-foreground: #cccccc;
+      --vscode-input-border: #3c3c3c;
+      --vscode-input-focusBorder: #007acc;
+      --vscode-input-placeholderForeground: #8c8c8c;
+      --vscode-button-background: #0e639c;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #1177bb;
+      --vscode-button-secondaryBackground: #3a3d41;
+      --vscode-button-secondaryForeground: #ffffff;
+      --vscode-button-secondaryHoverBackground: #45494e;
+      --vscode-progressBar-background: #007acc;
+      --vscode-textCodeBlock-background: #181818;
+      --vscode-descriptionForeground: #969696;
+      --vscode-badge-background: #4d4d4d;
+      --vscode-badge-foreground: #ffffff;
+      --vscode-warning-foreground: #cca700;
+      --vscode-error-foreground: #f14c4c;
+      --vscode-success-foreground: #89d185;
+      --vscode-focusBorder: #007acc;
+      --vscode-list-activeSelectionBackground: #094771;
+    }
+
+    body {
+      font-family: var(--vscode-font-family);
+      background-color: var(--vscode-panel-background);
+      color: var(--vscode-editor-foreground);
+      font-size: 13px;
+      line-height: 1.4;
+      user-select: none;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Custom VS Code Scrollbars */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: rgba(121, 121, 121, 0.4);
+      border-radius: 0px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(100, 100, 100, 0.7);
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    /* VS Code Input Styles */
+    .vscode-input, .vscode-select {
+      background-color: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 2px;
+      padding: 4px 8px;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.1s ease;
+      width: 100%;
+    }
+    .vscode-input:focus, .vscode-select:focus {
+      border-color: var(--vscode-input-focusBorder);
+      outline: 1px solid var(--vscode-input-focusBorder);
+    }
+
+    /* Infinite progress bar animation */
+    @keyframes progress-infinite {
+      0% { transform: translateX(-100%); }
+      50% { transform: translateX(50%); }
+      100% { transform: translateX(200%); }
+    }
+    .animate-progress-stripe {
+      width: 40%;
+      animation: progress-infinite 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    /* Custom blinking cursor */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .cursor-blink {
+      animation: blink 1s step-end infinite;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen select-none bg-[#1e1e1e] text-[#cccccc]">
+
+  <!-- Top Pane: Form Pane (Independently scrollable) -->
+  <section id="form-pane" class="flex-1 overflow-y-auto px-5 py-3 border-b border-[#2d2d2d] min-h-[220px]">
+    <!-- Header -->
+    <div class="flex items-center justify-between pb-3 border-b border-[#2d2d2d] mb-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-6 h-6 rounded bg-[#007acc]/20 border border-[#007acc]/40 flex items-center justify-center text-[#389fd6] text-xs font-mono font-bold shadow-sm">
+          <i class="fa-solid fa-microchip"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm font-semibold tracking-wide text-[#e7e7e7]">扫描结果工作台</h1>
+            <span class="px-1.5 py-0.5 text-[10px] uppercase font-mono tracking-wider rounded bg-[#094771]/60 text-[#389fd6] border border-[#007acc]/30">v2.8.4</span>
+            <span class="px-1.5 py-0.5 text-[10px] rounded bg-[#2d2d2d] text-[#89d185] border border-[#3c3c3c] flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#89d185] animate-pulse"></span>
+              在线守护进程
+            </span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] text-[#969696] font-mono mt-0.5">
+            <i class="fa-regular fa-folder-open text-[#cca700]"></i>
+            <span>Workspace:</span>
+            <span class="text-[#cccccc] bg-[#252526] px-1.5 py-0.2 rounded border border-[#333333]">/home/kali/文档/ruleops</span>
+            <span class="text-[#666666] ml-1">· 目标分支: master</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 text-xs">
+        <button class="px-2 py-1 rounded bg-[#252526] hover:bg-[#333333] text-[#cccccc] border border-[#3c3c3c] flex items-center gap-1.5 transition-colors text-[11px]">
+          <i class="fa-solid fa-book-bookmark text-[#969696]"></i>
+          <span>规则库手册</span>
+        </button>
+        <button class="px-2 py-1 rounded bg-[#252526] hover:bg-[#333333] text-[#cccccc] border border-[#3c3c3c] flex items-center gap-1.5 transition-colors text-[11px]">
+          <i class="fa-solid fa-clock-rotate-left text-[#969696]"></i>
+          <span>历史比对 (Diff)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Form Grid -->
+    <div class="grid grid-cols-12 gap-x-4 gap-y-3">
+      <!-- Route -->
+      <div class="col-span-12 sm:col-span-4">
+        <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1 flex items-center justify-between">
+          <span>Route (执行通道)</span>
+          <span class="text-[10px] text-[#007acc] cursor-pointer hover:underline">路由策略说明</span>
+        </label>
+        <div class="relative">
+          <select id="field-route" class="vscode-select appearance-none pr-7">
+            <option value="fast-track" selected>fast-track (预检极速通道 · 本地轻量化)</option>
+            <option value="deep-audit">deep-audit (完整深层全量静态分析)</option>
+            <option value="governance-ci">governance-ci (企业合规准入流水线模式)</option>
+          </select>
+          <i class="fa-solid fa-chevron-down absolute right-2.5 top-2.5 text-[10px] text-[#8c8c8c] pointer-events-none"></i>
+        </div>
+      </div>
+
+      <!-- Rule ID -->
+      <div class="col-span-12 sm:col-span-4">
+        <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1 flex items-center justify-between">
+          <span>Rule ID (规则标识)</span>
+          <span class="text-[10px] text-[#8c8c8c] font-mono">REG-SEC-09</span>
+        </label>
+        <div class="relative">
+          <input type="text" id="field-ruleId" value="java.security.AvoidHardcodedSecret" class="vscode-input font-mono text-[11px] pl-7" placeholder="输入合规规则编号或命名空间" />
+          <i class="fa-solid fa-shield-halved absolute left-2.5 top-2 text-[11px] text-[#007acc]"></i>
+        </div>
+      </div>
+
+      <!-- Format & Progress -->
+      <div class="col-span-12 sm:col-span-4 grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1">Format (输出格式)</label>
+          <div class="relative">
+            <select id="field-format" class="vscode-select appearance-none pr-6 font-mono text-[11px]">
+              <option value="json" selected>json</option>
+              <option value="sarif">sarif (标准)</option>
+              <option value="csv">csv</option>
+              <option value="junit">junit-xml</option>
+            </select>
+            <i class="fa-solid fa-chevron-down absolute right-2 top-2.5 text-[9px] text-[#8c8c8c] pointer-events-none"></i>
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1">Progress (反馈)</label>
+          <div class="relative">
+            <select id="field-progress" class="vscode-select appearance-none pr-6 font-mono text-[11px]">
+              <option value="text" selected>text (实时行)</option>
+              <option value="ndjson">ndjson (事件流)</option>
+              <option value="silent">silent (静默)</option>
+            </select>
+            <i class="fa-solid fa-chevron-down absolute right-2 top-2.5 text-[9px] text-[#8c8c8c] pointer-events-none"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Candidate Path -->
+      <div class="col-span-12 sm:col-span-7">
+        <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1 flex items-center justify-between">
+          <span>Candidate (待扫描目标路径)</span>
+          <span class="text-[10px] text-[#89d185] flex items-center gap-1 font-mono">
+            <i class="fa-solid fa-check text-[9px]"></i> 文件有效
+          </span>
+        </label>
+        <div class="relative">
+          <input type="text" id="field-candidate" value="src/main/java/io/ruleops/sample/OrderService.java" class="vscode-input font-mono text-[11px] pl-7 pr-20" />
+          <i class="fa-regular fa-file-code absolute left-2.5 top-2 text-[12px] text-[#cca700]"></i>
+          <button class="absolute right-1 top-1 px-2 py-0.5 text-[10px] rounded bg-[#2d2d2d] hover:bg-[#3c3c3c] text-[#cccccc] border border-[#3c3c3c]">
+            从活动Tab获取
+          </button>
+        </div>
+      </div>
+
+      <!-- Delivery Descriptor (File Picker) -->
+      <div class="col-span-12 sm:col-span-5">
+        <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1 flex items-center justify-between">
+          <span>Delivery Descriptor (交付清单描述符)</span>
+          <span class="text-[10px] text-[#969696]">可选配置文件</span>
+        </label>
+        <div class="flex items-center gap-1.5">
+          <div class="relative flex-1">
+            <input type="text" id="field-descriptor" value=".erf/delivery-policy.yaml" class="vscode-input font-mono text-[11px] pl-6 text-[#b0b0b0]" />
+            <i class="fa-solid fa-gear absolute left-2.5 top-2 text-[10px] text-[#969696]"></i>
+          </div>
+          <button class="px-2.5 py-1 text-[11px] rounded bg-[#3a3d41] hover:bg-[#45494e] text-white flex items-center gap-1 shrink-0 transition-colors">
+            <i class="fa-regular fa-folder"></i>
+            <span>浏览...</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Deadline (ms) -->
+      <div class="col-span-12 sm:col-span-4">
+        <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1" title="超时时间（毫秒，默认 600 秒长任务不截断）">
+          超时时间（毫秒，默认 600 秒长任务不截断）
+        </label>
+        <div class="relative flex items-center">
+          <input type="number" id="field-deadline" value="600000" class="vscode-input font-mono text-[11px] pr-12" />
+          <span class="absolute right-2 text-[10px] font-mono text-[#8c8c8c] pointer-events-none">ms (10m)</span>
+        </div>
+      </div>
+
+      <!-- Advanced Options: Host, Resolver, Runtime Home -->
+      <div class="col-span-12 sm:col-span-8">
+        <label class="block text-[11px] font-medium text-[#b0b0b0] mb-1">
+          高级执行参数: Host / Resolver / RuntimeHome
+        </label>
+        <div class="grid grid-cols-3 gap-2">
+          <div class="relative">
+            <input type="text" value="host: 127.0.0.1:4080" class="vscode-input text-[11px] font-mono" placeholder="host" />
+          </div>
+          <div class="relative">
+            <input type="text" value="resolver: embedded-v3" class="vscode-input text-[11px] font-mono" placeholder="resolver" />
+          </div>
+          <div class="relative">
+            <input type="text" value="runtime: /opt/erf/engine-bin" class="vscode-input text-[11px] font-mono" placeholder="runtimeHome" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Middle Section: Actions & Live Status (Fixed pinned bar) -->
+  <section id="actions" class="bg-[#252526] border-b border-[#333333] shadow-md z-10 shrink-0">
+    <!-- Progress Indicator Bar (VS Code style infinite progress) -->
+    <div class="relative w-full h-[3px] bg-[#1e1e1e] overflow-hidden" role="progressbar" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100" aria-label="扫描进度指示条">
+      <div class="h-full bg-[#007acc] animate-progress-stripe absolute left-0 top-0 shadow-[0_0_8px_#007acc]"></div>
+    </div>
+
+    <div class="px-5 py-3">
+      <!-- Status & Live Stream Row -->
+      <div class="flex items-center justify-between mb-2.5">
+        <div class="flex items-center gap-3">
+          <!-- Status Badge -->
+          <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#094771]/50 border border-[#007acc]/40 text-[#ffffff] font-medium text-xs shadow-inner" role="status" aria-live="polite">
+            <i class="fa-solid fa-circle-notch fa-spin text-[#389fd6] text-xs"></i>
+            <span class="tracking-wide">运行中 · 耗时 12.4s</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-[#389fd6] animate-ping"></span>
+          </div>
+
+          <!-- Live stream log line -->
+          <div class="flex items-center gap-2 font-mono text-[11.5px] text-[#cccccc] bg-[#1e1e1e] px-3 py-1 rounded border border-[#333333]" role="log" aria-atomic="true">
+            <span class="text-[#cca700] font-semibold">[STREAM]</span>
+            <span class="text-[#007acc]">progress:</span>
+            <span class="text-[#e7e7e7] truncate max-w-[420px]">[28/34] Scanning PMD rules against OrderService.java...</span>
+            <span class="w-1.5 h-3 bg-[#007acc] cursor-blink inline-block"></span>
+          </div>
+        </div>
+
+        <!-- Metrics quick overview -->
+        <div class="flex items-center gap-4 text-xs font-mono text-[#969696]">
+          <span class="flex items-center gap-1.5">
+            <i class="fa-solid fa-bolt text-[#cca700]"></i>
+            <span>CPU: <strong class="text-[#cccccc]">24.8%</strong></span>
+          </span>
+          <span class="flex items-center gap-1.5">
+            <i class="fa-solid fa-memory text-[#389fd6]"></i>
+            <span>MEM: <strong class="text-[#cccccc]">312 MB</strong></span>
+          </span>
+          <span class="flex items-center gap-1.5">
+            <i class="fa-solid fa-bullseye text-[#89d185]"></i>
+            <span>Matches: <strong class="text-[#89d185]">3 hits</strong></span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row & Governance Warning -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <!-- Buttons Flex Row -->
+        <div class="flex items-center gap-2">
+          <!-- Primary button: Disabled while running -->
+          <button disabled class="px-4 py-1.5 rounded text-xs font-medium bg-[#0e639c]/50 text-white/50 cursor-not-allowed flex items-center gap-2 border border-transparent shadow-none" title="当前任务正在执行中，无法重复触发">
+            <i class="fa-solid fa-play text-[11px]"></i>
+            <span>执行所选场景</span>
+            <span class="text-[10px] opacity-75 font-mono">(Ctrl+Enter)</span>
+          </button>
+
+          <!-- Secondary button: Cancel (Active, red-accented) -->
+          <button class="px-3.5 py-1.5 rounded text-xs font-medium bg-[#5a1d1d] hover:bg-[#722323] text-[#f8d7da] border border-[#a83232] flex items-center gap-1.5 shadow transition-colors active:scale-95">
+            <i class="fa-solid fa-stop text-[11px] text-[#f14c4c]"></i>
+            <span class="font-semibold">取消（Esc）</span>
+          </button>
+
+          <!-- Refresh button -->
+          <button class="px-3 py-1.5 rounded text-xs bg-[#3a3d41] hover:bg-[#45494e] text-white flex items-center gap-1.5 transition-colors border border-[#4a4d52]">
+            <i class="fa-solid fa-rotate-right text-[11px] text-[#b0b0b0]"></i>
+            <span>刷新</span>
+          </button>
+
+          <!-- Settings button -->
+          <button class="px-3 py-1.5 rounded text-xs bg-[#3a3d41] hover:bg-[#45494e] text-white flex items-center gap-1.5 transition-colors border border-[#4a4d52]">
+            <i class="fa-solid fa-sliders text-[11px] text-[#b0b0b0]"></i>
+            <span>设置</span>
+          </button>
+
+          <!-- Divider -->
+          <div class="h-4 w-px bg-[#3e3e42] mx-1"></div>
+
+          <!-- Secondary quick actions -->
+          <button class="px-2.5 py-1.5 rounded text-xs bg-[#2d2d2d] hover:bg-[#383838] text-[#cccccc] flex items-center gap-1.5 transition-colors border border-[#3c3c3c]">
+            <i class="fa-solid fa-share-nodes text-[11px] text-[#389fd6]"></i>
+            <span>导出报告</span>
+          </button>
+        </div>
+
+        <!-- Governance Warning text -->
+        <div class="flex items-center gap-1.5 text-[11.5px] text-[#969696] font-normal" style="color: var(--vscode-descriptionForeground)">
+          <i class="fa-solid fa-triangle-exclamation text-[#cca700] text-xs"></i>
+          <span class="font-medium tracking-tight">提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。</span>
+          <span class="text-[#666666] text-[10px] ml-1">(本地沙箱模拟执行)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom Section: Output & Terminal Stream (Independently scrollable) -->
+  <section id="output" tabindex="0" role="region" aria-label="规则引擎终端流输出" class="flex-1 overflow-y-auto p-4 bg-[#181818] font-mono text-[12px] leading-relaxed text-[#d4d4d4] focus:outline-none focus:ring-1 focus:ring-[#007acc]/40">
+    <!-- Stream Control Bar / Terminal Sub-header -->
+    <div class="sticky top-0 bg-[#181818]/95 backdrop-blur-sm pb-2.5 mb-2 border-b border-[#2d2d2d] flex items-center justify-between text-[11px] text-[#8c8c8c]">
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-1.5 text-[#389fd6] font-semibold">
+          <i class="fa-solid fa-terminal text-[10px]"></i>
+          <span>RULEOPS_SESSION #40921</span>
+        </span>
+        <span>•</span>
+        <span class="text-[#89d185] flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-[#89d185]"></span>
+          <span>STDOUT / STDERR 管道已挂载</span>
+        </span>
+        <span>•</span>
+        <span>编码: UTF-8</span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="text-[#cccccc] bg-[#222222] px-2 py-0.5 rounded border border-[#333333]">
+          已匹配违规: <span class="text-[#f14c4c] font-bold">2 处高危</span>, <span class="text-[#cca700] font-bold">1 处中危</span>
+        </span>
+        <button class="text-[#8c8c8c] hover:text-[#ffffff] transition-colors" title="自动滚动">
+          <i class="fa-solid fa-arrow-down-short-wide mr-1"></i>自动滚动: 开
+        </button>
+        <button class="text-[#8c8c8c] hover:text-[#ffffff] transition-colors" title="清屏">
+          <i class="fa-solid fa-trash-can mr-1"></i>清空
+        </button>
+      </div>
+    </div>
+
+    <!-- Terminal Output Stream Lines -->
+    <div class="space-y-1">
+      <!-- Timestamp & Init -->
+      <div class="text-[#6a9955] flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:14.002]</span>
+        <span class="text-[#808080]">[INFO]</span>
+        <span>ERF Webview Controller 正在实例化 RuleWorker Daemon (pid: 18492)...</span>
+      </div>
+
+      <div class="text-[#808080] flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:14.120]</span>
+        <span>[INIT] 加载本地规则包: /opt/erf/rules/sec-bundle-v2.9.car (签名效验通过: ed25519:8fbc71a)</span>
+      </div>
+
+      <div class="text-[#808080] flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:14.450]</span>
+        <span>[CONF] 激活环境参数: host=127.0.0.1:4080, resolver=embedded-v3, deadline=600000ms</span>
+      </div>
+
+      <div class="text-[#808080] flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:15.012]</span>
+        <span>[PARSE] 解析待测目标 AST 树: OrderService.java (144 行, 语法解析耗时 12ms)</span>
+      </div>
+
+      <!-- Execution divider -->
+      <div class="py-1 text-[#4ec9b0] text-[11px] border-t border-b border-[#252526] my-2 font-semibold flex items-center justify-between">
+        <span>--- 规则扫描管道开始执行 [通道: fast-track / 目标: java.security.AvoidHardcodedSecret] ---</span>
+        <span class="text-[#969696] font-normal">模式: 静态污点追踪 + 正则熵分析</span>
+      </div>
+
+      <!-- Live stderr / stdout steps -->
+      <div class="flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:16.890]</span>
+        <span class="text-[#007acc]">[PROGRESS]</span>
+        <span>[08/34] 加载词法作用域分析器: AST 变量作用域绑定完成。</span>
+      </div>
+
+      <div class="flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:18.234]</span>
+        <span class="text-[#007acc]">[PROGRESS]</span>
+        <span>[16/34] 执行规则: 密钥模式熵探测 (Shannon Entropy Threshold: >= 4.2)...</span>
+      </div>
+
+      <!-- Finding 1 Detected -->
+      <div class="bg-[#2d1b1b] border-l-2 border-[#f14c4c] px-2.5 py-1.5 rounded-r my-1.5 text-[#f8d7da]">
+        <div class="flex items-center justify-between font-semibold text-[#f14c4c] text-[11.5px]">
+          <span class="flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>[FINDING-01] HIGH SEVERITY: 检测到硬编码明文密钥凭据</span>
+          </span>
+          <span class="font-mono text-[10px] text-[#cca700] bg-[#3a1d1d] px-1.5 py-0.2 rounded border border-[#6b2323]">CONFIDENCE: 98%</span>
+        </div>
+        <div class="text-[11px] text-[#e0e0e0] mt-1 pl-4 font-mono">
+          <div><strong class="text-[#9cdcfe]">Rule ID:</strong> java.security.AvoidHardcodedSecret</div>
+          <div><strong class="text-[#9cdcfe]">Location:</strong> src/main/java/io/ruleops/sample/OrderService.java:38:22</div>
+          <div class="bg-[#181818] p-1.5 rounded mt-1 border border-[#3d2323] text-[#ce9178]">
+            <span class="text-[#808080]">38 | </span>private static final String PAYMENT_GATEWAY_KEY = "<span class="bg-[#5a1d1d] text-[#ffffff] px-1 font-bold underline">ak_live_99f2e811bc470a1e</span>";
+          </div>
+          <div class="text-[#969696] text-[10.5px] mt-1">
+            建议方案: 将敏感凭据迁移至外部安全配置中心 (Spring Cloud Vault / AWS Secrets Manager)，避免直接提交至代码仓库。
+          </div>
+        </div>
+      </div>
+
+      <!-- Finding 2 Detected -->
+      <div class="bg-[#2d1b1b] border-l-2 border-[#f14c4c] px-2.5 py-1.5 rounded-r my-1.5 text-[#f8d7da]">
+        <div class="flex items-center justify-between font-semibold text-[#f14c4c] text-[11.5px]">
+          <span class="flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>[FINDING-02] HIGH SEVERITY: 数据库直接连接字符串凭据内嵌</span>
+          </span>
+          <span class="font-mono text-[10px] text-[#cca700] bg-[#3a1d1d] px-1.5 py-0.2 rounded border border-[#6b2323]">CONFIDENCE: 95%</span>
+        </div>
+        <div class="text-[11px] text-[#e0e0e0] mt-1 pl-4 font-mono">
+          <div><strong class="text-[#9cdcfe]">Location:</strong> src/main/java/io/ruleops/sample/OrderService.java:52:14</div>
+          <div class="bg-[#181818] p-1.5 rounded mt-1 border border-[#3d2323] text-[#ce9178]">
+            <span class="text-[#808080]">52 | </span>jdbc:postgresql://prod-db.internal:5432/orders?password=<span class="bg-[#5a1d1d] text-[#ffffff] px-1 font-bold underline">R00tP@ssw0rd!</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Continuing stream -->
+      <div class="flex items-start gap-2">
+        <span class="text-[#569cd6] shrink-0">[17:30:22.410]</span>
+        <span class="text-[#cca700]">[WARN]</span>
+        <span class="text-[#dcdcaa]">[FINDING-03] MEDIUM: 发现未加盐哈希算法弱散列调用 (OrderService.java:89:12 MD5Digest.getInstance)</span>
+      </div>
+
+      <div class="flex items-start gap-2 text-[#cccccc]">
+        <span class="text-[#569cd6] shrink-0">[17:30:24.108]</span>
+        <span class="text-[#007acc]">[PROGRESS]</span>
+        <span class="text-[#9cdcfe]">[28/34] Scanning PMD rules against OrderService.java...</span>
+      </div>
+
+      <div class="flex items-start gap-2 text-[#808080] italic">
+        <span class="text-[#569cd6] shrink-0">[17:30:26.400]</span>
+        <span>stderr: streaming child AST visitor [30/34] - checking cryptographic parameters...</span>
+      </div>
+
+      <!-- Current in-flight blinking cursor line -->
+      <div class="flex items-center gap-2 pt-1 text-[#389fd6]">
+        <span class="text-[#569cd6] shrink-0">[17:30:26.412]</span>
+        <span class="text-[#89d185]">❯</span>
+        <span class="text-[#cccccc]">erf-worker::evaluating rule sets 28/34 in active memory thread</span>
+        <span class="w-2 h-4 bg-[#007acc] cursor-blink inline-block"></span>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

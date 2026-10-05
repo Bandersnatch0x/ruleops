@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+
+<html class="dark h-full" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IntelliJ IDEA - OrderPaymentValidator.java</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Public+Sans:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            surface: "#2b2d30",
+            "surface-variant": "#393b40",
+            "editor-bg": "#1e1f22",
+            "outline-variant": "#43454a",
+            "on-surface": "#dfe1e5",
+            "on-surface-variant": "#868a91",
+            primary: "#3574f0",
+            "primary-hover": "#3064d0",
+            "tree-select": "#2e436e",
+            "accent-green": "#59a869",
+            "accent-orange": "#e08843",
+            "accent-yellow": "#f2c55c",
+            "accent-red": "#e25555",
+            "code-keyword": "#cf8e6d",
+            "code-string": "#6aab73",
+            "code-annotation": "#bbb529",
+            "code-comment": "#7a7e85",
+            "code-method": "#56a8f5",
+            "code-class": "#bcbec4"
+          },
+          borderRadius: {
+            DEFAULT: "0.125rem",
+            lg: "0.25rem",
+            xl: "0.5rem",
+            full: "0.75rem"
+          },
+          fontFamily: {
+            headline: ["Inter", "sans-serif"],
+            display: ["Inter", "sans-serif"],
+            body: ["Inter", "sans-serif"],
+            label: ["Public Sans", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+      font-size: 16px;
+      line-height: 1;
+    }
+    .material-symbols-outlined.fill-icon {
+      font-variation-settings: 'FILL' 1, 'wght' 400;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e1f22;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #393b40;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4e5157;
+    }
+    .warning-underline {
+      text-decoration: underline wavy #f2c55c 1.5px;
+      text-underline-offset: 3px;
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface font-body h-screen flex flex-col overflow-hidden select-none text-[12px] leading-normal antialiased">
+<!-- Top Window Bar (Shared Component: TopNavBar IntelliJ 2024 New UI) -->
+<header class="flex items-center justify-between px-3 w-full h-10 select-none bg-surface border-b border-outline-variant transition-colors duration-150 shrink-0 z-50">
+<!-- Left: Hamburger, Project Switcher, VCS Branch, Run Controls -->
+<div class="flex items-center space-x-2">
+<!-- IntelliJ Idea Brand Logo & Menu -->
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-variant transition-colors text-on-surface" title="Main Menu">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<!-- Brand string & Project Name -->
+<div class="flex items-center space-x-1.5 px-2 py-1 rounded hover:bg-surface-variant cursor-pointer transition-colors text-xs font-semibold text-on-surface">
+<span class="w-3.5 h-3.5 bg-gradient-to-br from-[#e03152] via-[#fe315b] to-[#21d789] rounded-sm flex items-center justify-center text-[8px] font-bold text-black">IJ</span>
+<span class="font-headline font-semibold text-xs text-on-surface">payment-service</span>
+<span class="text-on-surface-variant text-[11px] font-normal">[main]</span>
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">expand_more</span>
+</div>
+<!-- Git Branch Widget -->
+<div class="flex items-center space-x-1 px-2 py-0.5 rounded hover:bg-surface-variant cursor-pointer transition-colors text-on-surface-variant hover:text-on-surface text-xs">
+<span class="material-symbols-outlined text-[15px] text-accent-green">source_environment</span>
+<span class="font-medium text-on-surface">main</span>
+<span class="material-symbols-outlined text-[13px]">expand_more</span>
+</div>
+<div class="h-4 w-[1px] bg-outline-variant mx-1"></div>
+<!-- Run & Debug Widget Cluster -->
+<div class="flex items-center bg-[#212224] rounded border border-outline-variant px-1 py-0.5 space-x-1">
+<div class="flex items-center space-x-1 px-1.5 py-0.5 text-xs text-on-surface cursor-pointer hover:bg-surface-variant rounded">
+<span class="material-symbols-outlined text-accent-green text-[14px]">play_arrow</span>
+<span class="font-medium">PaymentApplication</span>
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">expand_more</span>
+</div>
+<div class="h-3.5 w-[1px] bg-outline-variant"></div>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant text-accent-green" title="Run (Shift+F10)">
+<span class="material-symbols-outlined fill-icon text-[15px]">play_arrow</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant text-accent-green" title="Debug (Shift+F9)">
+<span class="material-symbols-outlined text-[15px]">bug_report</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant text-on-surface-variant hover:text-on-surface" title="Run with Coverage">
+<span class="material-symbols-outlined text-[15px]">shield</span>
+</button>
+</div>
+</div>
+<!-- Center: Search Everywhere pill -->
+<div class="flex-1 max-w-sm mx-4">
+<button class="w-full flex items-center justify-between px-2.5 py-1 bg-[#212224] hover:bg-surface-variant border border-outline-variant rounded text-on-surface-variant hover:text-on-surface transition-colors text-xs">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-[14px]">search</span>
+<span class="text-xs">Search Everywhere</span>
+</div>
+<kbd class="text-[10px] bg-surface px-1 py-0.5 rounded border border-outline-variant text-on-surface-variant font-mono">Double ⇧</kbd>
+</button>
+</div>
+<!-- Right: Tool Window buttons, Settings, Window Controls -->
+<div class="flex items-center space-x-1">
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-variant text-on-surface-variant hover:text-on-surface transition-colors" title="Settings (Ctrl+Alt+S)">
+<span class="material-symbols-outlined text-[16px]">settings</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-variant text-on-surface-variant hover:text-on-surface transition-colors" title="Notifications">
+<span class="material-symbols-outlined text-[16px]">notifications</span>
+</button>
+<div class="h-4 w-[1px] bg-outline-variant mx-1"></div>
+<!-- Window Title Bar Controls (Windows/Linux style) -->
+<button class="w-7 h-7 flex items-center justify-center hover:bg-surface-variant text-on-surface-variant hover:text-on-surface" title="Minimize">
+<span class="material-symbols-outlined text-[14px]">remove</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center hover:bg-surface-variant text-on-surface-variant hover:text-on-surface" title="Maximize">
+<span class="material-symbols-outlined text-[14px]">crop_square</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center hover:bg-[#c42b1c] text-on-surface-variant hover:text-white" title="Close">
+<span class="material-symbols-outlined text-[14px]">close</span>
+</button>
+</div>
+</header>
+<!-- Main Body Content Workspace -->
+<div class="flex-1 flex overflow-hidden relative">
+<!-- Far Left Toolstrip / Side rail (Shared Component: SideNavBar) -->
+<aside class="w-12 bg-surface border-r border-outline-variant flex flex-col justify-between items-center py-2 z-40 shrink-0">
+<div class="flex flex-col items-center space-y-1 w-full">
+<!-- Project Tab (Active) -->
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-primary border-l-2 border-primary bg-surface-variant transition-colors" title="Project (Alt+1)">
+<span class="material-symbols-outlined text-[18px]">folder</span>
+</button>
+<!-- Commit Tab -->
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Commit (Alt+0)">
+<span class="material-symbols-outlined text-[18px]">commit</span>
+</button>
+<!-- Structure Tab -->
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Structure (Alt+7)">
+<span class="material-symbols-outlined text-[18px]">account_tree</span>
+</button>
+<!-- Bookmarks Tab -->
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Bookmarks (Alt+2)">
+<span class="material-symbols-outlined text-[18px]">bookmark</span>
+</button>
+</div>
+<!-- Bottom Icon Strip -->
+<div class="flex flex-col items-center space-y-1 w-full">
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Terminal (Alt+F12)">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+</button>
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Problems">
+<span class="material-symbols-outlined text-[18px]">error</span>
+</button>
+<button class="w-10 h-10 flex flex-col items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Settings">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+</button>
+</div>
+</aside>
+<!-- Center Editor Area (Flex 1) -->
+<main class="flex-1 flex flex-col bg-editor-bg overflow-hidden border-r border-outline-variant">
+<!-- Editor Tab Bar -->
+<div class="h-9 bg-surface flex items-center justify-between border-b border-outline-variant px-1 shrink-0 overflow-x-auto">
+<div class="flex items-center h-full space-x-0.5">
+<!-- Active Java Tab -->
+<div class="flex items-center h-full px-3 bg-editor-bg border-t-2 border-primary text-on-surface font-medium text-xs space-x-2 cursor-pointer border-r border-outline-variant">
+<span class="text-[11px] font-bold text-accent-orange bg-[#e08843]/10 px-1 rounded">C</span>
+<span>OrderPaymentValidator.java</span>
+<span class="w-2 h-2 rounded-full bg-accent-orange/80 hidden"></span>
+<button class="w-4 h-4 rounded-sm flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-variant">
+<span class="material-symbols-outlined text-[12px]">close</span>
+</button>
+</div>
+<!-- Secondary Tab -->
+<div class="flex items-center h-full px-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 text-xs space-x-2 cursor-pointer border-r border-outline-variant">
+<span class="text-[11px] font-bold text-accent-orange bg-[#e08843]/10 px-1 rounded">C</span>
+<span>PaymentService.java</span>
+<button class="w-4 h-4 rounded-sm flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-variant">
+<span class="material-symbols-outlined text-[12px]">close</span>
+</button>
+</div>
+<!-- YAML Tab -->
+<div class="flex items-center h-full px-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 text-xs space-x-2 cursor-pointer">
+<span class="text-[11px] font-bold text-accent-red">Y</span>
+<span>application.yml</span>
+<button class="w-4 h-4 rounded-sm flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-variant">
+<span class="material-symbols-outlined text-[12px]">close</span>
+</button>
+</div>
+</div>
+<!-- Right Tab Strip Tools -->
+<div class="flex items-center space-x-1 px-1 text-on-surface-variant">
+<button class="p-1 hover:bg-surface-variant rounded" title="Split Right">
+<span class="material-symbols-outlined text-[14px]">view_agenda</span>
+</button>
+<button class="p-1 hover:bg-surface-variant rounded" title="More Options">
+<span class="material-symbols-outlined text-[14px]">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Breadcrumbs Bar -->
+<div class="h-6 bg-editor-bg border-b border-[#2b2d30] flex items-center px-3 space-x-1 text-[11px] text-on-surface-variant shrink-0">
+<span class="hover:text-on-surface cursor-pointer">payment-service</span>
+<span>›</span>
+<span class="hover:text-on-surface cursor-pointer">src</span>
+<span>›</span>
+<span class="hover:text-on-surface cursor-pointer">main</span>
+<span>›</span>
+<span class="hover:text-on-surface cursor-pointer">java</span>
+<span>›</span>
+<span class="hover:text-on-surface cursor-pointer">com.acme.payment</span>
+<span>›</span>
+<span class="flex items-center text-on-surface font-medium space-x-1">
+<span class="text-[9px] text-accent-orange font-bold">C</span>
+<span>OrderPaymentValidator</span>
+</span>
+<span>›</span>
+<span class="text-primary font-medium">validatePayment(OrderRequest)</span>
+</div>
+<!-- Editor Canvas & Gutter Container -->
+<div class="flex-1 flex overflow-hidden relative">
+<!-- Editor Code Canvas Scrollable -->
+<div class="flex-1 flex overflow-auto font-mono text-[12px] leading-5">
+<!-- Gutter (Line Numbers + Icons) -->
+<div class="w-14 bg-editor-bg select-none py-2 text-right pr-2 text-[#565961] shrink-0 border-r border-[#2b2d30]">
+<!-- Line 1 to 28 -->
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>1</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>2</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>3</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>4</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>5</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>6</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>7</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>8</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>9</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>10</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span class="material-symbols-outlined text-[12px] text-accent-green">play_arrow</span><span>11</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span class="material-symbols-outlined text-[10px] text-on-surface-variant">arrow_downward</span><span>12</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>13</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>14</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>15</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>16</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>17</span></div>
+<!-- Line 18: Breakpoint -->
+<div class="flex items-center justify-end space-x-1.5 h-5 bg-[#3a2325]">
+<span class="w-2.5 h-2.5 rounded-full bg-accent-red"></span>
+<span class="text-white font-bold">18</span>
+</div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>19</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>20</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>21</span></div>
+<!-- Line 22: Inspection warning marker -->
+<div class="flex items-center justify-end space-x-1.5 h-5 bg-[#342e20]">
+<span class="material-symbols-outlined text-[12px] text-accent-yellow">lightbulb</span>
+<span class="text-accent-yellow font-medium">22</span>
+</div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>23</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>24</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>25</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>26</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>27</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>28</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>29</span></div>
+<div class="flex items-center justify-end space-x-1.5 h-5"><span>30</span></div>
+</div>
+<!-- Code Content -->
+<div class="flex-1 py-2 pl-4 pr-10 text-[#bcbec4] overflow-x-auto whitespace-pre"><div><span class="text-code-keyword">package</span> com.acme.payment.validator;</div>
+<div> </div>
+<div><span class="text-code-keyword">import</span> org.springframework.stereotype.<span class="text-[#cf8e6d]">Service</span>;</div>
+<div><span class="text-code-keyword">import</span> org.springframework.validation.annotation.<span class="text-[#cf8e6d]">Validated</span>;</div>
+<div><span class="text-code-keyword">import</span> lombok.RequiredArgsConstructor;</div>
+<div><span class="text-code-keyword">import</span> lombok.extern.slf4j.<span class="text-[#cf8e6d]">Slf4j</span>;</div>
+<div><span class="text-code-keyword">import</span> java.math.<span class="text-[#cf8e6d]">BigDecimal</span>;</div>
+<div><span class="text-code-keyword">import</span> java.util.<span class="text-[#cf8e6d]">Objects</span>;</div>
+<div> </div>
+<div><span class="text-code-annotation">@Slf4j</span></div>
+<div><span class="text-code-annotation">@Service</span></div>
+<div><span class="text-code-annotation">@Validated</span></div>
+<div><span class="text-code-keyword">public class</span> <span class="text-[#56a8f5] font-semibold">OrderPaymentValidator</span> {</div>
+<div> </div>
+<div> <span class="text-code-keyword">private final</span> <span class="text-[#56a8f5]">RiskAnalysisClient</span> riskClient;</div>
+<div> <span class="text-code-keyword">private final</span> <span class="text-[#56a8f5]">CurrencyWhitelistProvider</span> currencyProvider;</div>
+<div> </div>
+<div class="bg-[#3a2325] px-1 -mx-1 border-l-2 border-accent-red flex items-center justify-between"><span class="text-accent-red font-medium"> private static final String INTERNAL_SIGN_KEY = "AKIAIOSFODNN7EXAMPLE";</span><span class="text-[10px] text-accent-red font-mono px-1 py-0.2 bg-accent-red/20 rounded mr-2">SEC-JAVA-HARDCODED-KEY · CRITICAL</span></div>
+<div class="bg-[#291e20]"><span class="text-code-annotation">    @Override</span></div>
+<div> <span class="text-code-keyword">public</span> <span class="text-[#56a8f5]">ValidationResult</span> <span class="text-code-method font-semibold">validatePayment</span>(<span class="text-[#56a8f5]">OrderRequest</span> request) {</div>
+<div> <span class="text-code-comment">// Pre-check payload integrity and limits</span></div>
+<div class="bg-[#302a1e]"> <span class="text-[#cf8e6d]">Objects</span>.<span class="text-code-method">requireNonNull</span>(request, <span class="text-code-string">"Payment request payload is null"</span>); <span class="text-[#56a8f5]">BigDecimal</span> amount = <span class="warning-underline text-[#56a8f5]" title="SEC-JAVA-BIGDECIMAL-PRECISION">BigDecimal.valueOf(request.getRawAmount())</span>;</div>
+<div> </div>
+<div> <span class="text-code-keyword">if</span> (amount.<span class="text-code-method">compareTo</span>(<span class="text-[#56a8f5]">BigDecimal</span>.<span class="text-code-keyword">ZERO</span>) &lt;= 0) {</div>
+<div> <span class="text-code-keyword">throw new</span> <span class="text-code-method">InvalidPaymentAmountException</span>(<span class="text-code-string">"Negative amount: "</span> + amount);</div>
+<div>        }</div>
+<div> </div>
+<div> <span class="text-code-keyword">if</span> (!currencyProvider.<span class="text-code-method">isSupported</span>(request.<span class="text-code-method">getCurrency</span>())) {</div>
+<div> <span class="text-code-keyword">return</span> <span class="text-[#56a8f5]">ValidationResult</span>.<span class="text-code-method">rejected</span>(<span class="text-code-string">"Unsupported currency"</span>);</div>
+<div>        }</div>
+<div> </div>
+<div> <span class="text-code-keyword">return</span> riskClient.<span class="text-code-method">evaluateTransaction</span>(request.<span class="text-code-method">getOrderId</span>(), amount);</div>
+<div>    }</div>
+<div>}</div></div>
+</div>
+<!-- Right Side Error Stripe / Minimap indicator -->
+<div class="w-3 bg-editor-bg border-l border-[#2b2d30] shrink-0 relative flex flex-col justify-between py-1">
+<!-- Warning marker on line 22 -->
+<div class="absolute right-0 top-[280px] w-2.5 h-1 bg-accent-yellow rounded-sm" title="Warning at line 22"></div>
+<!-- Breakpoint marker on line 18 -->
+<div class="absolute right-0 top-[230px] w-2.5 h-1 bg-accent-red rounded-sm" title="Line 18 Breakpoint"></div>
+</div>
+</div>
+</main>
+<!-- Right Side: Docked 'ERF' ToolWindow (width 600px) -->
+<aside class="w-[600px] bg-surface flex flex-col shrink-0 border-l border-outline-variant z-30">
+<!-- ERF ToolWindow Header -->
+<div class="h-9 px-3 flex items-center justify-between bg-surface border-b border-outline-variant select-none">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-primary text-[17px]">security</span>
+<span class="font-semibold text-xs text-on-surface tracking-tight">ERF</span>
+<span class="px-1.5 py-0.2 bg-[#212224] text-[10px] text-on-surface-variant rounded border border-outline-variant font-mono">v2.4.1</span>
+</div>
+<!-- ToolWindow actions -->
+<div class="flex items-center space-x-1 text-on-surface-variant">
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant hover:text-on-surface transition-colors" title="Settings">
+<span class="material-symbols-outlined text-[15px]">settings</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant hover:text-on-surface transition-colors" title="Dock / Unpin Mode">
+<span class="material-symbols-outlined text-[15px]">dock_to_right</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant hover:text-on-surface transition-colors" title="Minimize Tool Window">
+<span class="material-symbols-outlined text-[14px]">remove</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-variant hover:text-on-surface transition-colors" title="Close (Shift+Esc)">
+<span class="material-symbols-outlined text-[14px]">close</span>
+</button>
+</div>
+</div>
+<!-- Inner Layout split vertically with OnePixelSplitter -->
+<div class="flex-1 flex overflow-hidden">
+<!-- Left Sub-Pane: Tree Navigation & SpeedSearch (approx 220px) -->
+<div class="w-[220px] border-r border-[#393b40] flex flex-col bg-[#27282b] shrink-0">
+<!-- TreeSpeedSearch Bar -->
+<div class="p-2 border-b border-outline-variant bg-surface">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-2 text-[13px] text-on-surface-variant">search</span>
+<input class="w-full pl-6 pr-6 py-1 bg-[#1e1f22] border border-outline-variant focus:border-primary focus:ring-0 text-[11px] text-on-surface rounded placeholder-on-surface-variant outline-none" placeholder="搜索场景... (Ctrl+F)" type="text"/>
+<button class="material-symbols-outlined absolute right-2 text-[13px] text-on-surface-variant hover:text-on-surface">close</button>
+</div>
+</div>
+<!-- Tree Component (IntelliJ Platform Tree) -->
+<div class="flex-1 overflow-y-auto py-1 text-[11.5px] leading-tight select-none"><!-- Category 1: 扫描与 Findings (Collapsed) -->
+<div class="flex items-center px-1.5 py-1 text-on-surface hover:bg-surface-variant/50 cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant mr-1">arrow_right</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant mr-1.5">radar</span>
+<span>扫描与 Findings</span>
+</div>
+<!-- Category 2: 工作区 (Collapsed) -->
+<div class="flex items-center px-1.5 py-1 text-on-surface hover:bg-surface-variant/50 cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant mr-1">arrow_right</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant mr-1.5">build</span>
+<span>工作区</span>
+</div>
+<!-- Category 3: 规则库 (Collapsed) -->
+<div class="flex items-center px-1.5 py-1 text-on-surface hover:bg-surface-variant/50 cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant mr-1">arrow_right</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant mr-1.5">library_books</span>
+<span>规则库</span>
+</div>
+<!-- Category 4: 反馈与例外 (Expanded and Active) -->
+<div class="flex items-center px-1.5 py-1 mt-1 text-on-surface font-medium hover:bg-surface-variant/50 cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant mr-1">arrow_drop_down</span>
+<span class="material-symbols-outlined text-[14px] text-primary mr-1.5">rate_review</span>
+<span>反馈与例外</span>
+</div>
+<!-- Sub items of Category 4 -->
+<div class="ml-3 pl-2 border-l border-[#393b40] space-y-0.5">
+<!-- Active Selected Node: 申请例外 -->
+<div class="flex items-center px-2 py-1 bg-tree-select text-white font-medium rounded-sm cursor-pointer shadow-sm">
+<span class="material-symbols-outlined text-[14px] text-accent-yellow mr-1.5">lightbulb</span>
+<span>申请例外</span>
+</div>
+<!-- Sibling Node: 起草反馈 -->
+<div class="flex items-center px-2 py-1 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 rounded-sm cursor-pointer">
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant mr-1.5">edit_note</span>
+<span>起草反馈</span>
+</div>
+</div>
+<!-- Category 5: 创作与覆盖 (Collapsed) -->
+<div class="flex items-center px-1.5 py-1 text-on-surface hover:bg-surface-variant/50 cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant mr-1">arrow_right</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant mr-1.5">edit_document</span>
+<span>创作与覆盖</span>
+</div>
+<!-- Category 6: 运行记录 (Expanded) -->
+<div class="flex items-center px-1.5 py-1 mt-1.5 text-on-surface font-medium hover:bg-surface-variant/50 cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant mr-1">arrow_drop_down</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant mr-1.5">history</span>
+<span>运行记录 (20条)</span>
+</div>
+<div class="ml-3 pl-2 border-l border-[#393b40] space-y-0.5">
+<div class="flex items-center px-2 py-0.5 text-on-surface-variant text-[11px] hover:text-on-surface cursor-pointer">
+<span class="w-1.5 h-1.5 rounded-full bg-accent-green mr-2"></span>
+<span>rf.scan · 17:35 · exit=0</span>
+</div>
+<div class="flex items-center px-2 py-0.5 text-on-surface-variant text-[11px] hover:text-on-surface cursor-pointer">
+<span class="w-1.5 h-1.5 rounded-full bg-accent-green mr-2"></span>
+<span>rf.explain · 17:30 · exit=0</span>
+</div>
+</div></div>
+</div>
+<!-- 1px OnePixelSplitter -->
+<div class="w-[1px] bg-[#393b40] hover:bg-primary cursor-col-resize transition-colors"></div>
+<!-- Right Sub-Pane: Content & Execution Area -->
+<div class="flex-1 flex flex-col bg-surface overflow-hidden"><!-- Action Toolbar (IntelliJ ActionToolbar) -->
+<div class="h-9 px-3 bg-surface border-b border-outline-variant flex items-center justify-between shrink-0">
+<div class="flex items-center space-x-2">
+<!-- Primary JButton: 预览并保存草稿/申请 -->
+<button class="flex items-center space-x-1.5 bg-primary hover:bg-primary-hover active:bg-[#2a5ec2] text-white px-2.5 py-1 rounded shadow text-xs font-medium transition-colors">
+<span class="material-symbols-outlined text-[14px] fill-icon">save</span>
+<span>预览并保存草稿/申请</span>
+</button>
+<!-- Secondary JButton: 重置 -->
+<button class="flex items-center space-x-1 bg-[#212224] hover:bg-surface-variant text-on-surface border border-outline-variant px-2 py-1 rounded text-xs transition-colors">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">restart_alt</span>
+<span>重置</span>
+</button>
+<!-- Secondary JButton: 取消 -->
+<button class="flex items-center space-x-1 bg-[#212224] hover:bg-surface-variant text-on-surface border border-outline-variant px-2 py-1 rounded text-xs transition-colors">
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">cancel</span>
+<span>取消 (Esc)</span>
+</button>
+</div>
+<!-- Toolbar Utility Actions -->
+<div class="flex items-center space-x-1 text-on-surface-variant">
+<button class="w-6 h-6 flex items-center justify-center hover:bg-surface-variant hover:text-on-surface rounded" title="刷新">
+<span class="material-symbols-outlined text-[15px]">refresh</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center hover:bg-surface-variant hover:text-on-surface rounded" title="ERF 设置">
+<span class="material-symbols-outlined text-[15px]">tune</span>
+</button>
+</div>
+</div>
+<!-- Form Area wrapped in ScrollPane -->
+<div class="flex-1 p-3 overflow-y-auto space-y-3 bg-[#27292c]">
+<!-- Header Section Title -->
+<div class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider flex items-center justify-between">
+<span class="text-on-surface font-headline font-semibold">场景参数: 申请例外与起草反馈 (REQUEST EXCEPTION / DRAFT FEEDBACK)</span>
+<span class="px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/30 rounded text-[10px] font-mono">v2.4.1 · 安全例外治理</span>
+</div>
+<!-- Finding Selection Card (CRIT-03 & HIGH-03 Protection) -->
+<div class="bg-[#1e1f22] border border-outline-variant rounded p-2.5 space-y-2">
+<div class="flex items-center justify-between">
+<label class="text-on-surface-variant text-[11px] font-medium flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px] text-primary">find_in_page</span>
+<span>关联 Finding 视图 (FindingView File Picker)</span>
+</label>
+<span class="text-[10px] font-mono text-accent-green flex items-center space-x-1">
+<span class="material-symbols-outlined text-[12px]">check_circle</span>
+<span>已装载 FindingView</span>
+</span>
+</div>
+<div class="flex items-center space-x-1.5">
+<input class="flex-1 bg-[#242528] border border-outline-variant px-2 py-1 rounded text-on-surface font-mono text-[11.5px] focus:outline-none" readonly="" type="text" value=".scratch/findings/finding-order-service-01.json"/>
+<button class="px-2 py-1 bg-surface-variant border border-outline-variant rounded hover:bg-[#43454a] text-on-surface text-xs font-mono flex items-center space-x-1" title="OpenDisk Browse">
+<span class="material-symbols-outlined text-[13px]">folder_open</span>
+<span>浏览...</span>
+</button>
+</div>
+<!-- Empty-state protection notice with green/info shield -->
+<div class="flex items-center justify-between text-[10.5px] bg-[#242528]/80 px-2 py-1 rounded border border-[#393b40]">
+<div class="flex items-center space-x-1.5 text-accent-green">
+<span class="material-symbols-outlined text-[13px]">verified_user</span>
+<span>已绑定有效 FindingView (如未选文件，执行按钮将自动禁用以杜绝空指针异常)</span>
+</div>
+</div>
+<!-- Target Code Link & Metadata Tags -->
+<div class="pt-1 border-t border-[#2b2d30] flex flex-wrap items-center gap-1.5 text-[11px]">
+<div class="flex items-center space-x-1 px-1.5 py-0.5 bg-[#342e20] text-accent-yellow border border-accent-yellow/40 rounded cursor-pointer hover:bg-[#3f3827]" title="点击跳转至编辑器 Line 18:5">
+<span class="material-symbols-outlined text-[12px]">open_in_new</span>
+<span class="font-mono font-medium">OrderPaymentValidator.java:18:5 (点击 F4 在编辑器中跳转定位)</span>
+</div>
+<span class="px-1.5 py-0.2 bg-accent-red/20 text-accent-red border border-accent-red/40 rounded text-[10px] font-bold uppercase font-mono">CRITICAL</span>
+<span class="px-1.5 py-0.2 bg-[#212224] text-accent-yellow border border-outline-variant rounded text-[10px] font-mono">SEC-JAVA-HARDCODED-KEY</span>
+<span class="px-1.5 py-0.2 bg-[#212224] text-on-surface-variant border border-outline-variant rounded text-[10px] font-mono">SpotBugs+PMD</span>
+<span class="px-1.5 py-0.2 bg-[#212224] text-primary border border-outline-variant rounded text-[10px] font-mono">#FIND-8921</span>
+</div>
+</div>
+<!-- Exception Form Section -->
+<div class="space-y-2.5 text-xs pt-1">
+<!-- Scope ComboBox -->
+<div>
+<label class="block text-on-surface-variant text-[11px] mb-1 font-medium">例外生效范围 (Exception Scope) *</label>
+<div class="relative flex items-center bg-[#1e1f22] border border-outline-variant px-2 py-1 rounded cursor-pointer hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-[13px] text-primary mr-1.5">tune</span>
+<span class="text-on-surface font-mono text-[11.5px] flex-1">LINE (仅当前行精确例外)</span>
+<span class="text-on-surface-variant text-[10px] mr-2">[可选: FILE, RULE, LINE]</span>
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">expand_more</span>
+</div>
+</div>
+<!-- Actor Field (Required) -->
+<div>
+<div class="flex items-center justify-between mb-1">
+<label class="text-on-surface-variant text-[11px] font-medium">Actor (申请人/工号) *</label>
+<span class="text-accent-green text-[10px] flex items-center space-x-0.5">
+<span class="material-symbols-outlined text-[11px]">check</span>
+<span>格式校验合法</span>
+</span>
+</div>
+<div class="relative flex items-center">
+<input class="w-full bg-[#1e1f22] border border-outline-variant px-2.5 py-1 rounded text-on-surface font-mono text-[11.5px] focus:outline-none focus:border-primary" type="text" value="developer-alice@corp.internal"/>
+<span class="material-symbols-outlined absolute right-2 text-[14px] text-accent-green">check_circle</span>
+</div>
+</div>
+<!-- Reason Field (Required) -->
+<div>
+<div class="flex items-center justify-between mb-1">
+<label class="text-on-surface-variant text-[11px] font-medium">例外申请理由 (Reason) *</label>
+<span class="text-on-surface-variant text-[10px] font-mono">76 / 500 字符</span>
+</div>
+<textarea class="w-full h-16 bg-[#1e1f22] border border-outline-variant p-2 rounded text-on-surface font-body text-[11.5px] leading-relaxed resize-none focus:outline-none focus:border-primary">Legacy system compatibility requirement during Q4 migration. Planned refactor in Sprint 28.</textarea>
+</div>
+<!-- Target Draft Output File -->
+<div>
+<label class="block text-on-surface-variant text-[11px] mb-1 font-medium">目标草稿输出路径 (Draft Path)</label>
+<div class="flex items-center space-x-1.5">
+<input class="flex-1 bg-[#1e1f22] border border-outline-variant px-2 py-1 rounded text-on-surface-variant font-mono text-[11px] focus:outline-none" readonly="" type="text" value=".scratch/drafts/exception-20261005-002.json"/>
+<span class="material-symbols-outlined text-[15px] text-on-surface-variant px-1" title="只读草稿目标">description</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Accessible Status Bar at bottom of ToolWindow -->
+<div class="h-6 px-3 bg-[#242528] border-t border-outline-variant flex items-center justify-between text-[10.5px] select-none shrink-0" role="status">
+<div class="flex items-center space-x-1.5">
+<span class="w-2 h-2 rounded-full bg-accent-green"></span>
+<span class="text-on-surface font-medium">就绪 · 表单有效</span>
+</div>
+<div class="flex items-center space-x-1 text-on-surface-variant">
+<span>提交 ≠ 批准 ≠ Gate PASS；不写入 SCM。草稿仅写入本地。</span>
+<span class="material-symbols-outlined text-[12px] text-on-surface-variant" title="Governance Rules Active">info</span>
+</div>
+</div></div>
+</div>
+</aside>
+</div>
+<!-- Bottom Main IDE Status Bar (Footer Shell) -->
+<footer class="h-6 bg-surface border-t border-outline-variant px-3 flex items-center justify-between text-[11px] text-on-surface-variant select-none shrink-0 z-50">
+<!-- Left Status indicators -->
+<div class="flex items-center space-x-3">
+<div class="flex items-center space-x-1 hover:text-on-surface cursor-pointer">
+<span class="material-symbols-outlined text-[13px] text-accent-green">source_environment</span>
+<span>git: main</span>
+</div>
+<div class="flex items-center space-x-1 text-accent-green hover:text-white cursor-pointer">
+<span class="material-symbols-outlined text-[13px]">check_circle</span>
+<span>No problems</span>
+</div>
+</div>
+<!-- Right Status details -->
+<div class="flex items-center space-x-3">
+<div class="hover:text-on-surface cursor-pointer">22:18</div>
+<div class="hover:text-on-surface cursor-pointer">CRLF</div>
+<div class="hover:text-on-surface cursor-pointer">UTF-8</div>
+<div class="hover:text-on-surface cursor-pointer">4 spaces</div>
+<div class="hover:text-on-surface cursor-pointer flex items-center space-x-1">
+<span class="text-[9px] px-1 bg-[#212224] rounded border border-outline-variant font-mono">SDK</span>
+<span>Java 21</span>
+</div>
+<button class="hover:text-on-surface" title="Background tasks idle">
+<span class="material-symbols-outlined text-[13px] text-accent-green">task_alt</span>
+</button>
+<button class="hover:text-on-surface" title="Notifications">
+<span class="material-symbols-outlined text-[13px]">notifications</span>
+</button>
+</div>
+</footer>
+</body></html>

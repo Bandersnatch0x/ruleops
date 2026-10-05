@@ -1,0 +1,652 @@
+<!DOCTYPE html><html lang="zh-CN" class="h-full"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VS Code - Enterprise Rule Factory (ERF)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --vscode-activityBar-bg: #333333;
+      --vscode-activityBar-activeBorder: #ffffff;
+      --vscode-activityBar-foreground: #ffffff;
+      --vscode-activityBar-inactiveForeground: rgba(255, 255, 255, 0.4);
+      --vscode-sideBar-bg: #252526;
+      --vscode-sideBar-foreground: #cccccc;
+      --vscode-sideBarTitle-foreground: #bbbbbb;
+      --vscode-sideBarSectionHeader-bg: #1e1e1e;
+      --vscode-sideBarSectionHeader-foreground: #cccccc;
+      --vscode-editor-bg: #1e1e1e;
+      --vscode-editor-foreground: #d4d4d4;
+      --vscode-statusBar-bg: #007acc;
+      --vscode-statusBar-foreground: #ffffff;
+      --vscode-list-hoverBg: #2a2d2e;
+      --vscode-list-activeSelectionBg: #094771;
+      --vscode-list-activeSelectionForeground: #ffffff;
+      --vscode-quickInput-bg: #252526;
+      --vscode-quickInput-border: #454545;
+      --vscode-input-bg: #3c3c3c;
+      --vscode-badge-bg: #007acc;
+      --vscode-badge-foreground: #ffffff;
+      --vscode-button-bg: #0e639c;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      user-select: none;
+    }
+    .codicon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      font-size: 13px;
+    }
+    /* Custom scrollbars like VS Code */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(121, 121, 121, 0.4);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 100, 100, 0.7);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none text-[13px]">
+
+  <!-- Top Window Titlebar -->
+  <header class="h-[30px] bg-[#3c3c3c] text-[#cccccc] flex items-center justify-between px-3 text-[12px] border-b border-[#252526] shrink-0 z-10">
+    <div class="flex items-center space-x-3">
+      <!-- VS Code mini menu -->
+      <div class="flex items-center space-x-2 text-[11px] text-[#cccccc]">
+        <i class="fa-brands fa-microsoft text-[#007acc] text-sm mr-1"></i>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">文件(F)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">编辑(E)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">选择(S)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">查看(V)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">转到(G)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">运行(R)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">终端(T)</span>
+        <span class="hover:bg-[#505050] px-1.5 py-0.5 rounded cursor-pointer">帮助(H)</span>
+      </div>
+    </div>
+    
+    <!-- Title and breadcrumb -->
+    <div class="text-[12px] text-[#999999] flex items-center space-x-1">
+      <span class="">ruleops-backend-service</span>
+      <span class="">—</span>
+      <span class="text-[#cccccc]">Visual Studio Code</span>
+      <span class="bg-[#2d2d2d] text-[#858585] text-[10px] px-1.5 py-0.2 rounded border border-[#404040] ml-2">ERF Extension Active</span>
+    </div>
+
+    <!-- Window controls -->
+    <div class="flex items-center space-x-3 text-[#aaaaaa]">
+      <button class="hover:bg-[#4a4a4a] p-1.5 rounded"><i class="fa-solid fa-minus text-[10px]"></i></button>
+      <button class="hover:bg-[#4a4a4a] p-1.5 rounded"><i class="fa-regular fa-square text-[10px]"></i></button>
+      <button class="hover:bg-[#e81123] hover:text-white p-1.5 rounded"><i class="fa-solid fa-xmark text-[11px]"></i></button>
+    </div>
+  </header>
+
+  <!-- Main Body Layout: Activity Bar + Sidebar + Editor/Palette Area -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- 1. VS Code Activity Bar (Far Left) -->
+    <aside class="w-[48px] bg-[#333333] flex flex-col justify-between items-center py-2 shrink-0 z-20 border-r border-[#252526]">
+      <div class="flex flex-col items-center space-y-4 w-full">
+        <!-- Explorer -->
+        <div class="w-full h-10 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer relative group">
+          <i class="fa-regular fa-copy text-lg"></i>
+          <span class="absolute left-12 bg-[#252526] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#454545] whitespace-nowrap hidden group-hover:block z-50">资源管理器 (Ctrl+Shift+E)</span>
+        </div>
+        <!-- Search -->
+        <div class="w-full h-10 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer relative group">
+          <i class="fa-solid fa-magnifying-glass text-base"></i>
+          <span class="absolute left-12 bg-[#252526] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#454545] whitespace-nowrap hidden group-hover:block z-50">搜索 (Ctrl+Shift+F)</span>
+        </div>
+        <!-- Source Control -->
+        <div class="w-full h-10 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer relative group">
+          <i class="fa-solid fa-code-branch text-base"></i>
+          <span class="absolute left-12 bg-[#252526] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#454545] whitespace-nowrap hidden group-hover:block z-50">源代码管理 (Ctrl+Shift+G)</span>
+        </div>
+        <!-- Debug / Run -->
+        <div class="w-full h-10 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer relative group">
+          <i class="fa-solid fa-play text-sm"></i>
+          <span class="absolute left-12 bg-[#252526] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#454545] whitespace-nowrap hidden group-hover:block z-50">运行和调试 (Ctrl+Shift+D)</span>
+        </div>
+        <!-- Extensions -->
+        <div class="w-full h-10 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer relative group">
+          <i class="fa-solid fa-cubes-stacked text-base"></i>
+          <span class="absolute left-12 bg-[#252526] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#454545] whitespace-nowrap hidden group-hover:block z-50">扩展 (Ctrl+Shift+X)</span>
+        </div>
+        <!-- ERF Shield Icon (ACTIVE) -->
+        <div class="w-full h-11 flex items-center justify-center text-white cursor-pointer relative group">
+          <!-- Active Left Indicator Bar -->
+          <div class="absolute left-0 top-0 bottom-0 w-[2px] bg-white rounded-r"></div>
+          <div class="relative flex items-center justify-center w-8 h-8 rounded hover:bg-[#444444]">
+            <i class="fa-solid fa-shield-halved text-[#007acc] text-lg"></i>
+            <span class="absolute -top-1 -right-1 bg-[#007acc] text-white text-[9px] font-bold px-1 rounded-full border border-[#333333]">3</span>
+          </div>
+          <span class="absolute left-12 bg-[#252526] text-white text-xs px-2 py-1 rounded shadow-lg border border-[#454545] whitespace-nowrap hidden group-hover:block z-50">RuleOps Enterprise Rule Factory (ERF)</span>
+        </div>
+      </div>
+
+      <!-- Bottom Settings & Account -->
+      <div class="flex flex-col items-center space-y-3 w-full">
+        <div class="w-full h-9 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer">
+          <i class="fa-regular fa-circle-user text-base"></i>
+        </div>
+        <div class="w-full h-9 flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white cursor-pointer">
+          <i class="fa-solid fa-gear text-base"></i>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 2. Sidebar Panel: RULEOPS ERF -->
+    <section class="w-[310px] bg-[#252526] flex flex-col shrink-0 border-r border-[#1e1e1e] select-none text-[13px] z-10">
+      <!-- Sidebar Header -->
+      <div class="h-[35px] flex items-center justify-between px-4 uppercase tracking-wider text-[11px] font-semibold text-[#bbbbbb] border-b border-[#1e1e1e]">
+        <div class="flex items-center space-x-1.5 overflow-hidden">
+          <i class="fa-solid fa-shield-virus text-[#007acc] text-xs"></i>
+          <span class="truncate">RULEOPS ERF</span>
+        </div>
+        <!-- Actions: Refresh & Collapse All -->
+        <div class="flex items-center space-x-1 text-[#c5c5c5]">
+          <button title="刷新 (Refresh)" class="hover:bg-[#3c3c3c] p-1 rounded hover:text-white cursor-pointer">
+            <i class="fa-solid fa-rotate-right text-xs"></i>
+          </button>
+          <button title="折叠全部 (Collapse All)" class="hover:bg-[#3c3c3c] p-1 rounded hover:text-white cursor-pointer">
+            <i class="fa-solid fa-angles-up text-xs"></i>
+          </button>
+          <button title="更多操作..." class="hover:bg-[#3c3c3c] p-1 rounded hover:text-white cursor-pointer">
+            <i class="fa-solid fa-ellipsis text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. TreeView Navigation Organized Into Collapsible Sections -->
+      <div class="flex-1 overflow-y-auto">
+
+        <!-- SECTION 1: 扫描与 Findings (Expanded) -->
+        <div class="border-b border-[#2d2d2d]/40">
+          <div class="h-[24px] bg-[#1e1e1e]/60 hover:bg-[#2a2d2e] flex items-center justify-between px-2 cursor-pointer text-[#cccccc] font-semibold text-[11px] tracking-wide uppercase">
+            <div class="flex items-center space-x-1">
+              <i class="fa-solid fa-chevron-down text-[10px] w-3 text-center text-[#aaaaaa]"></i>
+              <span class="font-bold text-[#e1e1e1]">扫描与 Findings</span>
+            </div>
+            <span class="bg-[#007acc]/20 text-[#3794ff] px-1.5 rounded text-[10px] font-mono border border-[#007acc]/30">4 Items</span>
+          </div>
+
+          <!-- Items in Section 1 -->
+          <div class="py-1">
+            <div class="h-[25px] flex items-center px-4 hover:bg-[#2a2d2e] cursor-pointer text-[#cccccc] group">
+              <i class="fa-solid fa-microscope text-[#4ec9b0] mr-2 w-4 text-center"></i>
+              <span class="truncate group-hover:text-white">展示 Finding</span>
+              <span class="ml-auto text-[10px] text-[#6e7681] group-hover:text-[#999999] font-mono">rf.showFinding</span>
+            </div>
+            <div class="h-[25px] flex items-center px-4 hover:bg-[#2a2d2e] cursor-pointer text-[#cccccc] group bg-[#094771]/30 border-l-2 border-[#007acc]">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[#dcdcaa] mr-2 w-4 text-center"></i>
+              <span class="truncate text-white font-medium">导航到位置</span>
+              <span class="ml-auto text-[10px] text-[#9cdcfe] font-mono">F8 / Alt+F8</span>
+            </div>
+            <div class="h-[25px] flex items-center px-4 hover:bg-[#2a2d2e] cursor-pointer text-[#cccccc] group">
+              <i class="fa-solid fa-wand-magic-sparkles text-[#c586c0] mr-2 w-4 text-center"></i>
+              <span class="truncate group-hover:text-white">解释 Finding</span>
+              <span class="ml-auto text-[10px] text-[#4fc1ff] bg-[#264f78]/30 px-1 rounded">AI 协同</span>
+            </div>
+            <div class="h-[25px] flex items-center px-4 hover:bg-[#2a2d2e] cursor-pointer text-[#cccccc] group">
+              <i class="fa-solid fa-table-columns text-[#9cdcfe] mr-2 w-4 text-center"></i>
+              <span class="truncate group-hover:text-white">扫描结果工作台</span>
+              <i class="fa-solid fa-arrow-right-to-bracket text-[10px] ml-auto text-[#666666] group-hover:text-[#aaaaaa]"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: 工作区 (Collapsed) -->
+        <div class="border-b border-[#2d2d2d]/40">
+          <div class="h-[24px] bg-[#1e1e1e]/60 hover:bg-[#2a2d2e] flex items-center px-2 cursor-pointer text-[#cccccc] font-semibold text-[11px] tracking-wide uppercase">
+            <i class="fa-solid fa-chevron-right text-[10px] w-3 text-center text-[#888888] mr-1"></i>
+            <span class="">工作区</span>
+            <span class="ml-2 text-[10px] text-[#777777] font-normal normal-case">(3 commands)</span>
+          </div>
+        </div>
+
+        <!-- SECTION 3: 规则库 (Collapsed) -->
+        <div class="border-b border-[#2d2d2d]/40">
+          <div class="h-[24px] bg-[#1e1e1e]/60 hover:bg-[#2a2d2e] flex items-center px-2 cursor-pointer text-[#cccccc] font-semibold text-[11px] tracking-wide uppercase">
+            <i class="fa-solid fa-chevron-right text-[10px] w-3 text-center text-[#888888] mr-1"></i>
+            <span class="">规则库</span>
+            <span class="ml-2 text-[10px] text-[#777777] font-normal normal-case">(3 commands)</span>
+          </div>
+        </div>
+
+        <!-- SECTION 4: 反馈与例外 (Collapsed) -->
+        <div class="border-b border-[#2d2d2d]/40">
+          <div class="h-[24px] bg-[#1e1e1e]/60 hover:bg-[#2a2d2e] flex items-center px-2 cursor-pointer text-[#cccccc] font-semibold text-[11px] tracking-wide uppercase">
+            <i class="fa-solid fa-chevron-right text-[10px] w-3 text-center text-[#888888] mr-1"></i>
+            <span class="">反馈与例外</span>
+            <span class="ml-2 text-[10px] text-[#777777] font-normal normal-case">(5 commands)</span>
+          </div>
+        </div>
+
+        <!-- SECTION 5: 创作与覆盖 (Collapsed) -->
+        <div class="border-b border-[#2d2d2d]/40">
+          <div class="h-[24px] bg-[#1e1e1e]/60 hover:bg-[#2a2d2e] flex items-center px-2 cursor-pointer text-[#cccccc] font-semibold text-[11px] tracking-wide uppercase">
+            <i class="fa-solid fa-chevron-right text-[10px] w-3 text-center text-[#888888] mr-1"></i>
+            <span class="">创作与覆盖</span>
+            <span class="ml-2 text-[10px] text-[#777777] font-normal normal-case">(2 commands)</span>
+          </div>
+        </div>
+
+        <!-- SECTION 6: 运行记录 (最近 20 条) (Expanded) -->
+        <div>
+          <div class="h-[24px] bg-[#1e1e1e]/60 hover:bg-[#2a2d2e] flex items-center justify-between px-2 cursor-pointer text-[#cccccc] font-semibold text-[11px] tracking-wide uppercase">
+            <div class="flex items-center space-x-1">
+              <i class="fa-solid fa-chevron-down text-[10px] w-3 text-center text-[#aaaaaa]"></i>
+              <span class="font-bold text-[#e1e1e1]">运行记录 (最近 20 条)</span>
+            </div>
+            <div class="flex items-center space-x-1">
+              <span class="text-[10px] text-[#89d185]"><i class="fa-solid fa-circle-check text-[9px] mr-1"></i>正常</span>
+              <button title="清空记录" class="text-[#888888] hover:text-white ml-1.5"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+            </div>
+          </div>
+
+          <!-- History items list with chips -->
+          <div class="py-1 text-[12px]">
+            <!-- Item 1 -->
+            <div class="px-3 py-1.5 hover:bg-[#2a2d2e] cursor-pointer flex flex-col space-y-1 border-b border-[#2a2d2e]/40">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-1.5 font-mono text-[12px] text-[#9cdcfe]">
+                  <i class="fa-solid fa-bolt text-[#4ec9b0] text-[10px]"></i>
+                  <span class="font-semibold">rf.scan</span>
+                </div>
+                <span class="bg-[#1e4620] text-[#89d185] border border-[#2ea043]/30 px-1.5 py-0.2 rounded text-[10px] font-mono">exit=0</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-[#858585]">
+                <span class="">2026-10-05 17:30:14</span>
+                <span class="text-[#cccccc]">耗时: 1.42s</span>
+              </div>
+            </div>
+
+            <!-- Item 2 -->
+            <div class="px-3 py-1.5 hover:bg-[#2a2d2e] cursor-pointer flex flex-col space-y-1 border-b border-[#2a2d2e]/40">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-1.5 font-mono text-[12px] text-[#9cdcfe]">
+                  <i class="fa-solid fa-wand-magic-sparkles text-[#c586c0] text-[10px]"></i>
+                  <span class="font-semibold">rf.explain</span>
+                </div>
+                <span class="bg-[#1e4620] text-[#89d185] border border-[#2ea043]/30 px-1.5 py-0.2 rounded text-[10px] font-mono">exit=0</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-[#858585]">
+                <span class="">2026-10-05 17:28:40</span>
+                <span class="text-[#cccccc]">耗时: 680ms</span>
+              </div>
+            </div>
+
+            <!-- Item 3 -->
+            <div class="px-3 py-1.5 hover:bg-[#2a2d2e] cursor-pointer flex flex-col space-y-1 border-b border-[#2a2d2e]/40">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-1.5 font-mono text-[12px] text-[#9cdcfe]">
+                  <i class="fa-solid fa-check-double text-[#ce9178] text-[10px]"></i>
+                  <span class="font-semibold">rf.validateConfig</span>
+                </div>
+                <span class="bg-[#1e4620] text-[#89d185] border border-[#2ea043]/30 px-1.5 py-0.2 rounded text-[10px] font-mono">exit=0</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-[#858585]">
+                <span class="">2026-10-05 17:15:02</span>
+                <span class="text-[#cccccc]">耗时: 310ms</span>
+              </div>
+            </div>
+
+            <!-- Item 4 (Warning or custom exit) -->
+            <div class="px-3 py-1.5 hover:bg-[#2a2d2e] cursor-pointer flex flex-col space-y-1 border-b border-[#2a2d2e]/40">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-1.5 font-mono text-[12px] text-[#9cdcfe]">
+                  <i class="fa-solid fa-box-archive text-[#dcdcaa] text-[10px]"></i>
+                  <span class="font-semibold">rf.cacheRuleset</span>
+                </div>
+                <span class="bg-[#594214] text-[#cca700] border border-[#947600]/30 px-1.5 py-0.2 rounded text-[10px] font-mono">exit=0 (cached)</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-[#858585]">
+                <span class="">2026-10-05 16:54:19</span>
+                <span class="text-[#cccccc]">命中本地缓存</span>
+              </div>
+            </div>
+
+            <!-- Item 5 -->
+            <div class="px-3 py-1.5 hover:bg-[#2a2d2e] cursor-pointer flex flex-col space-y-1">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-1.5 font-mono text-[12px] text-[#9cdcfe]">
+                  <i class="fa-solid fa-stethoscope text-[#4ec9b0] text-[10px]"></i>
+                  <span class="font-semibold">rf.diagEnv</span>
+                </div>
+                <span class="bg-[#1e4620] text-[#89d185] border border-[#2ea043]/30 px-1.5 py-0.2 rounded text-[10px] font-mono">exit=0</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-[#858585]">
+                <span class="">2026-10-05 16:30:00</span>
+                <span class="text-[#cccccc]">环境就绪 (Java 17)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar Footer status -->
+      <div class="p-2 border-t border-[#1e1e1e] bg-[#1e1e1e]/40 text-[11px] flex items-center justify-between text-[#858585]">
+        <span class="flex items-center space-x-1.5">
+          <span class="w-2 h-2 rounded-full bg-[#89d185]"></span>
+          <span class="">规则引擎 v2.8.4</span>
+        </span>
+        <span class="font-mono text-[10px] text-[#569cd6]">RuleOps Client</span>
+      </div>
+    </section>
+
+    <!-- Editor Main Area Background with VS Code code editor simulation & Command Palette Dropdown -->
+    <main class="flex-1 bg-[#1e1e1e] flex flex-col relative overflow-hidden">
+      <!-- Editor Tabs Header -->
+      <div class="h-[35px] bg-[#252526] flex items-center border-b border-[#1e1e1e] overflow-x-auto shrink-0">
+        <!-- Active Tab -->
+        <div class="h-full bg-[#1e1e1e] border-t border-[#007acc] px-3 flex items-center space-x-2 text-[12px] text-white border-r border-[#252526] cursor-pointer">
+          <i class="fa-brands fa-java text-[#e76f00] text-sm"></i>
+          <span class="">OrderPaymentRuleValidator.java</span>
+          <span class="w-2 h-2 rounded-full bg-[#007acc] ml-1"></span>
+          <i class="fa-solid fa-xmark text-[10px] text-[#858585] hover:text-white ml-2 p-0.5 rounded"></i>
+        </div>
+        <!-- Tab 2 -->
+        <div class="h-full bg-[#2d2d2d] px-3 flex items-center space-x-2 text-[12px] text-[#969696] hover:text-white border-r border-[#252526] cursor-pointer">
+          <i class="fa-solid fa-code text-[#4ec9b0] text-xs"></i>
+          <span class="">erf-ruleset.yaml</span>
+          <i class="fa-solid fa-xmark text-[10px] text-[#858585] hover:text-white ml-2 p-0.5 rounded"></i>
+        </div>
+        <!-- Tab 3 -->
+        <div class="h-full bg-[#2d2d2d] px-3 flex items-center space-x-2 text-[12px] text-[#969696] hover:text-white border-r border-[#252526] cursor-pointer">
+          <i class="fa-solid fa-file-shield text-[#007acc] text-xs"></i>
+          <span class="">ruleops.config.json</span>
+          <i class="fa-solid fa-xmark text-[10px] text-[#858585] hover:text-white ml-2 p-0.5 rounded"></i>
+        </div>
+      </div>
+
+      <!-- Editor Breadcrumbs -->
+      <div class="h-[22px] bg-[#1e1e1e] border-b border-[#2d2d2d] px-4 flex items-center space-x-1.5 text-[11px] text-[#888888]">
+        <span class="">src</span>
+        <i class="fa-solid fa-chevron-right text-[8px]"></i>
+        <span class="">main</span>
+        <i class="fa-solid fa-chevron-right text-[8px]"></i>
+        <span class="">java</span>
+        <i class="fa-solid fa-chevron-right text-[8px]"></i>
+        <span class="">com.ruleops.erf.validator</span>
+        <i class="fa-solid fa-chevron-right text-[8px]"></i>
+        <span class="text-[#cccccc] font-medium">OrderPaymentRuleValidator.java</span>
+        <i class="fa-solid fa-chevron-right text-[8px]"></i>
+        <span class="text-[#dcdcaa]">validatePaymentContext()</span>
+      </div>
+
+      <!-- Mock Code Editor Background (Dimmed slightly to emphasize QuickPick) -->
+      <div class="flex-1 p-4 font-mono text-[13px] leading-6 overflow-hidden select-text text-[#d4d4d4] opacity-50 relative">
+        <div class="flex">
+          <div class="text-[#5a5a5a] pr-4 select-none text-right w-10">
+            1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15<br>16<br>17<br>18
+          </div>
+          <div class="">
+            <span class="text-[#c586c0]">package</span> <span class="text-[#9cdcfe]">com.ruleops.erf.validator</span>;<br>
+            <br>
+            <span class="text-[#c586c0]">import</span> <span class="text-[#4ec9b0]">com.ruleops.erf.sdk.annotations.RuleEntity</span>;<br>
+            <span class="text-[#c586c0]">import</span> <span class="text-[#4ec9b0]">com.ruleops.erf.core.ExecutionResult</span>;<br>
+            <br>
+            <span class="text-[#608b4e]">/**<br>
+            &nbsp;* Enterprise Rule Factory - Payment Context Enforcement<br>
+            &nbsp;* Complies with Pin: SEC-2026.10-FINAL<br>
+            &nbsp;*/</span><br>
+            <span class="text-[#dcdcaa]">@RuleEntity</span>(domain = <span class="text-[#ce9178]">"PAYMENT_V2"</span>, priority = <span class="text-[#b5cea8]">100</span>)<br>
+            <span class="text-[#569cd6]">public class</span> <span class="text-[#4ec9b0]">OrderPaymentRuleValidator</span> {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-[#569cd6]">public</span> <span class="text-[#4ec9b0]">ExecutionResult</span> <span class="text-[#dcdcaa]">validatePaymentContext</span>(<span class="text-[#4ec9b0]">OrderContext</span> ctx) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-[#c586c0]">if</span> (ctx == <span class="text-[#569cd6]">null</span> || ctx.getAmount() &lt;= <span class="text-[#b5cea8]">0</span>) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-[#c586c0]">return</span> <span class="text-[#4ec9b0]">ExecutionResult</span>.<span class="text-[#dcdcaa]">fail</span>(<span class="text-[#ce9178]">"ERR_INVALID_AMOUNT"</span>); <span class="bg-[#511] text-[#f48771] px-1 rounded border-b border-[#f14c4c]">[ERF Finding: Unhandled null edge]</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-[#c586c0]">return</span> <span class="text-[#4ec9b0]">ExecutionResult</span>.<span class="text-[#dcdcaa]">pass</span>();<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Top Center: VS Code QuickPick / Command Palette (Ctrl+Shift+P) Dropdown Active -->
+      <div class="absolute top-[8px] left-1/2 -translate-x-1/2 w-[620px] max-w-[90%] bg-[#252526] rounded-md shadow-2xl border border-[#454545] z-50 overflow-hidden flex flex-col font-sans">
+        <!-- Palette Search Input -->
+        <div class="p-2 border-b border-[#3c3c3c] bg-[#252526]">
+          <div class="bg-[#3c3c3c] rounded px-2.5 py-1.5 flex items-center border border-[#007acc] ring-1 ring-[#007acc]">
+            <i class="fa-solid fa-angle-right text-[#007acc] font-bold mr-2 text-sm"></i>
+            <input type="text" value="ERF: " class="bg-transparent text-white font-mono text-[13px] outline-none flex-1 placeholder-[#858585]" autofocus="">
+            <span class="text-[11px] text-[#858585] bg-[#2d2d2d] px-1.5 py-0.5 rounded border border-[#444444]">17 命令</span>
+          </div>
+        </div>
+
+        <!-- Palette Contributed Commands List (17 commands) -->
+        <div class="max-h-[380px] overflow-y-auto divide-y divide-[#2d2d2d]/30 text-[13px]">
+          
+          <!-- Category 1: 扫描与 Findings -->
+          <div class="bg-[#094771] text-white px-3 py-1.5 flex items-center justify-between cursor-pointer border-l-2 border-[#007acc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-microscope text-[#4ec9b0] w-4 text-center"></i>
+              <span class="font-medium">ERF: 展示 Finding</span>
+              <span class="text-[#89d185] text-[11px] font-mono bg-[#1b3a1e] px-1.5 rounded">rf.showFinding</span>
+            </div>
+            <span class="text-[11px] text-white/70 font-mono">Shift+Alt+F</span>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[#dcdcaa] w-4 text-center"></i>
+              <span class="">ERF: 导航到位置</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.gotoLocation</span>
+            </div>
+            <span class="text-[11px] text-[#858585] font-mono">F8</span>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-wand-magic-sparkles text-[#c586c0] w-4 text-center"></i>
+              <span class="">ERF: 解释 Finding (AI Assistant)</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.explainFinding</span>
+            </div>
+            <span class="text-[11px] text-[#4fc1ff] bg-[#264f78]/30 px-1 rounded">智能推荐</span>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-table-columns text-[#9cdcfe] w-4 text-center"></i>
+              <span class="">ERF: 打开扫描结果工作台</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.openWorkbench</span>
+            </div>
+          </div>
+
+          <!-- Category 2: 工作区 -->
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-stethoscope text-[#4ec9b0] w-4 text-center"></i>
+              <span class="">ERF: 环境诊断 (Doctor)</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.diagnoseEnvironment</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-check-double text-[#ce9178] w-4 text-center"></i>
+              <span class="">ERF: 校验工作区配置</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.validateWorkspaceConfig</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-sliders text-[#9cdcfe] w-4 text-center"></i>
+              <span class="">ERF: 查看有效配置 (Effective Settings)</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.viewEffectiveConfig</span>
+            </div>
+          </div>
+
+          <!-- Category 3: 规则库 -->
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-cubes text-[#e5c07b] w-4 text-center"></i>
+              <span class="">ERF: 浏览规则库（元数据）</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.browseRulesets</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-thumbtack text-[#e06c75] w-4 text-center"></i>
+              <span class="">ERF: 核对独立发布 pin</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.verifyReleasePin</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-box-archive text-[#61afef] w-4 text-center"></i>
+              <span class="">ERF: 缓存签名规则包</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.cacheSignedRuleset</span>
+            </div>
+          </div>
+
+          <!-- Category 4: 反馈与例外 -->
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-regular fa-pen-to-square text-[#dcdcaa] w-4 text-center"></i>
+              <span class="">ERF: 起草反馈</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.draftFeedback</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-file-circle-exclamation text-[#f44747] w-4 text-center"></i>
+              <span class="">ERF: 申请例外</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.requestException</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-cloud-arrow-up text-[#4ec9b0] w-4 text-center"></i>
+              <span class="">ERF: 提交反馈</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.submitFeedback</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-shield-cat text-[#c586c0] w-4 text-center"></i>
+              <span class="">ERF: 提交例外</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.submitException</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-list-check text-[#569cd6] w-4 text-center"></i>
+              <span class="">ERF: 查询提交状态</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.querySubmissionStatus</span>
+            </div>
+          </div>
+
+          <!-- Category 5: 创作与覆盖 -->
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-clipboard-check text-[#4ec9b0] w-4 text-center"></i>
+              <span class="">ERF: 校验标准文件</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.validateStandardSpec</span>
+            </div>
+          </div>
+
+          <div class="hover:bg-[#2a2d2e] px-3 py-1.5 flex items-center justify-between cursor-pointer text-[#cccccc]">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <i class="fa-solid fa-file-code text-[#ce9178] w-4 text-center"></i>
+              <span class="">ERF: 校验规则文件</span>
+              <span class="text-[#858585] text-[11px] font-mono">rf.validateRuleFile</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Palette Footer hint -->
+        <div class="px-3 py-1.5 bg-[#1e1e1e] border-t border-[#3c3c3c] text-[11px] text-[#858585] flex items-center justify-between">
+          <span class="">使用 <kbd class="bg-[#2d2d2d] px-1 py-0.5 rounded text-[#cccccc] font-mono border border-[#404040]">↑</kbd> <kbd class="bg-[#2d2d2d] px-1 py-0.5 rounded text-[#cccccc] font-mono border border-[#404040]">↓</kbd> 导`航，<kbd class="bg-[#2d2d2d] px-1 py-0.5 rounded text-[#cccccc] font-mono border border-[#404040]">Enter</kbd> 执行</span>
+          <span class="text-[#569cd6]">Enterprise Rule Factory Contributed</span>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- 5. Bottom Status Bar: Dark Blue (#007acc) -->
+  <footer class="h-[22px] bg-[#007acc] text-white flex items-center justify-between px-2 text-[12px] shrink-0 z-30 select-none">
+    <!-- Left Status items -->
+    <div class="flex items-center space-x-3">
+      <!-- Remote / Workspace item -->
+      <div class="flex items-center space-x-1 hover:bg-[#1f8ad2] px-1.5 h-[22px] cursor-pointer">
+        <i class="fa-solid fa-code-compare text-[11px]"></i>
+        <span class="">master*</span>
+      </div>
+
+      <!-- Cloud Sync -->
+      <div class="flex items-center space-x-1 hover:bg-[#1f8ad2] px-1.5 h-[22px] cursor-pointer text-[11px]">
+        <i class="fa-solid fa-arrows-rotate text-[10px]"></i>
+        <span class="">0↓ 1↑</span>
+      </div>
+
+      <!-- ERF Status (Requested: 'ERF: Ready' with checkmark) -->
+      <div class="flex items-center space-x-1.5 hover:bg-[#1f8ad2] px-2 h-[22px] cursor-pointer font-medium bg-[#0062a3] rounded-sm">
+        <i class="fa-solid fa-shield-halved text-[11px] text-[#a6d5fa]"></i>
+        <i class="fa-solid fa-check text-[11px] text-[#89d185]"></i>
+        <span class="tracking-wide">ERF: Ready</span>
+      </div>
+
+      <!-- Rule Findings Count in status -->
+      <div class="flex items-center space-x-1.5 hover:bg-[#1f8ad2] px-1.5 h-[22px] cursor-pointer text-[11px]">
+        <i class="fa-solid fa-triangle-exclamation text-[#ffd700] text-[11px]"></i>
+        <span class="">1 Finding</span>
+        <i class="fa-solid fa-circle-xmark text-[#f48771] text-[11px] ml-1"></i>
+        <span class="">0 Errors</span>
+      </div>
+    </div>
+
+    <!-- Right Status items -->
+    <div class="flex items-center space-x-3 text-[11px]">
+      <div class="hover:bg-[#1f8ad2] px-1.5 h-[22px] flex items-center cursor-pointer">
+        <span class="">行 14, 列 48</span>
+      </div>
+      <div class="hover:bg-[#1f8ad2] px-1.5 h-[22px] flex items-center cursor-pointer">
+        <span class="">空格: 4</span>
+      </div>
+      <!-- UTF-8 -->
+      <div class="hover:bg-[#1f8ad2] px-1.5 h-[22px] flex items-center cursor-pointer">
+        <span class="">UTF-8</span>
+      </div>
+      <div class="hover:bg-[#1f8ad2] px-1.5 h-[22px] flex items-center cursor-pointer">
+        <span class="">CRLF</span>
+      </div>
+      <!-- Java 17 -->
+      <div class="hover:bg-[#1f8ad2] px-1.5 h-[22px] flex items-center space-x-1 cursor-pointer bg-[#0062a3]/60">
+        <i class="fa-brands fa-java text-xs text-[#ff9955]"></i>
+        <span class="">Java 17</span>
+      </div>
+      <!-- Bell Notification -->
+      <div class="hover:bg-[#1f8ad2] px-1.5 h-[22px] flex items-center cursor-pointer">
+        <i class="fa-regular fa-bell text-[11px]"></i>
+      </div>
+    </div>
+  </footer>
+
+
+
+
+
+</body></html>
