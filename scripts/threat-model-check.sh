@@ -76,7 +76,6 @@ boundary_ids=(
   exception-grant-consumption
 )
 for id in "${boundary_ids[@]}"; do
-  rg -A8 -q "^  - id: $id$" "$MODEL" | true
   awk -v wanted="$id" '
     $0 == "  - id: " wanted { in_row = 1; next }
     in_row && /^  - id: / { exit }
