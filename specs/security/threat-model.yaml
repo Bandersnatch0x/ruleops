@@ -163,3 +163,48 @@ threats:
       - phase4-release-registry.sh
     status: CONTROLLED
     residualRisk: live release publication and organizational approval are not enabled by the local slice
+  - id: attempt-staging-disclosure
+    category: execution-integrity
+    assetBoundary: AttemptStaging
+    control: staging permissions, cleanup and failure propagation must be verified before any trusted authority claim
+    verification:
+      - static review of runtime/rf-runner staging paths
+      - future runtime negative tests for private directory, cleanup failure and TOCTOU
+    status: BOUNDARY_ONLY
+    residualRisk: current evidence is STATIC_ONLY; temp-dir permissions and cleanup behavior are not a production trust attestation
+  - id: bootstrap-measurement-confusion
+    category: trust-bootstrap
+    assetBoundary: RunnerMeasurement
+    control: caller-supplied measurement bytes must not be confused with independent measurement of the launched RunnerRelease
+    verification:
+      - static review of runtime/bootstrap and trusted-context seams
+      - future independent launch and measurement evidence
+    status: BOUNDARY_ONLY
+    residualRisk: current local measurement API is not proof of the binary actually started and must not authorize Trusted/SCM execution
+  - id: completion-accounting-integrity
+    category: execution-integrity
+    assetBoundary: ExecuteComplete and Completion
+    control: observation count, attempt digest, nonce binding and terminal-frame coverage must reconcile before a complete result
+    verification:
+      - static review of contracts/proto/backend_host.proto
+      - future cross-language conformance for missing, duplicate, reordered and mismatched terminal evidence
+    status: BOUNDARY_ONLY
+    residualRisk: current protocol evidence is STATIC_ONLY and cannot prove complete execution or production Gate authority
+  - id: root-threshold-delegation
+    category: trust-root
+    assetBoundary: Root trust and delegation chain
+    control: independent root identities, threshold policy, namespace, rotation and revocation must be explicit before production trust
+    verification:
+      - static review of runtime/trust and bootstrap boundaries
+      - future offline/HSM and threshold rotation acceptance
+    status: BOUNDARY_ONLY
+    residualRisk: local role-scoped signatures are not a production 2-of-3 root or SCM authority
+  - id: exception-grant-consumption
+    category: governance
+    assetBoundary: ExceptionGrant and Gate consumption
+    control: Gate must consume verified grant digests with scope, expiry, revocation and policy binding rather than raw fingerprint lists
+    verification:
+      - static review of runtime/trusted-ci and runtime/gate
+      - future negative tests for forged, expired, revoked and scope-mismatched grants
+    status: BOUNDARY_ONLY
+    residualRisk: current evidence is STATIC_ONLY; raw exception fingerprints must not be treated as approved production exceptions

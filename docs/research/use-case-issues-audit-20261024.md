@@ -90,3 +90,7 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 基于圆桌审计，当前工作树已加入 required-capability 真值校验：Host/Resolver 客户端和 fake/Java Host 只有在 capability fact 明确为 `true` 时才接受握手；缺失或 `false` 均视为未满足，并由 Java Host 返回 `UNSUPPORTED_CAPABILITY`。该改动不扩大产品权限，只收紧既有协议语义。
 
 验证边界：本环境没有可用 Maven/Cargo 依赖下载网络，暂不能运行行为门禁；已完成 `git diff --check` 和源码级语义核对。提交/推送状态以 Git 状态和远端复核为准，不把静态检查写成编译通过。
+
+## 9. Threat-model boundary slice
+
+为把审计发现留在可验证边界，新增 5 个 `BOUNDARY_ONLY` threat rows：AttemptStaging 权限/清理、caller-supplied BootstrapMeasurement、ExecuteComplete 对账、Root threshold/delegation、ExceptionGrant 消费闭合。`scripts/threat-model-check.sh` 现在固定计数并校验这些行的 `BOUNDARY_ONLY` 状态；本次只产生静态边界证据，不宣称 Runtime 修复、Trusted、SCM 或生产安全 attestation。

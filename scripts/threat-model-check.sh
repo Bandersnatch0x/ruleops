@@ -27,6 +27,11 @@ expected_ids=(
   secret-exfiltration
   cache-poisoning
   immutable-release
+  attempt-staging-disclosure
+  bootstrap-measurement-confusion
+  completion-accounting-integrity
+  root-threshold-delegation
+  exception-grant-consumption
 )
 actual_count="$(rg -c '^  - id:' "$MODEL")"
 [ "$actual_count" -eq "${#expected_ids[@]}" ] || {
@@ -63,6 +68,22 @@ rg -q '^  platform: linux/amd64$' "$MODEL"
 rg -q '^  authority: LOCAL_UNATTESTED_SHADOW$' "$MODEL"
 rg -q '^    status: BOUNDARY_ONLY$' "$MODEL"
 rg -q '^    status: CONTROLLED$' "$MODEL"
+boundary_ids=(
+  attempt-staging-disclosure
+  bootstrap-measurement-confusion
+  completion-accounting-integrity
+  root-threshold-delegation
+  exception-grant-consumption
+)
+for id in "${boundary_ids[@]}"; do
+  rg -A8 -q "^  - id: $id$" "$MODEL" | true
+  awk -v wanted="$id" '
+    $0 == "  - id: " wanted { in_row = 1; next }
+    in_row && /^  - id: / { exit }
+    in_row && /^    status: BOUNDARY_ONLY$/ { found = 1 }
+    END { exit(found ? 0 : 1) }
+  ' "$MODEL" || { echo "boundary threat must be BOUNDARY_ONLY: $id" >&2; exit 1; }
+done
 rg -q 'source files|credentials|full Finding' "$MODEL"
 
 cat > "$OUT/threat-model.md" <<EOF
