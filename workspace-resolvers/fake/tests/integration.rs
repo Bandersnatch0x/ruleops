@@ -165,6 +165,29 @@ fn missing_capability_fails_explicitly() {
 }
 
 #[test]
+fn false_capability_fails_explicitly() {
+    let result = ResolverHandle::spawn(
+        &mut {
+            let mut c = fake_resolver_command();
+            c.env("FAKE_FALSE_CAPABILITY", "ecosystem.static-layout");
+            c
+        },
+        &config_with(&["ecosystem.static-layout"]),
+    );
+    match result {
+        Err(ResolverError::Protocol {
+            code: wb::protocol_error::Code::UnsupportedCapability,
+            ..
+        }) => {}
+        Err(ResolverError::MissingCapabilities { missing }) => {
+            assert_eq!(missing, vec!["ecosystem.static-layout".to_string()])
+        }
+        Err(other) => panic!("expected explicit false-capability failure, got: {other:?}"),
+        Ok(_) => panic!("handshake unexpectedly succeeded with false capability"),
+    }
+}
+
+#[test]
 fn maven_and_gradle_build_metadata_is_detected_without_execution() {
     let dir = std::env::temp_dir().join(format!("erf-build-adapter-{}", std::process::id()));
     let repo = dir.join("repo");

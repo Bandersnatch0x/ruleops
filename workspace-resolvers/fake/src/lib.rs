@@ -14,11 +14,15 @@ use std::collections::HashMap;
 
 /// Capability facts of the reference resolver.
 pub fn facts() -> HashMap<String, bool> {
-    HashMap::from([
+    let mut facts = HashMap::from([
         ("ecosystem.static-layout".to_string(), true),
         ("ecosystem.maven.safe-static".to_string(), true),
         ("ecosystem.gradle.safe-static".to_string(), true),
-    ])
+    ]);
+    if let Ok(name) = std::env::var("FAKE_FALSE_CAPABILITY") {
+        facts.insert(name, false);
+    }
+    facts
 }
 
 /// Resolves the layout under `repo_root` into a descriptor.

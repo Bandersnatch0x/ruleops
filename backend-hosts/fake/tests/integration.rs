@@ -105,6 +105,29 @@ fn missing_required_capability_fails_explicitly() {
 }
 
 #[test]
+fn false_required_capability_fails_explicitly() {
+    let result = HostHandle::spawn(
+        &mut {
+            let mut c = fake_host_command();
+            c.env("FAKE_FALSE_CAPABILITY", "java.ast");
+            c
+        },
+        &config_with(&["java.ast"]),
+    );
+    match result {
+        Err(HostError::Protocol {
+            code: pb::protocol_error::Code::UnsupportedCapability,
+            ..
+        }) => {}
+        Err(HostError::MissingCapabilities { missing }) => {
+            assert_eq!(missing, vec!["java.ast".to_string()])
+        }
+        Err(other) => panic!("expected explicit false-capability failure, got: {other:?}"),
+        Ok(_) => panic!("handshake unexpectedly succeeded with false capability"),
+    }
+}
+
+#[test]
 fn protocol_major_mismatch_refuses_execution() {
     let result = HostHandle::spawn(
         &mut {

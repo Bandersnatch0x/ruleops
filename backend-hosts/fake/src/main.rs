@@ -8,6 +8,7 @@
 //!   where a client-side deadline can be observed to fire
 //! - `FAKE_SUPPORTED_MAJOR=<n>` — protocol major this fake accepts (default 0)
 //! - `FAKE_BAD_CORRELATION=1`  — answers Hello with a mismatched correlation id
+//! - `FAKE_FALSE_CAPABILITY=<name>` — advertises one capability as false
 //! - `FAKE_CRASH_ON_EXECUTE=1` — exits during execute without Completion
 //! - `FAKE_FAIL_UNIT=<id>` — emits a failed UnitStatus for one unit
 //! - `FAKE_MAX_FRAME_BYTES=<n>` — receiver frame cap (default: 16 MiB)

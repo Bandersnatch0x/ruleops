@@ -38,6 +38,9 @@ pub fn capabilities_for_runtime_backend() -> pb::CapabilityDescriptor {
         }
         _ => {}
     }
+    if let Ok(name) = std::env::var("FAKE_FALSE_CAPABILITY") {
+        capabilities.facts.insert(name, false);
+    }
     capabilities
 }
 
