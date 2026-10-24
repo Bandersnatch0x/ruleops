@@ -13,6 +13,7 @@
 use erf_contracts::backend::v0 as pb;
 use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
+use std::collections::HashMap;
 use std::io::Read;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
@@ -25,6 +26,14 @@ pub const PROTOCOL_MINOR: u32 = 1;
 /// The reader applies backpressure instead of allowing unbounded child output
 /// to grow Runtime memory.
 pub const RESPONSE_QUEUE_CAPACITY: usize = 8;
+
+fn unmet_capabilities(required: &[String], facts: &HashMap<String, bool>) -> Vec<String> {
+    required
+        .iter()
+        .filter(|capability| !facts.get(*capability).copied().unwrap_or(false))
+        .cloned()
+        .collect()
+}
 
 #[derive(Debug, Clone)]
 pub struct HostConfig {
@@ -181,12 +190,7 @@ impl HostHandle {
                 let caps = ack.capabilities.as_ref().ok_or_else(|| {
                     HostError::Violation("HelloAck without CapabilityDescriptor".into())
                 })?;
-                let missing: Vec<String> = config
-                    .required_capabilities
-                    .iter()
-                    .filter(|c| !caps.facts.contains_key(*c))
-                    .cloned()
-                    .collect();
+                let missing = unmet_capabilities(&config.required_capabilities, &caps.facts);
                 if !missing.is_empty() {
                     return Err(HostError::MissingCapabilities { missing });
                 }
@@ -580,5 +584,28 @@ mod tests {
         assert_eq!(receiver.try_iter().count(), RESPONSE_QUEUE_CAPACITY);
         release.store(true, Ordering::Release);
         drop(receiver);
+    }
+}
+
+
+#[cfg(test)]
+mod capability_tests {
+    use super::unmet_capabilities;
+    use std::collections::HashMap;
+
+    #[test]
+    fn required_capability_must_be_true() {
+        let required = vec!["java.ast".to_string(), "java.bytecode".to_string()];
+        let facts = HashMap::from([
+            ("java.ast".to_string(), true),
+            ("java.bytecode".to_string(), false),
+        ]);
+        assert_eq!(unmet_capabilities(&required, &facts), vec!["java.bytecode"]);
+    }
+
+    #[test]
+    fn missing_required_capability_is_unmet() {
+        let required = vec!["java.ast".to_string()];
+        assert_eq!(unmet_capabilities(&required, &HashMap::new()), vec!["java.ast"]);
     }
 }

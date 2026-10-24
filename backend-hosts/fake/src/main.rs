@@ -255,7 +255,7 @@ impl<'a> Session<'a> {
         let missing: Vec<String> = hello
             .required_capabilities
             .iter()
-            .filter(|c| !facts.contains_key(*c))
+            .filter(|c| !facts.get(*c).copied().unwrap_or(false))
             .cloned()
             .collect();
         if !missing.is_empty() {

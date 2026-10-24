@@ -127,6 +127,14 @@ final class JavaBackendHost {
                             + ", host supports major " + supportedMajor);
             return;
         }
+        CapabilityDescriptor advertised = capabilities();
+        for (String required : hello.getRequiredCapabilitiesList()) {
+            if (!advertised.getFactsMap().getOrDefault(required, false)) {
+                error(correlation, ProtocolError.Code.UNSUPPORTED_CAPABILITY,
+                        "required capability unavailable: " + required);
+                return;
+            }
+        }
         send(HostEnvelope.newBuilder()
                 .setCorrelationId(correlation)
                 .setHelloAck(HelloAck.newBuilder()
@@ -134,7 +142,7 @@ final class JavaBackendHost {
                         .setProtocolMinor(1)
                         .setHostName("erf-java-host")
                         .setHostVersion("0.1.0")
-                        .setCapabilities(capabilities())
+                        .setCapabilities(advertised)
                         .setAcceptedLimits(hello.getLimits()))
                 .build());
     }
