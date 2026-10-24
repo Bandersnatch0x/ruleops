@@ -13,8 +13,10 @@ present a local test as production certification.
 
 ## Decision
 
-Maintain sixteen threat identities in
-`specs/security/threat-model.yaml`. Every row must contain a protected asset,
+Maintain twenty-one threat identities in
+`specs/security/threat-model.yaml`: sixteen baseline identities plus five
+explicitly marked `BOUNDARY_ONLY` identities for trust-boundary gaps that
+remain outside the current runtime claim. Every row must contain a protected asset,
 ERF-owned control, verification reference, status and residual risk. The
 machine checker rejects missing or duplicate identities, incomplete rows, and
 an unstated `linux/amd64` / `LOCAL_UNATTESTED_SHADOW` boundary.
