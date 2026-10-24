@@ -85,7 +85,7 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 本文是研究/审计产物，不宣称完成任何生产可信、生产 Gate、SCM 写入或完整门禁。
 - 下一次代码改动应绑定一个具体 Issue，先读其完整正文与关联 ADR，再以最小范围提交并复验。
 
-## 8. H07 小改动（进行中）
+## 8. H07 小改动（已完成，验证边界保留）
 
 基于圆桌审计，当前工作树已加入 required-capability 真值校验：Host/Resolver 客户端和 fake/Java Host 只有在 capability fact 明确为 `true` 时才接受握手；缺失或 `false` 均视为未满足，并由 Java Host 返回 `UNSUPPORTED_CAPABILITY`。该改动不扩大产品权限，只收紧既有协议语义。
 
