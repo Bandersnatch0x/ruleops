@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
@@ -2084,6 +2084,9 @@ fn materialize_delivered_bundle(
     let temp = parent.join(format!(".{digest}.{}.tmp", unique_suffix()));
     fs::create_dir(&temp)
         .map_err(|error| ScanError::Delivery(format!("cannot create materialized RuleBundle staging directory: {error}")))?;
+    #[cfg(unix)]
+    fs::set_permissions(&temp, fs::Permissions::from_mode(0o700))
+        .map_err(|error| ScanError::Delivery(format!("cannot restrict materialized RuleBundle staging directory: {error}")))?;
     let result = (|| {
         let entries = decode_canonical_bundle(bytes)?;
         let mut seen = BTreeSet::new();
@@ -2103,11 +2106,16 @@ fn materialize_delivered_bundle(
                 fs::create_dir_all(parent).map_err(|error| {
                     ScanError::Delivery(format!("cannot create materialized RuleBundle directory: {error}"))
                 })?;
+                #[cfg(unix)]
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).map_err(|error| {
+                    ScanError::Delivery(format!("cannot restrict materialized RuleBundle directory: {error}"))
+                })?;
             }
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut file = options.open(&path)
                 .map_err(|error| ScanError::Delivery(format!("cannot materialize RuleBundle file: {error}")))?;
             file.write_all(&file_bytes)
                 .and_then(|_| file.sync_all())
@@ -2120,10 +2128,14 @@ fn materialize_delivered_bundle(
             "intent": {"id": rule_id},
             "digest": digest,
         });
-        fs::write(temp.join("manifest.json"), serde_json::to_vec(&manifest).map_err(|error| {
+        let manifest_path = temp.join("manifest.json");
+        fs::write(&manifest_path, serde_json::to_vec(&manifest).map_err(|error| {
             ScanError::Delivery(format!("cannot encode materialized RuleBundle manifest: {error}"))
         })?)
         .map_err(|error| ScanError::Delivery(format!("cannot write materialized RuleBundle manifest: {error}")))?;
+        #[cfg(unix)]
+        fs::set_permissions(&manifest_path, fs::Permissions::from_mode(0o600))
+            .map_err(|error| ScanError::Delivery(format!("cannot restrict materialized RuleBundle manifest: {error}")))?;
         fs::rename(&temp, &target)
             .map_err(|error| ScanError::Delivery(format!("cannot publish materialized RuleBundle: {error}")))?;
         Ok(())
@@ -2605,6 +2617,13 @@ mod tests {
         let validated = validate_rule_bundle(&materialized_path).unwrap();
         assert_eq!(validated.rule_id, "corp.test");
         assert_eq!(bundle_payload_bytes(&materialized_path).unwrap(), payload);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&materialized_path).unwrap().permissions().mode() & 0o777, 0o700);
+            assert_eq!(fs::metadata(materialized_path.join("ruleset.xml")).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(fs::metadata(materialized_path.join("manifest.json")).unwrap().permissions().mode() & 0o777, 0o600);
+        }
         assert_eq!(materialize_delivered_bundle(&cache_root.to_string_lossy(), "corp.test", &descriptor, &payload).unwrap(), materialized);
         fs::remove_dir_all(source).unwrap();
         fs::remove_dir_all(cache_root).unwrap();
