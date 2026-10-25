@@ -72,7 +72,7 @@ class OntologyPackValidatorTest {
         OntologyPackEnvelope valid = validPack();
         OntologyPackEnvelope unsorted = new OntologyPackEnvelope(
                 valid.revision(), valid.canonicalBytes(), valid.canonicalDigest(), valid.shapesDigest(),
-                List.of("f".repeat(64), "0".repeat(64)), valid.namespace(), valid.toolchainIdentity(),
+                List.of("f".repeat(64), "1".repeat(64)), valid.namespace(), valid.toolchainIdentity(),
                 valid.artifactDigest(), valid.signingRole(), valid.signature());
         var result = new OntologyPackValidator().validate(unsorted);
         assertFalse(result.valid());
