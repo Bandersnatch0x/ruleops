@@ -136,3 +136,11 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - ADR-0179 freezes the additive ExecuteComplete accounting plan: observation_count, attempt_digest, canonical digest rules, trusted/legacy compatibility and cross-language conformance.
 - ADR-0180 freezes the Root threshold/delegation/HSM preparation plan: independent identities, two-of-three threshold, namespace/expiry/revocation, rollback protection and custody/recovery gates.
 - ADR-0181 freezes the RDFC admission preparation plan: deterministic signed artifact pack, dedicated signing role, dependency/resource/revocation checks and migration/rollback evidence.
+
+## 12. Latest implementation evidence (2026-10-25)
+
+- #146 ExecuteComplete accounting 已落地：proto 新增 `observation_count` 与 `attempt_digest`；Rust Host Client 校验单位数、观察数、32-byte digest；Rust/Node/Java Host 输出同一 canonical attempt digest；conformance 对错误 observation count 与错误 digest 均 fail-closed。
+- 独立 Phase 2 acceptance 已通过 Rust Fake 33/33、Node Fake 33/33；两者 attempt digest 一致：`81f9d50ff553f4be25ecee40c40da242ec4c47e0fb3fbd09ce1ce6baca563f69`。`cargo test -p erf-conformance --lib` 4/4 通过（使用环境内 vtkprotoc 兼容工具）。
+- Root threshold 仅落 preparation/test seam：`contracts/trust-root-v1.yaml`、`runtime/trust` pure metadata/2-of-3/去重/撤回/namespace/expiry/rotation 校验与 fixture；`cargo test -p erf-trust --all-targets` 20/20 通过。未接入 TrustStore、Runner、CI 或 authority，仍为 `PREPARATION_ONLY` / `LOCAL_UNATTESTED_SHADOW`。
+- RDFC admission 仅落 deterministic pack envelope/parser/validator、canonical/wire vectors 与边界回归；`RdfcAdmission` 固定返回 `RDFC_NOT_ADMITTED`，未引入 SHACL/RDFC 新依赖，未接入生产准入。
+- 已知阻塞：完整 workspace 门禁仍受真实构建依赖和环境工具链（包括 Maven/Javac 缺失、部分 workspace 需要 protoc）影响；HSM/离线 custody、双人审批、recovery、Root chain/registry/CI 集成仍未实现。
