@@ -310,6 +310,7 @@ dependencies = [
  "erf-framing",
  "erf-host-client",
  "prost",
+ "sha2",
 ]
 
 [[package]]

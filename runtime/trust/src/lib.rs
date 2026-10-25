@@ -782,6 +782,9 @@ impl RootTrustMetadata {
         if self.expires_at_epoch_secs <= self.issued_at_epoch_secs {
             return Err(TrustError::InvalidRootMetadataWindow);
         }
+        if self.previous_metadata_digest == Some([0; 32]) {
+            return Err(TrustError::InvalidRootPreviousDigest);
+        }
         if now_epoch_secs < self.issued_at_epoch_secs {
             return Err(TrustError::RootMetadataNotYetValid);
         }
@@ -1184,6 +1187,8 @@ pub enum TrustError {
     InvalidRootThresholdPolicy,
     #[error("Root metadata validity window is invalid")]
     InvalidRootMetadataWindow,
+    #[error("Root metadata previous-generation digest is invalid")]
+    InvalidRootPreviousDigest,
     #[error("Root metadata is not yet valid")]
     RootMetadataNotYetValid,
     #[error("Root metadata is expired")]
@@ -1831,6 +1836,9 @@ mod tests {
         metadata.namespace = "".into();
         assert_eq!(metadata.validate_at(20), Err(TrustError::InvalidRootNamespace));
         metadata.namespace = "org/repo".into();
+        metadata.previous_metadata_digest = Some([0; 32]);
+        assert_eq!(metadata.validate_at(20), Err(TrustError::InvalidRootPreviousDigest));
+        metadata.previous_metadata_digest = None;
         metadata.delegated_roles[0].namespace = "other/repo".into();
         assert_eq!(metadata.validate_at(20), Err(TrustError::DelegatedNamespaceMismatch { role: "runtime-pack-signing".into() }));
     }

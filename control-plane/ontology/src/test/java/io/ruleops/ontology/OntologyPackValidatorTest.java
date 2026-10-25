@@ -28,7 +28,7 @@ class OntologyPackValidatorTest {
         return new OntologyPackEnvelope(
                 "rdfc-v0-core-java", canonical, CANONICAL_DIGEST, SHAPES_DIGEST,
                 List.of(DEPENDENCY_DIGEST), "https://ruleops.io/ontology/core#",
-                "jena-5.3.0", ARTIFACT_DIGEST, "ontology-signing", new byte[32]);
+                "jena-5.3.0", ARTIFACT_DIGEST, "ontology-signing", signature());
     }
 
     @Test
@@ -92,6 +92,18 @@ class OntologyPackValidatorTest {
     }
 
     @Test
+    void placeholderSignatureIsRejected() throws Exception {
+        OntologyPackEnvelope valid = validPack();
+        OntologyPackEnvelope placeholder = new OntologyPackEnvelope(
+                valid.revision(), valid.canonicalBytes(), valid.canonicalDigest(), valid.shapesDigest(),
+                valid.dependencyDigests(), valid.namespace(), valid.toolchainIdentity(),
+                valid.artifactDigest(), valid.signingRole(), new byte[32]);
+        var result = new OntologyPackValidator().validate(placeholder);
+        assertFalse(result.valid());
+        assertEquals("SIGNATURE_MISSING", result.code());
+    }
+
+    @Test
     void productionAdmissionRemainsFailClosed() throws Exception {
         var decision = new RdfcAdmission().evaluate(validPack());
         assertFalse(decision.admitted());
@@ -116,5 +128,11 @@ class OntologyPackValidatorTest {
         var error = assertThrows(OntologyPackValidationException.class,
                 () -> validator.parse(padded.getBytes(StandardCharsets.UTF_8)));
         assertEquals("NON_CANONICAL_ENCODING", error.code());
+    }
+
+    private static byte[] signature() {
+        byte[] value = new byte[32];
+        java.util.Arrays.fill(value, (byte) 0xab);
+        return value;
     }
 }

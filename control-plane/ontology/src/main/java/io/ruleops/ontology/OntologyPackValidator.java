@@ -68,7 +68,8 @@ public final class OntologyPackValidator {
         if (!MessageDigest.isEqual(hex(pack.canonicalBytes()), decodeHex(pack.canonicalDigest()))) {
             return ValidationResult.invalid("CANONICAL_DIGEST_MISMATCH", "canonical digest does not match bytes");
         }
-        if (pack.signature().length < 32) {
+        byte[] signature = pack.signature();
+        if (signature.length < 32 || allZero(signature)) {
             return ValidationResult.invalid("SIGNATURE_MISSING", "signature bytes are required");
         }
         List<String> dependencies = pack.dependencyDigests();
@@ -216,6 +217,15 @@ public final class OntologyPackValidator {
 
     private static byte[] decodeHex(String value) {
         return HexFormat.of().parseHex(value);
+    }
+
+    private static boolean allZero(byte[] value) {
+        for (byte element : value) {
+            if (element != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static OntologyPackValidationException failure(ValidationResult result) {
