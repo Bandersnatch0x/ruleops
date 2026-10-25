@@ -2009,4 +2009,121 @@ mod tests {
         assert_eq!(fixture["acceptance"]["expected"], "PASS_TWO_OF_THREE");
         assert_eq!(fixture["negativeCases"].as_array().unwrap().len(), 5);
     }
+
+    #[test]
+    fn root_metadata_chain_fixture_freezes_cases_and_historical_link_acceptance() {
+        let fixture: Value = serde_json::from_str(include_str!("../test-vectors/root-threshold-v1.json")).unwrap();
+        let chain = fixture["chain"].as_object().unwrap();
+        let now = chain["validationNowEpochSecs"].as_u64().unwrap();
+        assert_eq!(now, 120);
+
+        let (previous, _) = root_metadata();
+        let previous_fixture = chain["previous"].as_object().unwrap();
+        assert_eq!(previous_fixture["namespace"], previous.namespace);
+        assert_eq!(previous_fixture["version"], previous.version);
+        assert_eq!(previous_fixture["issuedAtEpochSecs"], previous.issued_at_epoch_secs);
+        assert_eq!(previous_fixture["expiresAtEpochSecs"], previous.expires_at_epoch_secs);
+        assert_eq!(previous_fixture["subjectDigest"], hex_digest(&previous.subject_digest()));
+        assert!(previous.expires_at_epoch_secs < now);
+        assert_eq!(previous.validate_at(now), Err(TrustError::RootMetadataExpired));
+
+        let current_fixture = chain["current"].as_object().unwrap();
+        let mut current = previous.clone();
+        current.version = current_fixture["version"].as_u64().unwrap();
+        current.issued_at_epoch_secs = current_fixture["issuedAtEpochSecs"].as_u64().unwrap();
+        current.expires_at_epoch_secs = current_fixture["expiresAtEpochSecs"].as_u64().unwrap();
+        let current_issued_at = current.issued_at_epoch_secs;
+        let current_expires_at = current.expires_at_epoch_secs;
+        current.delegated_roles[0].issued_at_epoch_secs = current_issued_at;
+        current.delegated_roles[0].expires_at_epoch_secs = current_expires_at;
+        current.previous_metadata_digest = Some(previous.subject_digest());
+        assert_eq!(current_fixture["namespace"], current.namespace);
+        assert_eq!(
+            current_fixture["previousMetadataDigest"],
+            hex_digest(&previous.subject_digest())
+        );
+        assert!(current.issued_at_epoch_secs < now);
+        assert!(now < current.expires_at_epoch_secs);
+
+        // The candidate is valid at `now` even though its explicit previous
+        // generation has expired.  This is a historical link, not a current
+        // authorization grant.
+        assert_eq!(
+            current.validate_chain(Some(&previous), now),
+            Ok(())
+        );
+        assert_eq!(
+            chain["acceptance"]["name"],
+            "expired-previous-historical-link"
+        );
+        assert_eq!(
+            chain["acceptance"]["expected"],
+            "PASS_EXPIRED_PREVIOUS_HISTORICAL_LINK"
+        );
+
+        let expected_cases = [
+            ("missing-previous", "ROOT_METADATA_CHAIN_MISSING_PREVIOUS"),
+            ("missing-previous-digest", "ROOT_METADATA_CHAIN_MISSING_DIGEST"),
+            ("wrong-previous-digest", "ROOT_METADATA_CHAIN_DIGEST_MISMATCH"),
+            ("namespace-mismatch", "ROOT_METADATA_CHAIN_NAMESPACE_MISMATCH"),
+            ("version-rollback", "ROOT_METADATA_CHAIN_VERSION_ROLLBACK"),
+            ("issued-at-rollback", "ROOT_METADATA_CHAIN_ISSUED_AT_ROLLBACK"),
+        ];
+        let negative_cases = chain["negativeCases"].as_array().unwrap();
+        assert_eq!(negative_cases.len(), expected_cases.len());
+        for (case, (name, expected)) in negative_cases.iter().zip(expected_cases) {
+            assert_eq!(case["name"], name);
+            assert_eq!(case["expected"], expected);
+        }
+
+        // Keep the labels above tied to the actual pure validator outcomes;
+        // changing a fixture string alone must not make this contract pass.
+        assert_eq!(
+            current.validate_chain(None, now),
+            Err(TrustError::RootMetadataChainMissingPrevious)
+        );
+
+        let mut missing_digest = current.clone();
+        missing_digest.previous_metadata_digest = None;
+        assert_eq!(
+            missing_digest.validate_chain(Some(&previous), now),
+            Err(TrustError::RootMetadataChainMissingDigest)
+        );
+
+        let mut wrong_digest = current.clone();
+        wrong_digest.previous_metadata_digest = Some([9; 32]);
+        assert_eq!(
+            wrong_digest.validate_chain(Some(&previous), now),
+            Err(TrustError::RootMetadataChainDigestMismatch)
+        );
+
+        let mut wrong_namespace = current.clone();
+        wrong_namespace.namespace = "other/repo".into();
+        wrong_namespace.delegated_roles[0].namespace = "other/repo".into();
+        assert_eq!(
+            wrong_namespace.validate_chain(Some(&previous), now),
+            Err(TrustError::RootMetadataChainNamespaceMismatch)
+        );
+
+        let mut version_rollback = current.clone();
+        version_rollback.version = previous.version;
+        assert_eq!(
+            version_rollback.validate_chain(Some(&previous), now),
+            Err(TrustError::RootMetadataChainVersionRollback {
+                previous: previous.version,
+                current: previous.version,
+            })
+        );
+
+        let mut issued_at_rollback = current.clone();
+        issued_at_rollback.issued_at_epoch_secs = previous.issued_at_epoch_secs;
+        issued_at_rollback.delegated_roles[0].issued_at_epoch_secs = previous.issued_at_epoch_secs;
+        assert_eq!(
+            issued_at_rollback.validate_chain(Some(&previous), now),
+            Err(TrustError::RootMetadataChainIssuedAtRollback {
+                previous: previous.issued_at_epoch_secs,
+                current: previous.issued_at_epoch_secs,
+            })
+        );
+    }
 }
