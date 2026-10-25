@@ -145,3 +145,9 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - Root metadata chain 仅新增 pure seam：`RootTrustMetadata::validate_chain` 校验候选 generation 的 previous digest、namespace、version 与 `issued_at_epoch_secs` 单调关系；显式允许过期上一代作为历史链结，不写入 `TrustStore`/`TrustState`，不授予 delegated/execution 权限。当前环境无 Cargo，新增回归未执行编译；仍为 `PREPARATION_ONLY` / `LOCAL_UNATTESTED_SHADOW`。
 - RDFC admission 仅落 deterministic pack envelope/parser/validator、canonical/wire vectors 与边界回归；`RdfcAdmission` 固定返回 `RDFC_NOT_ADMITTED`，未引入 SHACL/RDFC 新依赖，未接入生产准入。
 - 已知阻塞：完整 workspace 门禁仍受真实构建依赖和环境工具链（包括 Maven/Javac 缺失、部分 workspace 需要 protoc）影响；HSM/离线 custody、双人审批、recovery、Root chain/registry/CI 集成仍未实现。
+
+## 13. Root chain fixture evidence
+
+- Remote `b7b8ace` extends the Root preparation fixture with a portable generation-chain case and six `validate_chain` negative cases: missing previous metadata/digest, wrong digest, namespace mismatch, version rollback, and issued-at rollback.
+- The fixture also freezes the allowed historical-link behavior: an expired previous generation may remain a valid chain anchor when the digest and monotonic metadata checks hold.
+- This remains evidence-only: no TrustStore, Runner, CI, HSM custody, dual-person approval, recovery, or production authority integration was added.
