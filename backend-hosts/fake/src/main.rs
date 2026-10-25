@@ -30,6 +30,7 @@ use std::io::Write;
 use std::process::exit;
 use std::sync::mpsc::{Receiver, RecvError, TryRecvError, channel};
 use std::time::Duration;
+use sha2::{Digest, Sha256};
 
 fn main() {
     if std::env::var("FAKE_POLLUTE_STDOUT").is_ok() {
@@ -143,6 +144,17 @@ struct Session<'a> {
     rx: &'a Receiver<Inbound>,
     cancelled: bool,
     units_reported_total: u64,
+}
+
+fn semantic_attempt_hasher() -> Sha256 {
+    let mut hasher = Sha256::new();
+    hasher.update(b"erf-execute-attempt-v1\0");
+    hasher
+}
+
+fn append_length_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
 }
 
 impl<'a> Session<'a> {
@@ -288,6 +300,8 @@ impl<'a> Session<'a> {
         }
         self.cancelled = false;
         let mut units_reported: u64 = 0;
+        let mut observation_count: u64 = 0;
+        let mut semantic = semantic_attempt_hasher();
         for unit_id in &unit_ids {
             if self.fail_unit.as_deref() == Some(unit_id.as_str()) {
                 if !self.unit_status(
@@ -296,6 +310,7 @@ impl<'a> Session<'a> {
                     pb::UnitOutcome::Failed,
                     pb::UnitFailureReason::UnitInternalError,
                     "injected unit failure",
+                    &mut semantic,
                 ) {
                     return false;
                 }
@@ -306,40 +321,45 @@ impl<'a> Session<'a> {
             if self.delay_ms > 0 {
                 std::thread::sleep(Duration::from_millis(self.delay_ms));
                 if self.drain_cancel() {
-                    return self.finish_cancelled(correlation, unit_id, units_reported);
+                    return self.finish_cancelled(correlation, unit_id, units_reported, &mut semantic);
                 }
             }
-            if !self.observation(correlation, unit_id) {
+            if !self.observation(correlation, unit_id, &mut semantic) {
                 return false;
             }
+            observation_count += 1;
             if !self.unit_status(
                 correlation,
                 unit_id,
                 pb::UnitOutcome::Executed,
                 pb::UnitFailureReason::Unspecified,
                 "",
+                &mut semantic,
             ) {
                 return false;
             }
             units_reported += 1;
             self.units_reported_total += 1;
         }
+        let mut digest = semantic;
+        append_length_prefixed(&mut digest, &units_reported.to_be_bytes());
+        append_length_prefixed(&mut digest, &observation_count.to_be_bytes());
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
             payload: Some(pb::host_envelope::Payload::ExecuteComplete(
-                pb::ExecuteComplete { units_reported },
+                pb::ExecuteComplete { units_reported, observation_count, attempt_digest: digest.finalize().to_vec() },
             )),
         })
     }
 
-    fn observation(&mut self, correlation: u64, unit_id: &str) -> bool {
+    fn observation(&mut self, correlation: u64, unit_id: &str, semantic: &mut Sha256) -> bool {
+        let event = pb::ExecuteEvent {
+            event: Some(pb::execute_event::Event::Observation(erf_fake_host::canned_observation(unit_id))),
+        };
+        append_length_prefixed(semantic, &event.encode_to_vec());
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
-            payload: Some(pb::host_envelope::Payload::ExecuteEvent(pb::ExecuteEvent {
-                event: Some(pb::execute_event::Event::Observation(
-                    erf_fake_host::canned_observation(unit_id),
-                )),
-            })),
+            payload: Some(pb::host_envelope::Payload::ExecuteEvent(event)),
         })
     }
 
@@ -351,17 +371,20 @@ impl<'a> Session<'a> {
         outcome: pb::UnitOutcome,
         reason_code: pb::UnitFailureReason,
         detail: &str,
+        semantic: &mut Sha256,
     ) -> bool {
+        let event = pb::ExecuteEvent {
+            event: Some(pb::execute_event::Event::UnitStatus(pb::UnitStatus {
+                unit_id: unit_id.to_string(),
+                outcome: outcome as i32,
+                reason_code: reason_code as i32,
+                detail: detail.into(),
+            })),
+        };
+        append_length_prefixed(semantic, &event.encode_to_vec());
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
-            payload: Some(pb::host_envelope::Payload::ExecuteEvent(pb::ExecuteEvent {
-                event: Some(pb::execute_event::Event::UnitStatus(pb::UnitStatus {
-                    unit_id: unit_id.to_string(),
-                    outcome: outcome as i32,
-                    reason_code: reason_code as i32,
-                    detail: detail.into(),
-                })),
-            })),
+            payload: Some(pb::host_envelope::Payload::ExecuteEvent(event)),
         })
     }
 
@@ -419,6 +442,7 @@ impl<'a> Session<'a> {
         correlation: u64,
         unit_id: &str,
         units_reported: u64,
+        semantic: &mut Sha256,
     ) -> bool {
         // Cooperative cancellation still accounts the interrupted unit.
         if !self.unit_status(
@@ -427,6 +451,7 @@ impl<'a> Session<'a> {
             pb::UnitOutcome::Failed,
             pb::UnitFailureReason::CancelledByRuntime,
             "cancelled before completion",
+            semantic,
         ) {
             return false;
         }

@@ -8,6 +8,7 @@ description = "Reference fake Backend Host: executable reference implementation 
 erf-contracts = { path = "../../contracts/rust" }
 erf-framing = { path = "../../runtime/framing" }
 prost = "0.13"
+sha2 = "0.10"
 
 [lib]
 name = "erf_fake_host"

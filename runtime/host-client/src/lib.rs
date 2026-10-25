@@ -268,6 +268,9 @@ impl HostHandle {
             events_seen: 0,
             finished: false,
             transcript: Sha256::new(),
+            semantic: semantic_attempt_hasher(),
+            observation_count: 0,
+            unit_status_count: 0,
         })
     }
 
@@ -388,6 +391,9 @@ pub struct ExecuteStream<'a> {
     events_seen: u64,
     finished: bool,
     transcript: Sha256,
+    semantic: Sha256,
+    observation_count: u64,
+    unit_status_count: u64,
 }
 
 #[derive(Debug)]
@@ -426,11 +432,15 @@ impl<'a> ExecuteStream<'a> {
                             max_events: self.handle.limits.max_events_per_execute,
                         });
                     }
+                    let event_payload = ev.encode_to_vec();
+                    append_length_prefixed(&mut self.semantic, &event_payload);
                     match ev.event {
                         Some(pb::execute_event::Event::Observation(o)) => {
+                            self.observation_count += 1;
                             Ok(Some(ExecEvent::Observation(o)))
                         }
                         Some(pb::execute_event::Event::UnitStatus(u)) => {
+                            self.unit_status_count += 1;
                             Ok(Some(ExecEvent::UnitStatus(u)))
                         }
                         None => {
@@ -441,6 +451,31 @@ impl<'a> ExecuteStream<'a> {
                     }
                 }
                 Some(pb::host_envelope::Payload::ExecuteComplete(c)) => {
+                    if self.unit_status_count != c.units_reported {
+                        return Err(HostError::Violation(format!(
+                            "ExecuteComplete units_reported={} but runtime received {} UnitStatus events",
+                            c.units_reported, self.unit_status_count
+                        )));
+                    }
+                    if self.observation_count != c.observation_count {
+                        return Err(HostError::Violation(format!(
+                            "ExecuteComplete observation_count={} but runtime received {} observations",
+                            c.observation_count, self.observation_count
+                        )));
+                    }
+                    if c.attempt_digest.len() != 32 {
+                        return Err(HostError::Violation(
+                            "ExecuteComplete attempt_digest must contain 32 bytes".into(),
+                        ));
+                    }
+                    let mut digest = self.semantic.clone();
+                    append_length_prefixed(&mut digest, &c.units_reported.to_be_bytes());
+                    append_length_prefixed(&mut digest, &c.observation_count.to_be_bytes());
+                    if digest.finalize().as_slice() != c.attempt_digest.as_slice() {
+                        return Err(HostError::Violation(
+                            "ExecuteComplete attempt_digest does not match received events".into(),
+                        ));
+                    }
                     self.finished = true;
                     Ok(Some(ExecEvent::Complete(c)))
                 }
@@ -512,6 +547,17 @@ impl<'a> ExecuteStream<'a> {
             }
         }
     }
+}
+
+fn semantic_attempt_hasher() -> Sha256 {
+    let mut hasher = Sha256::new();
+    hasher.update(b"erf-execute-attempt-v1\0");
+    hasher
+}
+
+fn append_length_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
 }
 
 #[cfg(test)]
