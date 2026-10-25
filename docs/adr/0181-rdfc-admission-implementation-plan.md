@@ -21,3 +21,13 @@ ontology revision, shapes/dependencies, toolchain identity and artifact digest.
 Until these gates are implemented and independently verified, the runtime must
 keep `RDFC_NOT_ADMITTED`; no SHACL/RDFC dependency is silently introduced into
 the current production path.
+
+## Safe implementation slice (2026-10-25)
+
+The ontology module now freezes a small `rdfc-pack-v1` envelope and a
+language-neutral validator.  It checks canonical-byte, shape, dependency and
+artifact digest metadata, deterministic dependency ordering, resource bounds,
+and the dedicated `ontology-signing` role.  A checked-in wire vector provides
+byte-identical parse/serialize coverage.  This slice does **not** implement
+RDFC-1.0 canonicalization or cryptographic signature verification; its
+`RdfcAdmission` boundary therefore always returns `RDFC_NOT_ADMITTED`.

@@ -15,6 +15,20 @@ pub const IN_TOTO_STATEMENT_PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
 pub const IN_TOTO_STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
 pub const WORKSPACE_PREDICATE_TYPE: &str = "https://rulefactory.io/attestations/workspace/v0";
 pub const WORKSPACE_ATTESTATION_SIGNING_ROLE: &str = "workspace-attestation-signing";
+/// Payload type reserved for the ADR-0180 Root metadata preparation contract.
+///
+/// This type is intentionally not consumed by `TrustStore`: the Root metadata
+/// verifier below is a pure, offline test seam and does not grant execution or
+/// publishing authority until custody and recovery evidence are available.
+pub const ROOT_TRUST_METADATA_PAYLOAD_TYPE: &str =
+    "application/vnd.erf.root-trust-metadata.v1";
+pub const ROOT_THRESHOLD: usize = 2;
+pub const ROOT_KEY_COUNT: usize = 3;
+pub const MAX_ROOT_SIGNATURES: usize = 16;
+/// A rotation may carry one previous delegated key while the new key is
+/// distributed.  Keeping this bound conservative avoids turning overlap into
+/// an unbounded alternate trust path; changing it requires a new contract.
+pub const MAX_DELEGATED_ROTATION_OVERLAP_KEYS: usize = 1;
 const MAX_DSSE_ENCODED_FIELD_CHARS: usize = 64 * 1024 * 1024;
 const MAX_DSSE_SIGNATURES: usize = 16;
 
@@ -629,6 +643,353 @@ pub struct TrustMetadata {
     pub revoked_key_ids: BTreeSet<String>,
 }
 
+/// A Root identity in the ADR-0180 preparation contract.
+///
+/// `key_id` is an operator-facing label; the public key bytes are the
+/// cryptographic identity.  Verification therefore rejects two different
+/// labels carrying the same public key instead of counting them twice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootKeyIdentity {
+    pub key_id: String,
+    pub public_key: [u8; 32],
+    pub revoked: bool,
+}
+
+/// A delegated role key carried by Root metadata.  The key is data in this
+/// preparation seam only; it is not inserted into `TrustStore` automatically.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DelegatedKeyIdentity {
+    pub key_id: String,
+    pub public_key: [u8; 32],
+    pub revoked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DelegatedRoleMetadata {
+    pub role: String,
+    pub namespace: String,
+    pub issued_at_epoch_secs: u64,
+    pub expires_at_epoch_secs: u64,
+    pub keys: Vec<DelegatedKeyIdentity>,
+    /// Keys from the immediately preceding role generation that may overlap
+    /// during a bounded rotation window.  The key records remain in `keys` so
+    /// the canonical payload is self-contained and content-addressable.
+    pub previous_key_ids: BTreeSet<String>,
+    pub overlap_until_epoch_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootTrustMetadata {
+    pub namespace: String,
+    pub version: u64,
+    pub issued_at_epoch_secs: u64,
+    pub expires_at_epoch_secs: u64,
+    pub threshold: u8,
+    pub root_keys: Vec<RootKeyIdentity>,
+    pub delegated_roles: Vec<DelegatedRoleMetadata>,
+    /// Digest of the immediately preceding Root metadata generation.  The
+    /// digest is an explicit chain anchor; monotonic acceptance remains the
+    /// responsibility of `TrustState` and is deliberately not bypassed here.
+    pub previous_metadata_digest: Option<[u8; 32]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootThresholdSignature {
+    pub key_id: String,
+    pub signature: Vec<u8>,
+}
+
+impl RootTrustMetadata {
+    /// Deterministic bytes signed by each independent Root identity.
+    ///
+    /// This is a preparation contract, not a new DSSE asset verifier.  The
+    /// domain separator and every field are length-delimited or fixed-width so
+    /// cross-language implementations cannot accidentally sign an ambiguous
+    /// concatenation.
+    pub fn canonical_payload(&self) -> Vec<u8> {
+        let mut payload = b"erf-root-trust-metadata-v1\0".to_vec();
+        append_string(&mut payload, &self.namespace);
+        payload.extend_from_slice(&self.version.to_be_bytes());
+        payload.extend_from_slice(&self.issued_at_epoch_secs.to_be_bytes());
+        payload.extend_from_slice(&self.expires_at_epoch_secs.to_be_bytes());
+        payload.push(self.threshold);
+
+        let mut root_keys = self.root_keys.clone();
+        root_keys.sort_by(|left, right| left.key_id.cmp(&right.key_id));
+        payload.extend_from_slice(&(root_keys.len() as u64).to_be_bytes());
+        for key in root_keys {
+            append_string(&mut payload, &key.key_id);
+            payload.extend_from_slice(&key.public_key);
+            payload.push(u8::from(key.revoked));
+        }
+
+        let mut roles = self.delegated_roles.clone();
+        roles.sort_by(|left, right| left.role.cmp(&right.role));
+        payload.extend_from_slice(&(roles.len() as u64).to_be_bytes());
+        for role in roles {
+            append_string(&mut payload, &role.role);
+            append_string(&mut payload, &role.namespace);
+            payload.extend_from_slice(&role.issued_at_epoch_secs.to_be_bytes());
+            payload.extend_from_slice(&role.expires_at_epoch_secs.to_be_bytes());
+            match role.overlap_until_epoch_secs {
+                Some(until) => {
+                    payload.push(1);
+                    payload.extend_from_slice(&until.to_be_bytes());
+                }
+                None => payload.push(0),
+            }
+
+            let mut keys = role.keys.clone();
+            keys.sort_by(|left, right| left.key_id.cmp(&right.key_id));
+            payload.extend_from_slice(&(keys.len() as u64).to_be_bytes());
+            for key in keys {
+                append_string(&mut payload, &key.key_id);
+                payload.extend_from_slice(&key.public_key);
+                payload.push(u8::from(key.revoked));
+            }
+            payload.extend_from_slice(&(role.previous_key_ids.len() as u64).to_be_bytes());
+            for key_id in role.previous_key_ids {
+                append_string(&mut payload, &key_id);
+            }
+        }
+
+        match self.previous_metadata_digest {
+            Some(digest) => {
+                payload.push(1);
+                payload.extend_from_slice(&digest);
+            }
+            None => payload.push(0),
+        }
+        payload
+    }
+
+    pub fn subject_digest(&self) -> [u8; 32] {
+        Sha256::digest(self.canonical_payload()).into()
+    }
+
+    /// Validate metadata structure and its time window without granting any
+    /// role or execution authority.
+    pub fn validate_at(&self, now_epoch_secs: u64) -> Result<(), TrustError> {
+        if self.namespace.trim().is_empty() || self.namespace.chars().any(char::is_control) {
+            return Err(TrustError::InvalidRootNamespace);
+        }
+        if self.version == 0 {
+            return Err(TrustError::InvalidRootMetadataVersion);
+        }
+        if self.threshold as usize != ROOT_THRESHOLD || self.root_keys.len() != ROOT_KEY_COUNT {
+            return Err(TrustError::InvalidRootThresholdPolicy);
+        }
+        if self.expires_at_epoch_secs <= self.issued_at_epoch_secs {
+            return Err(TrustError::InvalidRootMetadataWindow);
+        }
+        if now_epoch_secs < self.issued_at_epoch_secs {
+            return Err(TrustError::RootMetadataNotYetValid);
+        }
+        if now_epoch_secs >= self.expires_at_epoch_secs {
+            return Err(TrustError::RootMetadataExpired);
+        }
+
+        let mut key_ids = BTreeSet::new();
+        let mut public_keys = BTreeSet::new();
+        for key in &self.root_keys {
+            if key.key_id.trim().is_empty() || key.key_id.chars().any(char::is_control) {
+                return Err(TrustError::InvalidRootKeyIdentity);
+            }
+            if key.public_key == [0; 32] {
+                return Err(TrustError::InvalidRootKeyIdentity);
+            }
+            if !key_ids.insert(&key.key_id) {
+                return Err(TrustError::DuplicateRootKeyId(key.key_id.clone()));
+            }
+            if !public_keys.insert(key.public_key) {
+                return Err(TrustError::DuplicateRootPublicKey);
+            }
+        }
+
+        let mut roles = BTreeSet::new();
+        for role in &self.delegated_roles {
+            if role.role.trim().is_empty() || role.role.chars().any(char::is_control) {
+                return Err(TrustError::InvalidDelegatedRole);
+            }
+            if role.namespace != self.namespace {
+                return Err(TrustError::DelegatedNamespaceMismatch {
+                    role: role.role.clone(),
+                });
+            }
+            if !roles.insert(&role.role) {
+                return Err(TrustError::DuplicateDelegatedRole(role.role.clone()));
+            }
+            if role.expires_at_epoch_secs <= role.issued_at_epoch_secs {
+                return Err(TrustError::InvalidDelegatedRoleWindow {
+                    role: role.role.clone(),
+                });
+            }
+            if now_epoch_secs < role.issued_at_epoch_secs {
+                return Err(TrustError::DelegatedRoleNotYetValid {
+                    role: role.role.clone(),
+                });
+            }
+            if now_epoch_secs >= role.expires_at_epoch_secs {
+                return Err(TrustError::DelegatedRoleExpired {
+                    role: role.role.clone(),
+                });
+            }
+            if role.keys.is_empty() {
+                return Err(TrustError::DelegatedRoleHasNoKeys {
+                    role: role.role.clone(),
+                });
+            }
+            if role.previous_key_ids.len() > MAX_DELEGATED_ROTATION_OVERLAP_KEYS {
+                return Err(TrustError::DelegatedRotationOverlapTooLarge {
+                    role: role.role.clone(),
+                });
+            }
+            match (role.overlap_until_epoch_secs, role.previous_key_ids.is_empty()) {
+                (Some(until), false) if until > role.issued_at_epoch_secs && until <= role.expires_at_epoch_secs => {}
+                (None, true) => {}
+                _ => return Err(TrustError::InvalidDelegatedRotation {
+                    role: role.role.clone(),
+                }),
+            }
+
+            let mut role_key_ids = BTreeSet::new();
+            let mut role_public_keys = BTreeSet::new();
+            for key in &role.keys {
+                if key.key_id.trim().is_empty() || key.key_id.chars().any(char::is_control) || key.public_key == [0; 32] {
+                    return Err(TrustError::InvalidDelegatedKeyIdentity {
+                        role: role.role.clone(),
+                    });
+                }
+                if !role_key_ids.insert(&key.key_id) {
+                    return Err(TrustError::DuplicateDelegatedKeyId {
+                        role: role.role.clone(),
+                        key_id: key.key_id.clone(),
+                    });
+                }
+                if !role_public_keys.insert(key.public_key) {
+                    return Err(TrustError::DuplicateDelegatedPublicKey {
+                        role: role.role.clone(),
+                    });
+                }
+            }
+            if role.previous_key_ids.iter().any(|key_id| !role_key_ids.contains(key_id)) {
+                return Err(TrustError::DelegatedRotationKeyMissing {
+                    role: role.role.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Verify a 2-of-3 Root signature set over the canonical metadata bytes.
+    /// Duplicate labels and duplicate public keys never count as independent
+    /// identities.  This function intentionally does not mutate `TrustStore`
+    /// or accept a delegated asset.
+    pub fn verify_threshold(
+        &self,
+        signatures: &[RootThresholdSignature],
+        now_epoch_secs: u64,
+    ) -> Result<(), TrustError> {
+        self.validate_at(now_epoch_secs)?;
+        if signatures.is_empty() {
+            return Err(TrustError::InsufficientRootSignatures {
+                required: ROOT_THRESHOLD,
+                valid: 0,
+            });
+        }
+        if signatures.len() > MAX_ROOT_SIGNATURES {
+            return Err(TrustError::TooManyRootSignatures);
+        }
+        let mut root_by_id = BTreeMap::new();
+        for key in &self.root_keys {
+            root_by_id.insert(key.key_id.as_str(), key);
+        }
+        let mut seen_key_ids = BTreeSet::new();
+        let mut seen_public_keys = BTreeSet::new();
+        let mut valid = 0usize;
+        let payload = self.canonical_payload();
+        for signature in signatures {
+            if !seen_key_ids.insert(&signature.key_id) {
+                return Err(TrustError::DuplicateRootSignature(signature.key_id.clone()));
+            }
+            let key = root_by_id
+                .get(signature.key_id.as_str())
+                .ok_or_else(|| TrustError::UnknownRootKey(signature.key_id.clone()))?;
+            if key.revoked {
+                return Err(TrustError::RevokedRootKey(signature.key_id.clone()));
+            }
+            // A duplicate public key is an alias, not an independent signer.
+            if !seen_public_keys.insert(key.public_key) {
+                continue;
+            }
+            let verifying_key = VerifyingKey::from_bytes(&key.public_key)
+                .map_err(|_| TrustError::InvalidRootPublicKey(signature.key_id.clone()))?;
+            let signature_bytes: Signature = signature
+                .signature
+                .as_slice()
+                .try_into()
+                .map_err(|_| TrustError::RootSignatureLength)?;
+            verifying_key
+                .verify(&pae(ROOT_TRUST_METADATA_PAYLOAD_TYPE, &payload), &signature_bytes)
+                .map_err(|_| TrustError::InvalidRootSignature(signature.key_id.clone()))?;
+            valid += 1;
+        }
+        if valid < ROOT_THRESHOLD {
+            return Err(TrustError::InsufficientRootSignatures {
+                required: ROOT_THRESHOLD,
+                valid,
+            });
+        }
+        Ok(())
+    }
+
+    /// Resolve one delegated key for an explicitly named namespace and role.
+    /// The returned bytes are metadata only; callers still need an independent
+    /// asset signature verifier and must not treat this as a production grant.
+    pub fn delegated_key(
+        &self,
+        role_name: &str,
+        namespace: &str,
+        key_id: &str,
+        now_epoch_secs: u64,
+    ) -> Result<[u8; 32], TrustError> {
+        self.validate_at(now_epoch_secs)?;
+        let role = self
+            .delegated_roles
+            .iter()
+            .find(|role| role.role == role_name)
+            .ok_or_else(|| TrustError::UnknownDelegatedRole(role_name.to_string()))?;
+        if role.namespace != namespace {
+            return Err(TrustError::DelegatedNamespaceMismatch {
+                role: role_name.to_string(),
+            });
+        }
+        let key = role
+            .keys
+            .iter()
+            .find(|key| key.key_id == key_id)
+            .ok_or_else(|| TrustError::UnknownDelegatedKey {
+                role: role_name.to_string(),
+                key_id: key_id.to_string(),
+            })?;
+        if key.revoked {
+            return Err(TrustError::RevokedDelegatedKey {
+                role: role_name.to_string(),
+                key_id: key_id.to_string(),
+            });
+        }
+        if role.previous_key_ids.contains(key_id)
+            && role.overlap_until_epoch_secs.is_some_and(|until| now_epoch_secs >= until)
+        {
+            return Err(TrustError::DelegatedRotationExpired {
+                role: role_name.to_string(),
+                key_id: key_id.to_string(),
+            });
+        }
+        Ok(key.public_key)
+    }
+}
+
 /// Signed, content-addressed revocation state carried with an offline
 /// delivery.  TrustMetadata revokes signing identities; this snapshot also
 /// revokes concrete asset digests and therefore closes the gap between a
@@ -815,6 +1176,74 @@ pub enum TrustError {
     CheckpointRoleMissing(String),
     #[error("persisted trust state is invalid")]
     InvalidTrustState,
+    #[error("Root metadata namespace is empty or contains a control character")]
+    InvalidRootNamespace,
+    #[error("Root metadata version must be non-zero")]
+    InvalidRootMetadataVersion,
+    #[error("Root metadata threshold policy must be exactly 2-of-3")]
+    InvalidRootThresholdPolicy,
+    #[error("Root metadata validity window is invalid")]
+    InvalidRootMetadataWindow,
+    #[error("Root metadata is not yet valid")]
+    RootMetadataNotYetValid,
+    #[error("Root metadata is expired")]
+    RootMetadataExpired,
+    #[error("Root key identity is invalid")]
+    InvalidRootKeyIdentity,
+    #[error("duplicate Root key id: {0}")]
+    DuplicateRootKeyId(String),
+    #[error("duplicate Root public-key identity")]
+    DuplicateRootPublicKey,
+    #[error("unknown Root key: {0}")]
+    UnknownRootKey(String),
+    #[error("Root key is revoked: {0}")]
+    RevokedRootKey(String),
+    #[error("Root public key is invalid: {0}")]
+    InvalidRootPublicKey(String),
+    #[error("Root signature has invalid length")]
+    RootSignatureLength,
+    #[error("Root signature verification failed: {0}")]
+    InvalidRootSignature(String),
+    #[error("duplicate Root signature: {0}")]
+    DuplicateRootSignature(String),
+    #[error("Root threshold is not met: required {required}, valid {valid}")]
+    InsufficientRootSignatures { required: usize, valid: usize },
+    #[error("Root signature set exceeds the configured limit")]
+    TooManyRootSignatures,
+    #[error("delegated role metadata is invalid")]
+    InvalidDelegatedRole,
+    #[error("delegated role namespace does not match Root namespace: {role}")]
+    DelegatedNamespaceMismatch { role: String },
+    #[error("duplicate delegated role: {0}")]
+    DuplicateDelegatedRole(String),
+    #[error("delegated role validity window is invalid: {role}")]
+    InvalidDelegatedRoleWindow { role: String },
+    #[error("delegated role is not yet valid: {role}")]
+    DelegatedRoleNotYetValid { role: String },
+    #[error("delegated role is expired: {role}")]
+    DelegatedRoleExpired { role: String },
+    #[error("delegated role has no keys: {role}")]
+    DelegatedRoleHasNoKeys { role: String },
+    #[error("delegated rotation overlap is too large: {role}")]
+    DelegatedRotationOverlapTooLarge { role: String },
+    #[error("delegated rotation metadata is invalid: {role}")]
+    InvalidDelegatedRotation { role: String },
+    #[error("delegated rotation key is not present in role metadata: {role}")]
+    DelegatedRotationKeyMissing { role: String },
+    #[error("delegated key identity is invalid: {role}")]
+    InvalidDelegatedKeyIdentity { role: String },
+    #[error("duplicate delegated key id in role {role}: {key_id}")]
+    DuplicateDelegatedKeyId { role: String, key_id: String },
+    #[error("duplicate delegated public-key identity in role {role}")]
+    DuplicateDelegatedPublicKey { role: String },
+    #[error("unknown delegated role: {0}")]
+    UnknownDelegatedRole(String),
+    #[error("unknown delegated key {key_id} in role {role}")]
+    UnknownDelegatedKey { role: String, key_id: String },
+    #[error("delegated key is revoked: {role}/{key_id}")]
+    RevokedDelegatedKey { role: String, key_id: String },
+    #[error("delegated rotation overlap expired: {role}/{key_id}")]
+    DelegatedRotationExpired { role: String, key_id: String },
 }
 
 impl TrustStore {
@@ -1012,6 +1441,65 @@ mod tests {
         store.insert_key(key_id, key.verifying_key()).unwrap();
         store.authorize_role(role, key_id).unwrap();
         store
+    }
+
+    fn root_metadata() -> (RootTrustMetadata, [SigningKey; ROOT_KEY_COUNT]) {
+        let signing_keys = [
+            SigningKey::from_bytes(&[31; 32]),
+            SigningKey::from_bytes(&[32; 32]),
+            SigningKey::from_bytes(&[33; 32]),
+        ];
+        let metadata = RootTrustMetadata {
+            namespace: "org/repo".into(),
+            version: 7,
+            issued_at_epoch_secs: 10,
+            expires_at_epoch_secs: 100,
+            threshold: ROOT_THRESHOLD as u8,
+            root_keys: signing_keys
+                .iter()
+                .enumerate()
+                .map(|(index, key)| RootKeyIdentity {
+                    key_id: format!("root-{}", (b'a' + index as u8) as char),
+                    public_key: key.verifying_key().to_bytes(),
+                    revoked: false,
+                })
+                .collect(),
+            delegated_roles: vec![DelegatedRoleMetadata {
+                role: "runtime-pack-signing".into(),
+                namespace: "org/repo".into(),
+                issued_at_epoch_secs: 10,
+                expires_at_epoch_secs: 100,
+                keys: vec![DelegatedKeyIdentity {
+                    key_id: "pack-a".into(),
+                    public_key: [41; 32],
+                    revoked: false,
+                }],
+                previous_key_ids: BTreeSet::new(),
+                overlap_until_epoch_secs: None,
+            }],
+            previous_metadata_digest: None,
+        };
+        (metadata, signing_keys)
+    }
+
+    fn root_signatures(keys: &[SigningKey; ROOT_KEY_COUNT]) -> Vec<RootThresholdSignature> {
+        let metadata = root_metadata().0;
+        let payload = metadata.canonical_payload();
+        keys[..ROOT_THRESHOLD]
+            .iter()
+            .enumerate()
+            .map(|(index, key)| RootThresholdSignature {
+                key_id: format!("root-{}", (b'a' + index as u8) as char),
+                signature: key
+                    .sign(&pae(ROOT_TRUST_METADATA_PAYLOAD_TYPE, &payload))
+                    .to_bytes()
+                    .to_vec(),
+            })
+            .collect()
+    }
+
+    fn hex_bytes(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
     fn statement(subject_digest: [u8; 32]) -> ArtifactStatement {
@@ -1305,5 +1793,91 @@ mod tests {
         assert_eq!(next.highest_checkpoint_version(), 0);
         let mut wrong_role = TrustState::default();
         assert!(matches!(wrong_role.accept_signed_checkpoint(&checkpoint, &asset, &store, "gate-signing", 11), Err(TrustError::UnauthorizedRole { .. })));
+    }
+
+    #[test]
+    fn root_threshold_requires_two_independent_signers() {
+        let (metadata, keys) = root_metadata();
+        let signatures = root_signatures(&keys);
+        assert_eq!(metadata.verify_threshold(&signatures, 20), Ok(()));
+        assert_eq!(metadata.verify_threshold(&signatures[..1], 20), Err(TrustError::InsufficientRootSignatures { required: 2, valid: 1 }));
+
+        let mut duplicate = signatures.clone();
+        duplicate.push(signatures[0].clone());
+        assert_eq!(metadata.verify_threshold(&duplicate, 20), Err(TrustError::DuplicateRootSignature("root-a".into())));
+
+        let mut too_many = signatures.clone();
+        too_many.resize(MAX_ROOT_SIGNATURES + 1, signatures[0].clone());
+        assert_eq!(metadata.verify_threshold(&too_many, 20), Err(TrustError::TooManyRootSignatures));
+    }
+
+    #[test]
+    fn root_threshold_rejects_aliases_and_revoked_identities() {
+        let (mut metadata, _keys) = root_metadata();
+        metadata.root_keys[1].public_key = metadata.root_keys[0].public_key;
+        assert_eq!(metadata.verify_threshold(&[], 20), Err(TrustError::DuplicateRootPublicKey));
+
+        let (mut metadata, keys) = root_metadata();
+        metadata.root_keys[0].revoked = true;
+        let signatures = root_signatures(&keys);
+        assert_eq!(metadata.verify_threshold(&signatures, 20), Err(TrustError::RevokedRootKey("root-a".into())));
+    }
+
+    #[test]
+    fn root_metadata_window_and_namespace_are_fail_closed() {
+        let (mut metadata, _) = root_metadata();
+        assert_eq!(metadata.validate_at(9), Err(TrustError::RootMetadataNotYetValid));
+        assert_eq!(metadata.validate_at(100), Err(TrustError::RootMetadataExpired));
+        metadata.namespace = "".into();
+        assert_eq!(metadata.validate_at(20), Err(TrustError::InvalidRootNamespace));
+        metadata.namespace = "org/repo".into();
+        metadata.delegated_roles[0].namespace = "other/repo".into();
+        assert_eq!(metadata.validate_at(20), Err(TrustError::DelegatedNamespaceMismatch { role: "runtime-pack-signing".into() }));
+    }
+
+    #[test]
+    fn delegated_rotation_is_bounded_and_expiry_is_enforced() {
+        let (mut metadata, _) = root_metadata();
+        {
+            let role = &mut metadata.delegated_roles[0];
+            role.keys.push(DelegatedKeyIdentity {
+                key_id: "pack-old".into(),
+                public_key: [42; 32],
+                revoked: false,
+            });
+            role.previous_key_ids.insert("pack-old".into());
+            role.overlap_until_epoch_secs = Some(30);
+        }
+        assert_eq!(metadata.delegated_key("runtime-pack-signing", "org/repo", "pack-old", 20), Ok([42; 32]));
+        assert_eq!(metadata.delegated_key("runtime-pack-signing", "org/repo", "pack-old", 30), Err(TrustError::DelegatedRotationExpired { role: "runtime-pack-signing".into(), key_id: "pack-old".into() }));
+        assert_eq!(metadata.delegated_key("runtime-pack-signing", "other/repo", "pack-a", 20), Err(TrustError::DelegatedNamespaceMismatch { role: "runtime-pack-signing".into() }));
+
+        metadata.delegated_roles[0].previous_key_ids.insert("pack-extra".into());
+        assert_eq!(metadata.validate_at(20), Err(TrustError::DelegatedRotationOverlapTooLarge { role: "runtime-pack-signing".into() }));
+    }
+
+    #[test]
+    fn root_metadata_canonical_digest_is_stable_for_test_vector() {
+        let (metadata, _) = root_metadata();
+        assert_eq!(hex_digest(&metadata.subject_digest()), "6b031cc3fdaaa0edcc528cf7f2af0333a84d085e26e18ba790d10f4c91aa00f1");
+    }
+
+    #[test]
+    fn root_threshold_fixture_freezes_contract_shape_and_digest() {
+        let fixture: Value = serde_json::from_str(include_str!("../test-vectors/root-threshold-v1.json")).unwrap();
+        let (metadata, keys) = root_metadata();
+        assert_eq!(fixture["payloadType"], ROOT_TRUST_METADATA_PAYLOAD_TYPE);
+        assert_eq!(fixture["authority"], "LOCAL_UNATTESTED_SHADOW");
+        assert_eq!(fixture["metadata"]["threshold"], ROOT_THRESHOLD);
+        assert_eq!(fixture["metadata"]["rootKeys"].as_array().unwrap().len(), ROOT_KEY_COUNT);
+        assert_eq!(fixture["canonicalSubjectDigest"], hex_digest(&metadata.subject_digest()));
+        let signatures = root_signatures(&keys);
+        assert_eq!(fixture["signatures"].as_array().unwrap().len(), signatures.len());
+        for (index, signature) in signatures.iter().enumerate() {
+            assert_eq!(fixture["signatures"][index]["keyId"], signature.key_id);
+            assert_eq!(fixture["signatures"][index]["signatureHex"], hex_bytes(&signature.signature));
+        }
+        assert_eq!(fixture["acceptance"]["expected"], "PASS_TWO_OF_THREE");
+        assert_eq!(fixture["negativeCases"].as_array().unwrap().len(), 5);
     }
 }

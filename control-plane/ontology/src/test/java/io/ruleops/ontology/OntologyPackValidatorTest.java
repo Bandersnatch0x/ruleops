@@ -106,4 +106,15 @@ class OntologyPackValidatorTest {
                 () -> validator.parse("rdfc-pack-v1\nrevision=bad\n".getBytes(StandardCharsets.UTF_8)));
         assertEquals("INVALID_FORMAT", error.code());
     }
+
+    @Test
+    void alternateBase64PaddingFailsDeterministicEncodingCheck() throws Exception {
+        OntologyPackValidator validator = new OntologyPackValidator();
+        byte[] wire = validator.serialize(validPack());
+        String padded = new String(wire, StandardCharsets.UTF_8).replaceFirst(
+                "revision=([A-Za-z0-9_-]+)", "revision=$1=");
+        var error = assertThrows(OntologyPackValidationException.class,
+                () -> validator.parse(padded.getBytes(StandardCharsets.UTF_8)));
+        assertEquals("NON_CANONICAL_ENCODING", error.code());
+    }
 }

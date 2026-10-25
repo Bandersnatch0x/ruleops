@@ -2,6 +2,7 @@ package io.ruleops.ontology;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -53,7 +54,8 @@ public final class OntologyPackValidator {
         if (pack.namespace().isBlank() || pack.namespace().getBytes(StandardCharsets.UTF_8).length > 512) {
             return ValidationResult.invalid("INVALID_NAMESPACE", "namespace is empty or too long");
         }
-        if (pack.toolchainIdentity().isBlank() || pack.toolchainIdentity().length() > 512) {
+        if (pack.toolchainIdentity().isBlank()
+                || pack.toolchainIdentity().getBytes(StandardCharsets.UTF_8).length > 512) {
             return ValidationResult.invalid("INVALID_TOOLCHAIN", "toolchain identity is empty or too long");
         }
         if (!REQUIRED_SIGNING_ROLE.equals(pack.signingRole())) {
@@ -129,7 +131,7 @@ public final class OntologyPackValidator {
             throw new OntologyPackValidationException("INVALID_FORMAT", "unexpected wire field count or version");
         }
         try {
-            String revision = value(lines[1], "revision");
+            String revision = decodeText(value(lines[1], "revision"));
             String canonicalDigest = value(lines[2], "canonical_digest");
             int canonicalLength = Integer.parseInt(value(lines[3], "canonical_length"));
             String shapesDigest = value(lines[4], "shapes_digest");
@@ -153,6 +155,10 @@ public final class OntologyPackValidator {
             ValidationResult result = validate(pack);
             if (!result.valid()) {
                 throw failure(result);
+            }
+            if (!Arrays.equals(serialize(pack), wire)) {
+                throw new OntologyPackValidationException("NON_CANONICAL_ENCODING",
+                        "wire encoding is not the deterministic representation");
             }
             return pack;
         } catch (NumberFormatException e) {

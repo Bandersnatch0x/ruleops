@@ -1,0 +1,69 @@
+{
+  "schema": "erf-trust-root-v1",
+  "authority": "LOCAL_UNATTESTED_SHADOW",
+  "payloadType": "application/vnd.erf.root-trust-metadata.v1",
+  "metadata": {
+    "namespace": "org/repo",
+    "version": 7,
+    "issuedAtEpochSecs": 10,
+    "expiresAtEpochSecs": 100,
+    "threshold": 2,
+    "rootKeys": [
+      {
+        "keyId": "root-a",
+        "publicKeyHex": "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de",
+        "revoked": false
+      },
+      {
+        "keyId": "root-b",
+        "publicKeyHex": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+        "revoked": false
+      },
+      {
+        "keyId": "root-c",
+        "publicKeyHex": "884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b",
+        "revoked": false
+      }
+    ],
+    "delegatedRoles": [
+      {
+        "role": "runtime-pack-signing",
+        "namespace": "org/repo",
+        "issuedAtEpochSecs": 10,
+        "expiresAtEpochSecs": 100,
+        "keys": [
+          {
+            "keyId": "pack-a",
+            "publicKeyHex": "2929292929292929292929292929292929292929292929292929292929292929",
+            "revoked": false
+          }
+        ],
+        "previousKeyIds": [],
+        "overlapUntilEpochSecs": null
+      }
+    ],
+    "previousMetadataDigest": null
+  },
+  "canonicalSubjectDigest": "6b031cc3fdaaa0edcc528cf7f2af0333a84d085e26e18ba790d10f4c91aa00f1",
+  "signatures": [
+    {
+      "keyId": "root-a",
+      "signatureHex": "5b3a72dfda67937ee3b4f7ed0619a478da747715115bc9b0e31d96d7e3a94cecf428d2272c9cb5fbf8412b2fcc0bcad96749a771384b9bd914d7e7e6982ef00e"
+    },
+    {
+      "keyId": "root-b",
+      "signatureHex": "57db205d5076c8890a9abeb4338bbc2db3e94f95826efb70fa81de90fca55de6c09543c56ff00d22ab8a10fc49ef3b44833ad578babf6c6e48b0aa004bac650d"
+    }
+  ],
+  "acceptance": {
+    "validSignatureKeyIds": ["root-a", "root-b"],
+    "expected": "PASS_TWO_OF_THREE"
+  },
+  "negativeCases": [
+    {"name": "one-signature", "expected": "INSUFFICIENT_ROOT_SIGNATURES"},
+    {"name": "duplicate-signature", "expected": "DUPLICATE_ROOT_SIGNATURE"},
+    {"name": "expired-metadata", "expected": "ROOT_METADATA_EXPIRED"},
+    {"name": "namespace-mismatch", "expected": "DELEGATED_NAMESPACE_MISMATCH"},
+    {"name": "rotation-overlap-more-than-one", "expected": "DELEGATED_ROTATION_OVERLAP_TOO_LARGE"}
+  ]
+}
