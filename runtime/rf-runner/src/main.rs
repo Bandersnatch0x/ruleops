@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
@@ -1940,7 +1942,11 @@ impl AttemptStaging {
                 .map_err(|e| ScanError::Plan(format!("staging clock failed: {e}")))?
                 .as_nanos()
         ));
-        let file = OpenOptions::new().create_new(true).read(true).write(true).open(&path)
+        let mut options = OpenOptions::new();
+        options.create_new(true).read(true).write(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let file = options.open(&path)
             .map_err(|e| ScanError::Plan(format!("cannot create staging file: {e}")))?;
         Ok(Self { file, path, bytes: 0, limit })
     }
@@ -2727,6 +2733,15 @@ mod tests {
         assert!(staging.append(&observation).is_err());
     }
 
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let staging = AttemptStaging::new(1024).unwrap();
+        let mode = fs::metadata(&staging.path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
 
     #[test]
     fn observation_blob_digest_must_match_workspace_descriptor() {
