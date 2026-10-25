@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,6 +23,21 @@ class OntologyContractPackCompilerTest {
         assertEquals(a.digest(), b.digest());
         assertArrayEquals(a.canonicalTriples(), b.canonicalTriples());
         assertTrue(a.identity().startsWith("ontology-pack-v0:"));
+    }
+
+    /**
+     * Cross-language consumers use this checked-in vector as the wire-format
+     * contract for the current v0 compiler.  Keep the expected bytes and
+     * digest stable even if the source Turtle formatting changes.
+     */
+    @Test
+    void coreJavaVectorMatchesCanonicalBytesAndDigest() throws Exception {
+        var pack = new OntologyContractPackCompiler().compile(
+                root("core.ttl"), List.of(root("java-extension.ttl")), "rdfc-v0-core-java");
+        var expected = Files.readString(root("vectors/core-java-v0.nt"), StandardCharsets.UTF_8);
+        assertArrayEquals(expected.getBytes(StandardCharsets.UTF_8), pack.canonicalTriples());
+        assertEquals("146149a0cb35d92e012d2b05e1cdbe796a4779f40eddc666fa10353fabe1d905", pack.digest());
+        assertEquals("ontology-pack-v0:146149a0cb35d92e012d2b05e1cdbe796a4779f40eddc666fa10353fabe1d905", pack.identity());
     }
 
     @Test
