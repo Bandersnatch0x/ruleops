@@ -104,28 +104,35 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - 选项 A（推荐，需先冻结协议）：新增 `observation_count`、`attempt_digest` 及 attempt/nonce 绑定字段；Host、Rust/Java/Node fake、conformance 和 Runner 同步拒绝重复、乱序、缺失或对账不符的完成消息。
 - 选项 B（当前保守边界）：维持现有 `units_reported` 对账，只补 ADR、schema 检查和 `BOUNDARY_ONLY` 证据，不宣称完成协议已闭合。
-- 当前决定：先采用 B；待 #146/#152 的协议和 Root 信任前置条件明确后，再实施 A。不得用静态字段计数替代行为门禁。
+- 当前决定：用户已批准进入 A 的协议冻结与实现阶段；本提交先落 ADR-0179，随后按其顺序更新 proto、三种 Host、Runtime 和 conformance。完整行为门禁恢复前仍不得宣称 Trusted 通过。
 
 ### 10.2 ExceptionGrant 消费闭合
 
 - 选项 A（推荐，需治理注册表接入）：Gate 只消费经过签名、有效期、撤回状态和 repository/rule/path/fingerprint 绑定校验的 active grant，并由注册表生成 `exception_grant_digests` 与实际豁免集合。
 - 选项 B（当前保守边界）：继续允许调用方传入 fingerprint 集合，但将其保持为 `LOCAL_UNATTESTED` / `BOUNDARY_ONLY`，不把 caller-supplied 集合宣称为生产授权。
-- 当前决定：先采用 B 并保留风险记录；A 依赖 #152/#153 的身份、委派和撤回模型，不能在缺少信任根时伪造落地。
+- 当前决定：用户已批准进入 A 的治理注册表接入阶段；在注册表、身份、撤回和 fingerprint 绑定实现完成前，现有 caller-supplied 集合仍保持 `LOCAL_UNATTESTED`，不得提升为生产授权。
 
 ### 10.3 Root threshold/delegation 与 HSM（#152）
 
 - 选项 A：实现独立 Root 身份去重、阈值验签、委派链、namespace、轮换和离线/HSM 运维验收。
 - 选项 B（推荐当前）：维持 `LOCAL_UNATTESTED` / `SHADOW`，只补边界证据和人工审批记录，不新增无人调用的 threshold API。
-- 当前决定：采用 B，等待用户/架构裁决后再进入 A。
+- 当前决定：用户已批准进入 A 的设计/实现准备阶段；先补 threshold/delegation/HSM ADR 与验收契约，再实施，未完成前继续保持 `LOCAL_UNATTESTED` / `SHADOW`。
 
 ### 10.4 RDFC/本体签名与制品准入（#147/#218）
 
 - 选项 A：先出实现 ADR、确定制品格式与签名身份，再实施跨语言 deterministic pack 和 admission。
 - 选项 B（推荐当前）：继续保持 `RDFC_NOT_ADMITTED`，不引入新 SHACL/RDFC 依赖，不把研究性制品接入生产路径。
-- 当前决定：采用 B；任何切换到 A 都需要明确的制品、身份、迁移和回滚方案。
+- 当前决定：用户已批准进入 A 的实现准备阶段；先冻结 RDFC 制品、签名身份、迁移和回滚方案，再接 admission，未完成前仍保持 `RDFC_NOT_ADMITTED`。
 
 ### 10.5 已落地的可独立验证项
 
 - H07 required capability 已收紧为明确 `true`，并补齐 fake Host/Resolver 的 false-capability 回归覆盖。
 - Runner 已在 staging 前把 Backend SourceSpan/File 摘要绑定到 WorkspaceDescriptor，摘要缺失、冲突或不匹配会 fail-closed。
 - 上述两项已提交并推送；静态门禁通过，但 Cargo/Maven 行为验证仍受环境依赖阻塞。
+
+
+## 11. Approved implementation plans
+
+- ADR-0179 freezes the additive ExecuteComplete accounting plan: observation_count, attempt_digest, canonical digest rules, trusted/legacy compatibility and cross-language conformance.
+- ADR-0180 freezes the Root threshold/delegation/HSM preparation plan: independent identities, two-of-three threshold, namespace/expiry/revocation, rollback protection and custody/recovery gates.
+- ADR-0181 freezes the RDFC admission preparation plan: deterministic signed artifact pack, dedicated signing role, dependency/resource/revocation checks and migration/rollback evidence.
