@@ -884,6 +884,51 @@ impl RootTrustMetadata {
         Ok(())
     }
 
+    /// Validate this metadata generation against the immediately preceding
+    /// generation without mutating any trust state or granting authority.
+    ///
+    /// The previous generation is supplied explicitly so this remains a pure
+    /// offline seam: callers are still responsible for independently
+    /// validating and threshold-verifying every generation before using its
+    /// delegated keys.  An expired previous generation is therefore valid as a
+    /// historical chain link; only the candidate generation is checked against
+    /// `now_epoch_secs` here.
+    pub fn validate_chain(
+        &self,
+        previous: Option<&RootTrustMetadata>,
+        now_epoch_secs: u64,
+    ) -> Result<(), TrustError> {
+        self.validate_at(now_epoch_secs)?;
+
+        match previous {
+            None if self.previous_metadata_digest.is_none() => Ok(()),
+            None => Err(TrustError::RootMetadataChainMissingPrevious),
+            Some(previous) => {
+                if self.namespace != previous.namespace {
+                    return Err(TrustError::RootMetadataChainNamespaceMismatch);
+                }
+                if self.version <= previous.version {
+                    return Err(TrustError::RootMetadataChainVersionRollback {
+                        previous: previous.version,
+                        current: self.version,
+                    });
+                }
+                if self.issued_at_epoch_secs <= previous.issued_at_epoch_secs {
+                    return Err(TrustError::RootMetadataChainIssuedAtRollback {
+                        previous: previous.issued_at_epoch_secs,
+                        current: self.issued_at_epoch_secs,
+                    });
+                }
+
+                match self.previous_metadata_digest {
+                    None => Err(TrustError::RootMetadataChainMissingDigest),
+                    Some(digest) if digest == previous.subject_digest() => Ok(()),
+                    Some(_) => Err(TrustError::RootMetadataChainDigestMismatch),
+                }
+            }
+        }
+    }
+
     /// Verify a 2-of-3 Root signature set over the canonical metadata bytes.
     /// Duplicate labels and duplicate public keys never count as independent
     /// identities.  This function intentionally does not mutate `TrustStore`
@@ -1189,6 +1234,18 @@ pub enum TrustError {
     InvalidRootMetadataWindow,
     #[error("Root metadata previous-generation digest is invalid")]
     InvalidRootPreviousDigest,
+    #[error("Root metadata chain is missing the previous generation")]
+    RootMetadataChainMissingPrevious,
+    #[error("Root metadata chain is missing the previous-generation digest")]
+    RootMetadataChainMissingDigest,
+    #[error("Root metadata chain namespace does not match the previous generation")]
+    RootMetadataChainNamespaceMismatch,
+    #[error("Root metadata chain version moved backwards from {previous} to {current}")]
+    RootMetadataChainVersionRollback { previous: u64, current: u64 },
+    #[error("Root metadata chain issued-at moved backwards from {previous} to {current}")]
+    RootMetadataChainIssuedAtRollback { previous: u64, current: u64 },
+    #[error("Root metadata chain previous-generation digest does not match")]
+    RootMetadataChainDigestMismatch,
     #[error("Root metadata is not yet valid")]
     RootMetadataNotYetValid,
     #[error("Root metadata is expired")]
@@ -1841,6 +1898,70 @@ mod tests {
         metadata.previous_metadata_digest = None;
         metadata.delegated_roles[0].namespace = "other/repo".into();
         assert_eq!(metadata.validate_at(20), Err(TrustError::DelegatedNamespaceMismatch { role: "runtime-pack-signing".into() }));
+    }
+
+    #[test]
+    fn root_metadata_chain_is_pure_and_requires_digest_identity_and_monotonicity() {
+        let (previous, _) = root_metadata();
+        let mut current = previous.clone();
+        current.version += 1;
+        current.issued_at_epoch_secs = 20;
+        current.expires_at_epoch_secs = 200;
+        current.delegated_roles[0].issued_at_epoch_secs = 20;
+        current.delegated_roles[0].expires_at_epoch_secs = 200;
+        current.previous_metadata_digest = Some(previous.subject_digest());
+
+        // The previous generation is expired at this point, but remains a
+        // valid historical chain link.  No trust state is mutated by this
+        // pure check.
+        assert_eq!(current.validate_chain(Some(&previous), 120), Ok(()));
+        assert_eq!(current.validate_chain(None, 120), Err(TrustError::RootMetadataChainMissingPrevious));
+
+        let mut wrong_digest = current.clone();
+        wrong_digest.previous_metadata_digest = Some([9; 32]);
+        assert_eq!(
+            wrong_digest.validate_chain(Some(&previous), 120),
+            Err(TrustError::RootMetadataChainDigestMismatch)
+        );
+
+        let mut wrong_namespace = current.clone();
+        wrong_namespace.namespace = "other/repo".into();
+        assert_eq!(
+            wrong_namespace.validate_chain(Some(&previous), 120),
+            Err(TrustError::DelegatedNamespaceMismatch { role: "runtime-pack-signing".into() })
+        );
+        wrong_namespace.delegated_roles[0].namespace = "other/repo".into();
+        assert_eq!(
+            wrong_namespace.validate_chain(Some(&previous), 120),
+            Err(TrustError::RootMetadataChainNamespaceMismatch)
+        );
+
+        let mut version_rollback = current.clone();
+        version_rollback.version = previous.version;
+        assert_eq!(
+            version_rollback.validate_chain(Some(&previous), 120),
+            Err(TrustError::RootMetadataChainVersionRollback {
+                previous: previous.version,
+                current: previous.version,
+            })
+        );
+
+        let mut issued_at_rollback = current.clone();
+        issued_at_rollback.issued_at_epoch_secs = previous.issued_at_epoch_secs;
+        assert_eq!(
+            issued_at_rollback.validate_chain(Some(&previous), 120),
+            Err(TrustError::RootMetadataChainIssuedAtRollback {
+                previous: previous.issued_at_epoch_secs,
+                current: previous.issued_at_epoch_secs,
+            })
+        );
+
+        let mut missing_digest = current;
+        missing_digest.previous_metadata_digest = None;
+        assert_eq!(
+            missing_digest.validate_chain(Some(&previous), 120),
+            Err(TrustError::RootMetadataChainMissingDigest)
+        );
     }
 
     #[test]

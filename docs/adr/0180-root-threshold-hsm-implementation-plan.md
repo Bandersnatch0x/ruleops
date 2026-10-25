@@ -34,3 +34,16 @@ Freeze the metadata/protobuf contract and test vectors first, then implement
 Rust verification and registry integration, then add Java/CI consumers and HSM
 operational evidence. Until all slices pass, authority remains
 `LOCAL_UNATTESTED` / `SHADOW`.
+
+## Safe implementation slice (2026-10-25)
+
+`RootTrustMetadata::validate_chain` adds a pure, offline chain-edge check for
+the immediately preceding generation. It requires the explicit
+previous-generation digest to match, the namespace to remain stable, and both
+version and `issued_at_epoch_secs` to move monotonically forward. The candidate
+generation is checked against the supplied clock; an expired prior generation
+is allowed as a historical link. The method does not verify signatures,
+mutate `TrustStore`/`TrustState`, resolve delegated keys for a consumer, or
+grant execution/publishing authority. Root metadata therefore remains
+`PREPARATION_ONLY` / `LOCAL_UNATTESTED_SHADOW` until custody, recovery, and
+production integration evidence exist.
