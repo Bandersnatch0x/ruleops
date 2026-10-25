@@ -37,6 +37,8 @@ pub const EXPECTED_ACCEPTANCE_CHECKS: &[&str] = &[
     "malformed_frame_rejected",
     "oversized_frame_rejected",
     "execute_round_trip_completeness",
+    "execute_attempt_accounting",
+    "execute_attempt_accounting_rejects_tampering",
     "deadline_is_failure",
     "cooperative_cancel_accounts_units",
     "crash_is_incomplete_failure",
@@ -418,6 +420,10 @@ pub fn run_suite(config: &SuiteConfig) -> SuiteReport {
     checks.push(oversized_frame_rejected(config));
     eprintln!("[suite] check execute_round_trip_completeness");
     checks.push(execute_round_trip_completeness(config));
+    eprintln!("[suite] check execute_attempt_accounting");
+    checks.push(execute_attempt_accounting(config));
+    eprintln!("[suite] check execute_attempt_accounting_rejects_tampering");
+    checks.push(execute_attempt_accounting_rejects_tampering(config));
     eprintln!("[suite] check deadline_is_failure");
     checks.push(deadline_is_failure(config));
     eprintln!("[suite] check cooperative_cancel_accounts_units");
@@ -1183,6 +1189,136 @@ fn execute_round_trip_completeness(config: &SuiteConfig) -> CheckResult {
     match outcome {
         Ok(detail) => check(name, true, detail),
         Err(e) => check(name, false, format!("{e}")),
+    }
+}
+
+/// Drives the same deterministic three-unit attempt used by the completeness
+/// probe, but keeps the terminal accounting facts as first-class evidence.
+/// `HostHandle::next_event` already rejects a mismatched count or digest; this
+/// check makes the rejection boundary visible to the conformance report and
+/// records the digest so independent host implementations can be compared.
+fn execute_attempt_accounting(config: &SuiteConfig) -> CheckResult {
+    let name = "execute_attempt_accounting";
+    let mut command = config.command();
+    command
+        .env_remove("ERF_DELAY_MS")
+        .env_remove("FAKE_DELAY_MS");
+    let cfg = config_with(config);
+    let outcome = (|| -> Result<String, HostError> {
+        let (mut host, _) = HostHandle::spawn(&mut command, &cfg)?;
+        let planned = ["unit-1", "unit-2", "unit-3"];
+        host.plan(
+            planned
+                .iter()
+                .map(|unit_id| pb::AnalysisUnit {
+                    unit_id: (*unit_id).into(),
+                    language: "java".into(),
+                    files: vec![],
+                    ..Default::default()
+                })
+                .collect(),
+        )?;
+        let mut stream = host.execute(planned.iter().map(|id| (*id).to_string()).collect())?;
+        let mut observations = 0u64;
+        let mut statuses = 0u64;
+        let complete = loop {
+            match stream.next_event()? {
+                Some(ExecEvent::Observation(_)) => observations += 1,
+                Some(ExecEvent::UnitStatus(_)) => statuses += 1,
+                Some(ExecEvent::Complete(complete)) => break complete,
+                None => return Err(HostError::Violation("stream ended before ExecuteComplete".into())),
+            }
+        };
+        if complete.units_reported != statuses {
+            return Err(HostError::Violation(format!(
+                "units_reported={} but observed {} UnitStatus events",
+                complete.units_reported, statuses
+            )));
+        }
+        if complete.observation_count != observations {
+            return Err(HostError::Violation(format!(
+                "observation_count={} but observed {} BackendObservation events",
+                complete.observation_count, observations
+            )));
+        }
+        if complete.attempt_digest.len() != 32 {
+            return Err(HostError::Violation(format!(
+                "attempt_digest has {} bytes, expected 32",
+                complete.attempt_digest.len()
+            )));
+        }
+        let completion = host.complete()?;
+        if completion.status != pb::completion::Status::Completed as i32 {
+            return Err(HostError::Violation(format!(
+                "non-completed terminal status {}",
+                completion.status
+            )));
+        }
+        Ok(format!(
+            "units_reported={} observation_count={} attempt_digest={}",
+            complete.units_reported,
+            complete.observation_count,
+            hex_digest(&complete.attempt_digest)
+        ))
+    })();
+    match outcome {
+        Ok(detail) => check(name, true, detail),
+        Err(error) => check(name, false, format!("{error}")),
+    }
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The reference Hosts expose deterministic accounting fault injection. Keep
+/// the two independent checks here so a host cannot satisfy the count check
+/// while emitting a stale digest (or vice versa), and so the client-side
+/// rejection remains part of the shared Rust/Node suite rather than only a
+/// unit-test seam.
+fn execute_attempt_accounting_rejects_tampering(config: &SuiteConfig) -> CheckResult {
+    let name = "execute_attempt_accounting_rejects_tampering";
+    let outcome = (|| -> Result<String, HostError> {
+        for (knob, marker) in [
+            ("FAKE_BAD_OBSERVATION_COUNT", "observation_count"),
+            ("FAKE_BAD_ATTEMPT_DIGEST", "attempt_digest"),
+        ] {
+            let mut command = config.command();
+            command
+                .env(knob, "1")
+                .env_remove("ERF_DELAY_MS")
+                .env_remove("FAKE_DELAY_MS");
+            let cfg = config_with(config);
+            let (mut host, _) = HostHandle::spawn(&mut command, &cfg)?;
+            host.plan(vec![pb::AnalysisUnit {
+                unit_id: "tamper-unit".into(),
+                language: "java".into(),
+                files: vec![],
+                ..Default::default()
+            }])?;
+            let mut stream = host.execute(vec!["tamper-unit".into()])?;
+            loop {
+                match stream.next_event() {
+                    Err(HostError::Violation(detail)) if detail.contains(marker) => break,
+                    Err(error) => {
+                        return Err(HostError::Violation(format!(
+                            "{knob} produced the wrong failure: {error}"
+                        )))
+                    }
+                    Ok(Some(_)) => continue,
+                    Ok(None) => {
+                        return Err(HostError::Violation(format!(
+                            "{knob} ended without rejecting tampered accounting"
+                        )))
+                    }
+                }
+            }
+        }
+        Ok("wrong observation_count and attempt_digest were both rejected".into())
+    })();
+    match outcome {
+        Ok(detail) => check(name, true, detail),
+        Err(error) => check(name, false, format!("{error}")),
     }
 }
 

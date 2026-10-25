@@ -48,9 +48,9 @@ function fatalError(code, detail) { if (fatal) return; fatal = true; send(error(
 function parseUnits(fs) { return fs.filter(x=>x[0]===1).map(x=>field(x[2])); }
 function plan(cid, fs) { const units=parseUnits(fs); return env(cid,7,msg(...units.map(u0=>fld(1,msg(str(1,text(u0,1)),str(2,'batch-0')))))); }
 function appendLengthPrefixed(hash, bytes) { const len=Buffer.alloc(8); len.writeBigUInt64BE(BigInt(bytes.length)); hash.update(len); hash.update(bytes); }
-function semanticAttemptHasher() { const hash=crypto.createHash('sha256'); hash.update(Buffer.from('erf-execute-attempt-v1\\0')); return hash; }
+function semanticAttemptHasher() { const hash=crypto.createHash('sha256'); hash.update(Buffer.from('erf-execute-attempt-v1\0')); return hash; }
 function observationEvent(id) { const span=msg(str(1,'src/main/java/A.java'),fld(2,Buffer.alloc(32)),u(3,0),u(4,17),u(5,1),u(6,5)); const loc=fld(1,span); const o=msg(str(1,'corp.java.no-system-exit'),fld(2,loc),str(3,`canned observation in ${id}`),str(4,'error')); return fld(1,o); }
-function statusEvent(cid,id,outcome=0,reason=0,detail='') { const s=msg(str(1,id),u(2,outcome),u(3,reason),str(4,detail)); return fld(2,s); }
+function statusEvent(cid,id,outcome=0,reason=0,detail='') { const s=msg(str(1,id),u(2,outcome),u(3,reason),detail ? str(4,detail) : null); return fld(2,s); }
 function completion(statusCode,reason) { return env(0,13,msg(u(1,statusCode),str(2,reason),u(3,total))); }
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
 async function execute(cid, fs) {
@@ -78,7 +78,10 @@ async function execute(cid, fs) {
   const obsCount=Buffer.alloc(8); obsCount.writeBigUInt64BE(BigInt(observationCount));
   const finalDigest=semantic;
   appendLengthPrefixed(finalDigest,unitCount); appendLengthPrefixed(finalDigest,obsCount);
-  send(env(cid,10,msg(u(1,ids.length),u(2,observationCount),fld(3,finalDigest.digest())))); executing=false;
+  const attemptDigest=finalDigest.digest();
+  if(process.env.FAKE_BAD_ATTEMPT_DIGEST){ attemptDigest[0]^=0xff; }
+  const reportedObservationCount=process.env.FAKE_BAD_OBSERVATION_COUNT ? observationCount+1 : observationCount;
+  send(env(cid,10,msg(u(1,ids.length),u(2,reportedObservationCount),fld(3,attemptDigest)))); executing=false;
 }
 async function dispatch(raw) { const e=decodeEnv(raw); if(e.hello){ if(e.hello.major!==Number(process.env.FAKE_SUPPORTED_MAJOR||0)) return send(error(e.cid,3,'protocol major mismatch')); if(e.hello.required.some(x=>x!=='java.ast')) return send(error(e.cid,4,'missing required capability')); return send(ack(e.cid,e.hello)); } if(e.describe)return send(env(e.cid,5,fld(1,caps()))); if(e.plan)return send(plan(e.cid,e.plan)); if(e.cancel){ if(!executing)return send(error(e.cid,6,'cancel is only valid during execution')); cancelled=true; return send(env(e.cid,12,u(1,1))); } if(e.execute){ if(executing)return send(error(e.cid,6,'execute is already in flight')); return execute(e.cid,e.execute); } return send(error(e.cid,5,'unexpected request')); }
 process.stdin.on('data', chunk=>{

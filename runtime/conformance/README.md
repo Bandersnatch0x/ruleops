@@ -28,7 +28,7 @@ cargo run -p erf-conformance -- \
   --cancel-window-ms 150
 ```
 
-同一套 31 项检查也直接驱动无依赖的 Node.js Fake Host 与 Workspace
+同一套 33 项检查也直接驱动无依赖的 Node.js Fake Host 与 Workspace
 Resolver；这条路径用于证明协议实现不依赖 Rust 语言。Node fake 只实现
 协议探针，不承担 JavaScript 规则分析：
 

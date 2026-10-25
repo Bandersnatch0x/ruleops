@@ -11,6 +11,8 @@
 //! - `FAKE_FALSE_CAPABILITY=<name>` — advertises one capability as false
 //! - `FAKE_CRASH_ON_EXECUTE=1` — exits during execute without Completion
 //! - `FAKE_FAIL_UNIT=<id>` — emits a failed UnitStatus for one unit
+//! - `FAKE_BAD_OBSERVATION_COUNT=1` — corrupts ExecuteComplete observation_count
+//! - `FAKE_BAD_ATTEMPT_DIGEST=1` — corrupts ExecuteComplete attempt_digest
 //! - `FAKE_MAX_FRAME_BYTES=<n>` — receiver frame cap (default: 16 MiB)
 //!
 //! Deterministic cancellation: with `FAKE_DELAY_MS` set, the fake sleeps
@@ -344,10 +346,23 @@ impl<'a> Session<'a> {
         let mut digest = semantic;
         append_length_prefixed(&mut digest, &units_reported.to_be_bytes());
         append_length_prefixed(&mut digest, &observation_count.to_be_bytes());
+        let mut attempt_digest = digest.finalize().to_vec();
+        if std::env::var("FAKE_BAD_ATTEMPT_DIGEST").is_ok() {
+            attempt_digest[0] ^= 0xff;
+        }
+        let reported_observation_count = if std::env::var("FAKE_BAD_OBSERVATION_COUNT").is_ok() {
+            observation_count + 1
+        } else {
+            observation_count
+        };
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
             payload: Some(pb::host_envelope::Payload::ExecuteComplete(
-                pb::ExecuteComplete { units_reported, observation_count, attempt_digest: digest.finalize().to_vec() },
+                pb::ExecuteComplete {
+                    units_reported,
+                    observation_count: reported_observation_count,
+                    attempt_digest,
+                },
             )),
         })
     }
