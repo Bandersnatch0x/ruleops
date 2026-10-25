@@ -89,6 +89,16 @@ public final class OntologyPackValidator {
         return ValidationResult.validResult();
     }
 
+    /** Validate a complete wire payload without exposing parser exceptions. */
+    public ValidationResult validateWire(byte[] wire) {
+        try {
+            parse(wire);
+            return ValidationResult.validResult();
+        } catch (OntologyPackValidationException e) {
+            return ValidationResult.invalid(e.code(), e.getMessage());
+        }
+    }
+
     /** Serialize a validated envelope in fixed field order. */
     public byte[] serialize(OntologyPackEnvelope pack) throws OntologyPackValidationException {
         ValidationResult result = validate(pack);
