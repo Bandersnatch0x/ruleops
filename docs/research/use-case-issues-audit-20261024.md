@@ -141,7 +141,7 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - #146 ExecuteComplete accounting 已落地：proto 新增 `observation_count` 与 `attempt_digest`；Rust Host Client 校验单位数、观察数、32-byte digest；Rust/Node/Java Host 输出同一 canonical attempt digest；conformance 对错误 observation count 与错误 digest 均 fail-closed。
 - 独立 Phase 2 acceptance 已通过 Rust Fake 33/33、Node Fake 33/33；两者 attempt digest 一致：`81f9d50ff553f4be25ecee40c40da242ec4c47e0fb3fbd09ce1ce6baca563f69`。`cargo test -p erf-conformance --lib` 4/4 通过（使用环境内 vtkprotoc 兼容工具）。
-- Root threshold 仅落 preparation/test seam：`contracts/trust-root-v1.yaml`、`runtime/trust` pure metadata/2-of-3/去重/撤回/namespace/expiry/rotation 校验与 fixture；`cargo test -p erf-trust --all-targets` 20/20 通过。未接入 TrustStore、Runner、CI 或 authority，仍为 `PREPARATION_ONLY` / `LOCAL_UNATTESTED_SHADOW`。
+- Root threshold 仅落 preparation/test seam：`contracts/trust-root-v1.yaml`、`runtime/trust` pure metadata/2-of-3/去重/撤回/namespace/expiry/rotation 校验与 fixture；`cargo test -p erf-trust --all-targets` 22/22 通过（使用仓库自带 toolchain 环境）。未接入 TrustStore、Runner、CI 或 authority，仍为 `PREPARATION_ONLY` / `LOCAL_UNATTESTED_SHADOW`。
 - Root metadata chain 仅新增 pure seam：`RootTrustMetadata::validate_chain` 校验候选 generation 的 previous digest、namespace、version 与 `issued_at_epoch_secs` 单调关系；显式允许过期上一代作为历史链结，不写入 `TrustStore`/`TrustState`，不授予 delegated/execution 权限。当前环境无 Cargo，新增回归未执行编译；仍为 `PREPARATION_ONLY` / `LOCAL_UNATTESTED_SHADOW`。
 - RDFC admission 仅落 deterministic pack envelope/parser/validator、canonical/wire vectors 与边界回归；`RdfcAdmission` 固定返回 `RDFC_NOT_ADMITTED`，未引入 SHACL/RDFC 新依赖，未接入生产准入。
 - 已知阻塞：完整 workspace 门禁仍受真实构建依赖和环境工具链（包括 Maven/Javac 缺失、部分 workspace 需要 protoc）影响；HSM/离线 custody、双人审批、recovery、Root chain/registry/CI 集成仍未实现。
