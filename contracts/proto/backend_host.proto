@@ -170,6 +170,10 @@ message ExecuteRequest {
 message ExecuteComplete {
   // Echoes the number of UnitStatus events emitted for this execute.
   uint64 units_reported = 1;
+  // Number of BackendObservation events emitted for this execute.
+  uint64 observation_count = 2;
+  // SHA-256 of the canonical semantic attempt transcript (ADR-0179).
+  bytes attempt_digest = 3;
 }
 
 // Streamed Host -> Runtime during execute. Order within one unit is
