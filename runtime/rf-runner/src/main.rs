@@ -1629,7 +1629,10 @@ pub fn scan(config: &ScanConfig) -> Result<ScanResult, ScanError> {
     let (completion, attempt_failure) = loop {
         match stream.next_event() {
             Ok(Some(ExecEvent::Observation(observation))) => {
-        if let Err(error) = staging.append(&observation) {
+                if let Err(error) = validate_observation_blob_identity(&observation, &descriptor) {
+                    break (None, Some(format!("observation identity rejected: {error}")));
+                }
+                if let Err(error) = staging.append(&observation) {
                     break (None, Some(error.to_string()));
                 }
             }
@@ -1806,6 +1809,39 @@ fn incomplete_result(
         stage_telemetry: Some(stage_telemetry),
         bundle_delivery_identity,
     })
+}
+
+/// Backend observations carry a content digest for source/file locations.
+/// Bind that digest to the resolver's immutable workspace descriptor before
+/// staging any observation; a backend must not be able to invent a digest or
+/// point at a different file version and still reach Gate.
+fn validate_observation_blob_identity(
+    observation: &host_pb::BackendObservation,
+    descriptor: &workspace_pb::WorkspaceDescriptor,
+) -> Result<(), &'static str> {
+    let location = observation.location.as_ref().ok_or("missing observation location")?;
+    let (path, digest) = match location.kind.as_ref() {
+        Some(host_pb::observation_location::Kind::SourceSpan(span)) => (&span.path, &span.blob_sha256),
+        Some(host_pb::observation_location::Kind::File(file)) => (&file.path, &file.blob_sha256),
+        Some(host_pb::observation_location::Kind::Symbol(_))
+        | Some(host_pb::observation_location::Kind::BytecodeMember(_)) => return Ok(()),
+        None => return Err("missing observation location kind"),
+    };
+    let mut matches = descriptor
+        .modules
+        .iter()
+        .flat_map(|module| module.files.iter())
+        .filter(|file| file.path == *path);
+    let expected = matches
+        .next()
+        .ok_or("observation path is absent from workspace descriptor")?;
+    if matches.next().is_some() {
+        return Err("observation path is ambiguous in workspace descriptor");
+    }
+    if expected.blob_sha256.as_slice() != digest.as_slice() {
+        return Err("observation blob digest does not match workspace descriptor");
+    }
+    Ok(())
 }
 
 fn completeness_report(
@@ -2689,6 +2725,43 @@ mod tests {
         let mut staging = AttemptStaging::new(7).unwrap();
         let observation = host_pb::BackendObservation::default();
         assert!(staging.append(&observation).is_err());
+    }
+
+
+    #[test]
+    fn observation_blob_digest_must_match_workspace_descriptor() {
+        let descriptor = workspace_pb::WorkspaceDescriptor {
+            modules: vec![workspace_pb::ModuleDescriptor {
+                files: vec![workspace_pb::FileEntry {
+                    path: "src/A.java".into(),
+                    blob_sha256: vec![7; 32],
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut observation = host_pb::BackendObservation {
+            location: Some(host_pb::ObservationLocation {
+                kind: Some(host_pb::observation_location::Kind::SourceSpan(host_pb::SourceSpan {
+                    path: "src/A.java".into(),
+                    blob_sha256: vec![7; 32],
+                    line: 1,
+                    column: 1,
+                    ..Default::default()
+                })),
+            }),
+            ..Default::default()
+        };
+        assert!(validate_observation_blob_identity(&observation, &descriptor).is_ok());
+        if let Some(location) = observation.location.as_mut() {
+            if let Some(host_pb::observation_location::Kind::SourceSpan(span)) = location.kind.as_mut() {
+                span.blob_sha256 = vec![8; 32];
+            }
+        }
+        assert_eq!(
+            validate_observation_blob_identity(&observation, &descriptor),
+            Err("observation blob digest does not match workspace descriptor")
+        );
     }
 
     #[test]
