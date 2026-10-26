@@ -179,3 +179,13 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - `cargo test -p erf-trust --all-targets`：22 passed / 0 failed（使用 bundled toolchain）。
 - `scripts/check.sh` 当前首个阻塞为 `mvn not found`（默认 PATH）；注入环境后 Maven 进一步因 DNS 无法解析 `repo.maven.apache.org`，且 JDK 仅有 runtime、缺少 `javac`。
 - 工作树 clean，最新远端提交为 `fe5476d`；上述问题均为环境/基础设施阻塞，不是已观察到的仓库代码编译错误。
+
+
+## 15. Single backlog status and decision log (2026-10-26)
+
+- **唯一待办入口**：本维护文档；新增需求、阻塞、证据和裁决只追加到本文件，不另建并行待办清单。
+- **当前状态**：远端分支 `codex/use-case-issues-audit-20261024` 保持 clean；Root chain fixture、6 个 `validate_chain` 负例、历史 previous 过期链结语义均已推送；`erf-trust` 使用 bundled toolchain 实测 22/22 通过。
+- **环境阻塞**：默认 PATH 缺少 Maven/Cargo；注入 toolchain 后，JDK 只有 runtime、缺少 `javac`；Maven 依赖解析受 `repo.maven.apache.org` DNS/代理不可用阻塞，缓存仅有 `.lastUpdated` 标记。
+- **生产边界**：Root authority/HSM custody、双人审批、recovery、TrustStore/Runner/CI/registry 接入、Trusted CI attestation 以及 RDFC admission 均未接入；继续 fail-closed，不把 preparation/shadow 证据升级为生产权威。
+- **下一次代码提交准入条件**：绑定具体 Issue 与 ADR，提供目标文件/行号、可复跑命令、预期失败条件和唯一证据日志；环境未恢复或缺少信任裁决时，只更新本节状态，不提交生产路径实现。
+- **待用户裁决项**：Root/HSM 运维与恢复模型、Trusted CI workload identity/registry 方案、RDFC 制品与签名/迁移/回滚策略。每项继续以“明确选项 / 推荐项 / 阻塞条件”记录后再执行。
