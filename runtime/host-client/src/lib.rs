@@ -20,6 +20,13 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::time::Duration;
 use sha2::{Digest, Sha256};
 
+mod attempt_integrity;
+
+pub use attempt_integrity::{
+    AttemptIntegrityDashboard, AttemptIntegrityInput, AttemptIntegrityStatus,
+    canonical_attempt_digest,
+};
+
 pub const PROTOCOL_MAJOR: u32 = 0;
 pub const PROTOCOL_MINOR: u32 = 1;
 /// Maximum number of decoded host responses waiting for the runtime.
@@ -468,10 +475,7 @@ impl<'a> ExecuteStream<'a> {
                             "ExecuteComplete attempt_digest must contain 32 bytes".into(),
                         ));
                     }
-                    let mut digest = self.semantic.clone();
-                    append_length_prefixed(&mut digest, &c.units_reported.to_be_bytes());
-                    append_length_prefixed(&mut digest, &c.observation_count.to_be_bytes());
-                    if digest.finalize().as_slice() != c.attempt_digest.as_slice() {
+                    if self.computed_attempt_digest(&c) != c.attempt_digest {
                         return Err(HostError::Violation(
                             "ExecuteComplete attempt_digest does not match received events".into(),
                         ));
@@ -505,6 +509,25 @@ impl<'a> ExecuteStream<'a> {
     /// Digest of the exact length-delimited response frames received for execute.
     pub fn transcript_digest(&self) -> Vec<u8> {
         self.transcript.clone().finalize().to_vec()
+    }
+
+    /// Returns the canonical semantic digest computed from the events already
+    /// received by this stream and the supplied terminal accounting fields.
+    /// This is a read-only projection for evidence/dashboard consumers; the
+    /// stream still validates the same value before yielding ExecuteComplete.
+    pub fn computed_attempt_digest(&self, completion: &pb::ExecuteComplete) -> Vec<u8> {
+        let mut digest = self.semantic.clone();
+        append_length_prefixed(&mut digest, &completion.units_reported.to_be_bytes());
+        append_length_prefixed(&mut digest, &completion.observation_count.to_be_bytes());
+        digest.finalize().to_vec()
+    }
+
+    pub fn observation_count(&self) -> u64 {
+        self.observation_count
+    }
+
+    pub fn unit_status_count(&self) -> u64 {
+        self.unit_status_count
     }
 
     /// Sends CancelRequest for this execute. Events keep flowing until the
