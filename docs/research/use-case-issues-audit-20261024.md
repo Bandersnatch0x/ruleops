@@ -330,3 +330,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 ### 19.4 Renderer path hardening
 
 - readiness doctor 在调用者缩窄 PATH 时回退到 /usr/bin/python3 渲染 JSON，避免把报告生成器路径缺失误报为环境事实；远端提交 2521146（对应本地 158d639）。
+
+
+## 20. Remaining low-risk backlog (2026-10-26)
+
+- Evidence claim linter：已完成方案探查，但当前未形成带 PASS/WARN/FAIL fixture 的可交付提交，因此不写入远端代码，避免把未验收脚本当成能力。
+- 下一次可执行顺序：先补 linter 的三态 fixture 与文档入口，再考虑跨语言 ExecuteComplete 负例；两者都必须复用现有协议字段，不新增 nonce/信任字段。
+- 若需要对外扩展 ScanReport/Runner 输出，先新增 ADR 与兼容性证据；当前 AttemptIntegrityDashboard 保持 standalone/read-only。
