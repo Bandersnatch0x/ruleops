@@ -280,3 +280,11 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - 推荐继续保持 standalone/read-only dashboard，先积累本地 evidence；不把 VERIFIED 误写成生产 Gate PASS。
 - 下一候选为环境 readiness doctor（只读、输出 BLOCKED JSON），但继续忽略 JDK/Maven/DNS 依赖恢复，直到用户改变优先级。
+
+
+### 18.1 Dashboard follow-up hardening
+
+- 补充 `missing computed digest -> INCONCLUSIVE` 回归，并修正注释以明确“缺终止帧但存在更强矛盾时仍 FAIL_CLOSED”。
+- 验收脚本现在把相对 OUT_DIR 规范化为绝对路径，避免切换工作目录后证据写入错误位置。
+- 远端提交：8e5bb6c、5be29c6；本地 follow-up 为 7f60e98。
+- 复验：`source ../toolchain/ruleops-env.sh && cargo test -p erf-host-client --lib attempt_integrity`：5 passed / 0 failed；相对路径脚本验收 PASS；`git diff --check`、`bash -n` 通过。
