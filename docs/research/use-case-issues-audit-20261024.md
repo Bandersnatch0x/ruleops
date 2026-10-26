@@ -320,3 +320,8 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - DNS 探测失败时现在继续尝试下一个 resolver，并保留最终诊断事实；多行 Maven settings.xml 的 localRepository 解析也已补齐。
 - 远端提交 32b7cab（对应本地 56baa55）；回归测试仍通过。
+
+
+### 19.3 Probe-log completeness
+
+- readiness doctor 现在把 Maven cache 的只读 find 探针写入 commands.log，保证 BLOCKED/READY 结论可复跑；远端提交 bc3c41f（对应本地 0a54bbf）。
