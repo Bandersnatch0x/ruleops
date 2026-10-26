@@ -5,8 +5,9 @@
 //! make an authority/trust decision; it gives evidence and presentation
 //! layers a small, deterministic view over the facts they already collected.
 //! Missing, duplicate, or contradictory facts never become a verified
-//! attempt.  A missing terminal frame is reported as `INCONCLUSIVE`, while a
-//! contradictory terminal statement is `FAIL_CLOSED`.
+//! attempt.  A missing terminal frame is reported as `INCONCLUSIVE` when no
+//! stronger contradiction is present, while contradictory facts are
+//! `FAIL_CLOSED`.
 
 use crate::pb;
 use prost::Message;
@@ -349,6 +350,28 @@ mod tests {
         });
         assert_eq!(report.status, AttemptIntegrityStatus::Inconclusive);
         assert!(report.reasons.contains(&"MISSING_EXECUTE_COMPLETE".into()));
+    }
+
+    #[test]
+    fn missing_computed_digest_is_inconclusive() {
+        let planned = vec!["a".into()];
+        let statuses = vec![status("a", pb::UnitOutcome::Executed)];
+        let completion = pb::ExecuteComplete {
+            units_reported: 1,
+            observation_count: 0,
+            attempt_digest: vec![7; 32],
+        };
+        let report = AttemptIntegrityDashboard::reconcile(AttemptIntegrityInput {
+            planned_unit_ids: &planned,
+            statuses: &statuses,
+            observation_events: 0,
+            completion: Some(&completion),
+            computed_attempt_digest: None,
+        });
+        assert_eq!(report.status, AttemptIntegrityStatus::Inconclusive);
+        assert!(report
+            .reasons
+            .contains(&"MISSING_COMPUTED_ATTEMPT_DIGEST".into()));
     }
 
     #[test]
