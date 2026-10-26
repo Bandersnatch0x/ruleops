@@ -219,3 +219,35 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - 不接 Root/HSM、Trusted CI、registry、RDFC admission 或 protected-branch authority。
 - 不引入新 SHACL/RDFC 依赖，不改变协议冻结字段，不删除现有 fail-closed 守卫。
+
+
+## 17. Issue evidence manifest slice and roundtable update (2026-10-26)
+
+### 已编码并推送
+
+- 按用户最新优先级，先忽略 JDK 21/javac 与 Maven DNS/缓存阻塞，落地 digest-only 的 PilotEvidenceManifest 小切片，不进入 Root、Trusted CI、registry 或 RDFC admission。
+- runtime/pilot-evidence 新增 manifest v1：绑定 sealed package、contract digest、sample digest；每条记录只序列化 metric id、provenance、字节数和 SHA-256，绝不序列化本地路径、源码、Finding、SCM 状态或凭据。
+- CLI 新增 rf pilot evidence manifest PACKAGE OUTPUT --contract-digest HEX --sample-digest HEX --artifact METRIC=PATH；缺失、重复、替换、篡改和路径型 provenance 均 fail-closed。
+- 新增规格 specs/pilot/pilot-evidence-manifest.yaml、ADR-0157 边界说明和 scripts/pilot-evidence-check.sh 的 manifest/tamper 验收场景。
+- 远端按文件顺序推送：ffbbc33、f446e56、01356a5、e7bf733、a17d4d8、08eecf5、458a245。其中 08eecf5 补上路径型 provenance 拒绝，458a245 新建 manifest 规格。
+
+### 验收证据
+
+- source ../toolchain/ruleops-env.sh && cargo test -p erf-pilot-evidence --lib --bins：12 passed / 0 failed。
+- source ../toolchain/ruleops-env.sh && bash scripts/pilot-evidence-check.sh .scratch/pilot-evidence-check-20261026：PASS，产出 executable evidence；git diff --check 和 bash -n scripts/pilot-evidence-check.sh rf 通过。
+- cargo fmt --check 未运行成功，原因是当前 Rust toolchain 未安装 cargo-fmt；不将其写成通过。
+
+### #204 复核结论
+
+- 当前 checkout、refs 与不可达对象均没有历史 .scratch/a-201/report.md、coord-201 或 probe-replay-r1，因此 L-2 的 76/64、47/48、349/524 数字无法安全修改；当前可见 scripts/check.sh 与 docs/guide/testing.md 均为 51 个 stage。
+- 该历史报告缺失已记录为待恢复证据后的人工复核项；本轮不制造报告、不伪造跨进程 fixture。
+
+### 圆桌增补裁决
+
+- 推荐顺序：Issue evidence manifest 已完成；下一步是只读 Attempt integrity dashboard，再做 Environment readiness doctor；Roundtable replay pack 先保持设计稿。
+- 明确不做：Root/HSM、Trusted CI、registry、RDFC admission、protected-branch authority 和任何会扩大生产权限的协议/身份变更。
+- 继续保持 LOCAL_UNATTESTED / SHADOW / RDFC_NOT_ADMITTED，所有新增功能必须保留 fail-closed 与可复跑证据边界。
+
+### 维护入口
+
+- 本文仍是唯一待办入口；后续新增需求、状态、决策、阻塞与证据只追加新节，不另建并行清单。
