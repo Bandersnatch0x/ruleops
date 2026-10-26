@@ -314,3 +314,9 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 ### 19.1 README 入口说明
 
 - README 已补充 readiness doctor 的用法、BLOCKED/strict 语义和不改变 trust/gate 的边界；远端提交 dfbbe13。
+
+
+### 19.2 Readiness doctor hardening
+
+- DNS 探测失败时现在继续尝试下一个 resolver，并保留最终诊断事实；多行 Maven settings.xml 的 localRepository 解析也已补齐。
+- 远端提交 32b7cab（对应本地 56baa55）；回归测试仍通过。
