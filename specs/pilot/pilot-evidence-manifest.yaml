@@ -1,0 +1,32 @@
+apiVersion: rulefactory.io/v1
+kind: PilotEvidenceManifest
+metadata:
+  id: pilot-evidence-manifest-v1
+  version: 1.0.0
+  owner: platform-engineering
+
+spec:
+  disclosure: DIGEST_ONLY
+  format: erf-pilot-evidence-manifest-v1
+  bindings:
+    packageDigest: required
+    contractDigest: required
+    registeredSampleDigest: required
+  entries:
+    required: [metricId, provenance, artifactSize, artifactDigest]
+    uniqueBy: metricId
+    digestAlgorithm: sha256
+  localInputs:
+    path: accepted-for-reading-only
+    serialized: denied
+  validation:
+    packageRecordsMustMatchExactly: true
+    staleOrSubstitutedArtifact: reject
+    missingOrDuplicateEntry: reject
+    unsignedOrTamperedManifest: reject
+
+boundaries:
+  sourceUpload: none
+  findingUpload: none
+  scmMutation: none
+  protectedBranchAuthority: none
