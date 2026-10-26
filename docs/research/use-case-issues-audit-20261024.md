@@ -251,3 +251,9 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 ### 维护入口
 
 - 本文仍是唯一待办入口；后续新增需求、状态、决策、阻塞与证据只追加新节，不另建并行清单。
+
+
+### 17.1 Manifest follow-up hardening
+
+- CLI artifact SHA-256 的返回类型已显式固定为 32-byte digest，避免无 cargo 环境下的类型推断歧义；远端提交 bd1dd5d。
+- 该修复不改变协议、权限或信任边界；沿用 §17 的 12/12 Rust 单测与 pilot-evidence-check 证据。
