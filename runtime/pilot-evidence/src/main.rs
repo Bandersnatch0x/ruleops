@@ -44,7 +44,7 @@ fn run() -> Result<u8, EvidenceError> {
             let mut artifacts = Vec::with_capacity(artifact_paths.len());
             for (metric_id, path) in artifact_paths {
                 let bytes = fs::read(&path).map_err(|_| EvidenceError::InvalidFormat)?;
-                let digest = Sha256::digest(&bytes).into();
+                let digest: [u8; 32] = Sha256::digest(&bytes).into();
                 artifacts.push((metric_id, bytes.len() as u64, digest));
             }
             let manifest = EvidenceManifest::from_package_artifacts(&package, artifacts)?;
