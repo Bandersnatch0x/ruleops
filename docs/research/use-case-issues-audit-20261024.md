@@ -288,3 +288,24 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 验收脚本现在把相对 OUT_DIR 规范化为绝对路径，避免切换工作目录后证据写入错误位置。
 - 远端提交：8e5bb6c、5be29c6；本地 follow-up 为 7f60e98。
 - 复验：`source ../toolchain/ruleops-env.sh && cargo test -p erf-host-client --lib attempt_integrity`：5 passed / 0 failed；相对路径脚本验收 PASS；`git diff --check`、`bash -n` 通过。
+
+
+## 19. Environment readiness doctor slice (2026-10-26)
+
+### 已编码并推送
+
+- 新增 scripts/environment-readiness-doctor.sh：只读检查 java/javac/cargo/mvn/protoc、JDK 21+、Maven DNS 与本地缓存，输出 environment-readiness-v1 JSON、命令日志及 stdout/stderr 原件。
+- 默认模式是诊断-only：即使结果 BLOCKED 也 exit 0；--strict 才 exit 3。脚本不执行依赖下载、不写缓存、不修改 DNS/代理/系统设置、不加载信任材料，报告明确 gate=NOT_RUN、trust=NOT_EVALUATED、diagnosticOnly=true。
+- 新增 scripts/environment-readiness-doctor-test.sh，使用 fake toolchain 验证 READY、缓存带 .lastUpdated 时 BLOCKED 以及 strict exit 3。
+- 远端提交：b305f43、dcb383c；本地聚合提交 cdf6600。
+
+### 验收证据
+
+- 真实环境默认诊断：overall=BLOCKED、exit 0；--strict：overall=BLOCKED、exit 3。当前观察到 java READY，其余工具或 Maven DNS/cache 仍按事实报告 BLOCKED。
+- shell 回归：scripts/environment-readiness-doctor-test.sh 输出 PASS；bash -n 和 JSON 解析通过。
+- 该工具只是环境可观测性，不改变用户已确认的“暂缓 JDK/Maven/DNS、优先编码”策略，也不把 BLOCKED 误报为全量门禁结果。
+
+### 圆桌更新
+
+- 证据 manifest、Attempt integrity dashboard、Environment readiness doctor 三项均已落到可复跑边界内；下一步只做低风险证据/消费者体验增强。
+- Root/HSM、Trusted CI、registry、RDFC admission、protected-branch authority、Server 合法晋级及协议扩展继续保持明确选项/推荐项/阻塞条件，不自动实施。
