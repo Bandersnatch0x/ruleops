@@ -147,7 +147,7 @@ resolve_maven_cache() {
     # Maven's localRepository is a simple scalar in the supported settings
     # shape. Do not execute Maven or parse arbitrary XML here.
     local configured
-    configured="$(sed -n -E 's#.*<localRepository>[[:space:]]*([^<]+)[[:space:]]*</localRepository>.*#\1#p' "$HOME/.m2/settings.xml" | head -n 1)"
+    configured="$(tr '\n' ' ' <"$HOME/.m2/settings.xml" | sed -n -E 's#.*<localRepository>[[:space:]]*([^<]+)[[:space:]]*</localRepository>.*#\1#p' | head -n 1)"
     if [ -n "$configured" ]; then
       case "$configured" in
         ~/*) configured="$HOME/${configured#~/}" ;;
@@ -172,6 +172,7 @@ if [ -L "$MAVEN_CACHE" ]; then
   cache_detail=cache-path-is-symlink
 elif [ -d "$MAVEN_CACHE" ]; then
   cache_kind=directory
+  printf '$ find %q -type f (excluding Maven marker files)\n' "$MAVEN_CACHE" >>"$COMMAND_LOG"
   artifact_count="$(find "$MAVEN_CACHE" -type f \
     ! -name '*.lastUpdated' ! -name '_remote.repositories' \
     ! -name 'resolver-status.properties' -print 2>/dev/null | wc -l | tr -d ' ')"
@@ -225,10 +226,10 @@ for resolver in getent host nslookup; do
   fi
   if [ "$dns_rc" -eq 0 ] && [ -s "$dns_stdout" ]; then
     dns_status=READY
+    break
   fi
-  break
 done
-if [ "$dns_resolver" = "none" ]; then
+if [ "$dns_status" != "READY" ]; then
   py_path="$(resolve_external_command python3)"
   if [ -n "$py_path" ]; then
     dns_resolver=python3-getaddrinfo
