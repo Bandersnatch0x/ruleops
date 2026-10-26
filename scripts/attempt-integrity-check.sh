@@ -5,7 +5,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out_dir="${1:-$repo_root/.scratch/attempt-integrity-$(date -u +%Y%m%dT%H%M%SZ)}"
+case "$out_dir" in
+  /*) ;;
+  *) out_dir="$repo_root/$out_dir" ;;
+esac
 mkdir -p "$out_dir"
+out_dir="$(cd "$out_dir" && pwd -P)"
 cd "$repo_root"
 
 if ! command -v cargo >/dev/null 2>&1; then
