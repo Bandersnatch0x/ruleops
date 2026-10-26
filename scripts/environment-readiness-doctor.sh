@@ -249,6 +249,10 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$dns_status" "$dns_resolver" "$MAVEN_DNS_HOST
 # escaped correctly. If Python itself is absent, this is a diagnostic blocker;
 # no false READY report is emitted.
 PYTHON_BIN="$(resolve_external_command python3)"
+if [ -z "$PYTHON_BIN" ] && [ -x /usr/bin/python3 ]; then
+  # Keep report rendering available when a caller deliberately narrows PATH.
+  PYTHON_BIN=/usr/bin/python3
+fi
 if [ -z "$PYTHON_BIN" ]; then
   echo 'python3 is required only to render the JSON report; no report was emitted' >&2
   exit 2
