@@ -309,3 +309,8 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - 证据 manifest、Attempt integrity dashboard、Environment readiness doctor 三项均已落到可复跑边界内；下一步只做低风险证据/消费者体验增强。
 - Root/HSM、Trusted CI、registry、RDFC admission、protected-branch authority、Server 合法晋级及协议扩展继续保持明确选项/推荐项/阻塞条件，不自动实施。
+
+
+### 19.1 README 入口说明
+
+- README 已补充 readiness doctor 的用法、BLOCKED/strict 语义和不改变 trust/gate 的边界；远端提交 dfbbe13。
