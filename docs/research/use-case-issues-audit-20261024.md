@@ -257,3 +257,26 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - CLI artifact SHA-256 的返回类型已显式固定为 32-byte digest，避免无 cargo 环境下的类型推断歧义；远端提交 bd1dd5d。
 - 该修复不改变协议、权限或信任边界；沿用 §17 的 12/12 Rust 单测与 pilot-evidence-check 证据。
+
+
+## 18. Attempt integrity dashboard slice (2026-10-26)
+
+### 已编码并推送
+
+- 新增 runtime/host-client 的只读 AttemptIntegrityDashboard，不扩展 protobuf/ExecuteComplete 字段，不接 Runner Gate、SCM、Root 或 Trusted authority。
+- 汇总 planned/status/completion/observation/attempt digest 既有事实，检查重复/空 ID、planned↔status 集合、UnitOutcome、units_reported、observation_count 与 Host/consumer digest；缺终止帧或本地 digest 时为 INCONCLUSIVE，矛盾时为 FAIL_CLOSED，并输出稳定 reason code 与 digest-only render_line。
+- ExecuteStream 暴露既有 semantic digest 的只读计算与计数 accessor，仍沿用原有 fail-closed 校验。
+- 新增 scripts/attempt-integrity-check.sh 作为本地可复跑验收，修正 heredoc 命令替换风险。
+- 远端按文件顺序推送：92788ab、c5a138b、d527b23；本地聚合提交为 138edea。
+
+### 验收证据
+
+- source ../toolchain/ruleops-env.sh && cargo test -p erf-host-client --lib attempt_integrity：4 passed / 0 failed。
+- source ../toolchain/ruleops-env.sh && bash scripts/attempt-integrity-check.sh .scratch/attempt-integrity-20261026：PASS。
+- git diff --check、bash -n scripts/attempt-integrity-check.sh 通过。
+- 当前仍未把 dashboard 字段并入 ScanReport/Runner 输出，避免无 ADR 的 schema/output churn；后续若要对外暴露需单独裁决。
+
+### 当前决策
+
+- 推荐继续保持 standalone/read-only dashboard，先积累本地 evidence；不把 VERIFIED 误写成生产 Gate PASS。
+- 下一候选为环境 readiness doctor（只读、输出 BLOCKED JSON），但继续忽略 JDK/Maven/DNS 依赖恢复，直到用户改变优先级。
