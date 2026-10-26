@@ -325,3 +325,8 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 ### 19.3 Probe-log completeness
 
 - readiness doctor 现在把 Maven cache 的只读 find 探针写入 commands.log，保证 BLOCKED/READY 结论可复跑；远端提交 bc3c41f（对应本地 0a54bbf）。
+
+
+### 19.4 Renderer path hardening
+
+- readiness doctor 在调用者缩窄 PATH 时回退到 /usr/bin/python3 渲染 JSON，避免把报告生成器路径缺失误报为环境事实；远端提交 2521146（对应本地 158d639）。
