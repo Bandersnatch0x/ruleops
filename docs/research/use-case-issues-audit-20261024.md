@@ -151,3 +151,31 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - Remote `b7b8ace` extends the Root preparation fixture with a portable generation-chain case and six `validate_chain` negative cases: missing previous metadata/digest, wrong digest, namespace mismatch, version rollback, and issued-at rollback.
 - The fixture also freezes the allowed historical-link behavior: an expired previous generation may remain a valid chain anchor when the digest and monotonic metadata checks hold.
 - This remains evidence-only: no TrustStore, Runner, CI, HSM custody, dual-person approval, recovery, or production authority integration was added.
+
+## 14. Blockers and maintained TODO (2026-10-26)
+
+### A. 可立即执行
+
+- 保持当前分支与远端同步，提交前运行 `git diff --check`、Rust trust/conformance 局部门禁和 threat-model check。
+- 每个新增 Issue 先核对完整正文、关联 ADR、目标文件与可复跑命令；不对当前分支不存在的历史文件制造修复。
+- 继续维护本节，记录新的阻塞、裁决和证据，不把局部通过升级为生产 Gate 结论。
+
+### B. 环境恢复后执行
+
+- 补齐 JDK 21 完整工具链（必须包含 `javac`），并通过 `source ../toolchain/ruleops-env.sh` 注入 Maven/Cargo。
+- 恢复 `repo.maven.apache.org` 的 DNS/代理，或预置可审计的 Maven 依赖缓存；当前缓存仅有 `*.lastUpdated`，不能离线构建。
+- 重新运行 `scripts/check.sh` 全量门禁；若失败，按首个真实失败阶段记录日志，不以脚本启动成功代替通过。
+- 全量门禁通过后，再核对跨语言、Java Host、真实 Runner、CI publication 和重复性证据是否完整。
+
+### C. 需要外部基础设施或明确裁决
+
+- Root authority：离线/HSM custody、双人审批、recovery、TrustStore/Runner/CI/registry 接入和运维演练。
+- RDFC：制品格式、签名身份、迁移/回滚策略和正式 admission；在此之前保持 `RDFC_NOT_ADMITTED`。
+- Trusted CI：受信 workload identity、Bootstrap 测量、真实签名/attestation、registry 与 protected-branch 状态发布。
+- 任何会扩大生产权限、引入新制品依赖或改变信任模型的动作，先记录“明确选项/推荐项/阻塞条件”，获得裁决后再实施。
+
+### D. 当前已确认事实
+
+- `cargo test -p erf-trust --all-targets`：22 passed / 0 failed（使用 bundled toolchain）。
+- `scripts/check.sh` 当前首个阻塞为 `mvn not found`（默认 PATH）；注入环境后 Maven 进一步因 DNS 无法解析 `repo.maven.apache.org`，且 JDK 仅有 runtime、缺少 `javac`。
+- 工作树 clean，最新远端提交为 `fe5476d`；上述问题均为环境/基础设施阻塞，不是已观察到的仓库代码编译错误。
