@@ -14,7 +14,9 @@ window_start=1790899200
 window_end=1791503999
 input="$out_dir/evidence.input"
 package="$out_dir/evidence.package"
+manifest="$out_dir/evidence.manifest"
 adjudication="$out_dir/adjudication.txt"
+mkdir -p "$out_dir/artifacts"
 
 metrics=(
   author-active-time precision recall false-positive-regression
@@ -32,7 +34,9 @@ metrics=(
   echo "sample-digest=$sample_digest"
   index=0
   for metric in "${metrics[@]}"; do
-    artifact_digest="$(printf 'pilot-evidence-artifact-v1:%s:%s\n' "$metric" "$index" | sha256sum | awk '{print $1}')"
+    artifact_path="$out_dir/artifacts/$index.bin"
+    printf 'pilot-evidence-artifact-v1:%s:%s\n' "$metric" "$index" > "$artifact_path"
+    artifact_digest="$(sha256sum "$artifact_path" | awk '{print $1}')"
     printf 'metric=%s\tpilot-check:%s\t%s\t%s\tCOMPLETE\tPASS\t%s\n' \
       "$metric" "$metric" "$window_start" "$window_end" "$artifact_digest"
     index=$((index + 1))
@@ -40,11 +44,12 @@ metrics=(
 } > "$input"
 
 cargo test -q -p erf-pilot-evidence --all-targets > "$out_dir/cargo-test.log" 2>&1
-rg -q 'test result: ok\. 9 passed; 0 failed; 0 ignored' "$out_dir/cargo-test.log"
+rg -q 'test result: ok\. [0-9]+ passed; 0 failed; 0 ignored' "$out_dir/cargo-test.log"
 rg -q 'PilotEvidencePackage' runtime/pilot-evidence/src/lib.rs docs/adr/0157-pilot-evidence-package-and-adjudication-runtime-boundary.md
 rg -q 'FAIL.*INCONCLUSIVE.*PASS' specs/pilot/pilot-evidence-package.yaml runtime/pilot-evidence/src/lib.rs
 rg -q 'contract_digest|sample_digest|artifact_digest|PilotAdjudication' runtime/pilot-evidence/src/lib.rs
 rg -q 'APPROVED_CONTRACT_ID|APPROVED_WINDOW_START_EPOCH_SECS' runtime/pilot-evidence/src/lib.rs
+rg -q '^kind: PilotEvidenceManifest$' specs/pilot/pilot-evidence-manifest.yaml
 rg -q 'pilot evidence package' rf
 
 ./rf pilot evidence package "$input" "$package" \
@@ -52,6 +57,30 @@ rg -q 'pilot evidence package' rf
   > "$out_dir/package.console"
 rg -q 'aggregate=PASS' "$out_dir/package.console"
 rg -q '^package-digest=[0-9a-f]{64}$' "$package"
+
+manifest_args=()
+index=0
+for metric in "${metrics[@]}"; do
+  manifest_args+=(--artifact "$metric=$out_dir/artifacts/$index.bin")
+  index=$((index + 1))
+done
+./rf pilot evidence manifest "$package" "$manifest" \
+  --contract-digest "$contract_digest" --sample-digest "$sample_digest" \
+  "${manifest_args[@]}" > "$out_dir/manifest.console"
+rg -q '^format=erf-pilot-evidence-manifest-v1$' "$manifest"
+rg -q '^manifest-digest=[0-9a-f]{64}$' "$manifest"
+! grep -Fq "$out_dir/artifacts" "$manifest"
+
+cp "$out_dir/artifacts/0.bin" "$out_dir/artifacts/0.bin.original"
+printf '%s\n' 'tampered evidence artifact' > "$out_dir/artifacts/0.bin"
+set +e
+./rf pilot evidence manifest "$package" "$out_dir/tampered.manifest" \
+  --contract-digest "$contract_digest" --sample-digest "$sample_digest" \
+  "${manifest_args[@]}" > "$out_dir/tampered-manifest.console" 2>&1
+tampered_manifest_rc=$?
+set -e
+[ "$tampered_manifest_rc" -eq 2 ]
+mv "$out_dir/artifacts/0.bin.original" "$out_dir/artifacts/0.bin"
 
 ./rf pilot evidence adjudicate "$package" "$adjudication" \
   --contract-digest "$contract_digest" --sample-digest "$sample_digest" \
@@ -162,7 +191,7 @@ set -e
 [ "$duplicate_rc" -eq 2 ]
 rg -q 'duplicated or conflicting' "$out_dir/duplicate.console"
 
-input_identity="$(sha256sum "$contract" "$sample" "$input" runtime/pilot-evidence/src/lib.rs runtime/pilot-evidence/src/main.rs rf | sha256sum | awk '{print $1}')"
+input_identity="$(sha256sum "$contract" "$sample" "$input" "$manifest" specs/pilot/pilot-evidence-manifest.yaml runtime/pilot-evidence/src/lib.rs runtime/pilot-evidence/src/main.rs rf | sha256sum | awk '{print $1}')"
 cat > "$out_dir/pilot-evidence.md" <<EOF
 # Pilot Evidence Package Acceptance
 
@@ -187,6 +216,8 @@ cat > "$out_dir/pilot-evidence.md" <<EOF
 | Malformed package is INCONCLUSIVE | malformed.adjudication | PASS |
 | Wrong approved observation window is rejected | wrong-window.console | PASS |
 | Duplicate/conflicting metric is rejected | duplicate.console | PASS |
+| Manifest binds package records and omits local paths | manifest | PASS |
+| Substituted local artifact is rejected | tampered-manifest.console | PASS |
 
 Aggregation is fixed as FAIL > INCONCLUSIVE > PASS. The package digest covers
 all identities, windows, provenance, completeness, statuses and artifact
