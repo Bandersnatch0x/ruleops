@@ -316,6 +316,12 @@ impl EvidenceManifest {
                 return Err(EvidenceError::ConflictingManifestEntry(entry.metric_id.clone()));
             }
             validate_text("manifest_provenance", &entry.provenance)?;
+            // Provenance is a logical source identity at this boundary.  A
+            // filesystem path (absolute or relative) must never be serialized
+            // into the digest-only manifest.
+            if entry.provenance.contains('/') || entry.provenance.contains('\\') {
+                return Err(EvidenceError::InvalidManifestField("manifest_provenance"));
+            }
             if entry.artifact_digest == [0; 32] {
                 return Err(EvidenceError::InvalidManifestArtifact(entry.metric_id.clone()));
             }
@@ -1182,5 +1188,21 @@ mod tests {
         let tampered = text.replacen("artifact-0", "artifact-x", 1);
         assert_eq!(parse_manifest(&tampered).unwrap().validate(), Err(EvidenceError::TamperedManifest));
         assert_eq!(parse_manifest(&format!("{text}extra=value\n")), Err(EvidenceError::UnknownField("extra=value".into())));
+    }
+
+    #[test]
+    fn evidence_manifest_rejects_path_like_provenance() {
+        let mut package = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+        package.records[0].provenance = "artifacts/precision.json".into();
+        package.seal().unwrap();
+        let artifacts = package
+            .records
+            .iter()
+            .map(|record| (record.metric_id.clone(), 1, record.artifact_digest))
+            .collect();
+        assert_eq!(
+            EvidenceManifest::from_package_artifacts(&package, artifacts),
+            Err(EvidenceError::InvalidManifestField("manifest_provenance"))
+        );
     }
 }
