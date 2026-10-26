@@ -37,3 +37,15 @@ cargo test -q -p erf-pilot-evidence --all-targets
 bash scripts/pilot-evidence-check.sh .scratch/pilot-evidence-check
 bash scripts/check.sh
 ```
+
+## Evidence manifest boundary
+
+`erf-pilot-evidence manifest` additionally emits the digest-only
+`erf-pilot-evidence-manifest-v1` index described by
+`specs/pilot/pilot-evidence-manifest.yaml`. The command may read local artifact
+paths, but serializes only each package metric's logical id, provenance, byte
+length and SHA-256 digest. It requires an exact one-to-one match with the
+sealed package records, binds the contract/sample digests, and rejects stale,
+substituted, duplicate or missing artifacts. The manifest never stores paths,
+source, complete Findings, SCM state or credentials and does not grant any
+authority beyond the existing `LOCAL_UNATTESTED` / `SHADOW` boundary.
