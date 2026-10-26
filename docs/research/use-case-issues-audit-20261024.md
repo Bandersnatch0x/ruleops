@@ -189,3 +189,33 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - **生产边界**：Root authority/HSM custody、双人审批、recovery、TrustStore/Runner/CI/registry 接入、Trusted CI attestation 以及 RDFC admission 均未接入；继续 fail-closed，不把 preparation/shadow 证据升级为生产权威。
 - **下一次代码提交准入条件**：绑定具体 Issue 与 ADR，提供目标文件/行号、可复跑命令、预期失败条件和唯一证据日志；环境未恢复或缺少信任裁决时，只更新本节状态，不提交生产路径实现。
 - **待用户裁决项**：Root/HSM 运维与恢复模型、Trusted CI workload identity/registry 方案、RDFC 制品与签名/迁移/回滚策略。每项继续以“明确选项 / 推荐项 / 阻塞条件”记录后再执行。
+
+
+## 16. Issue slice + brainstorm / roundtable decision (2026-10-26)
+
+### 已编码切片
+
+- 绑定 #204 的可验证缺口：Runner 在接收 `UnitStatus` 时新增 fail-closed 身份守卫；空白 `unit_id` 立即生成 `UNASSIGNED_EVENT_UNIT`，不进入 statuses、不提交观察结果。
+- 新增回归测试 `unit_status_requires_an_assigned_event_unit`，覆盖空白 ID 拒绝与正常 `module:rule` 接受。
+- 使用 `PROTOC=/usr/bin/vtkprotoc-pv5.13` 的 bundled toolchain 实测 `cargo test -p rf-runner --lib`：20 passed / 0 failed；`git diff --check` 通过。
+- 远端代码提交：`499a5d7`。该切片只收紧运行时完整性，不授予 Trusted/production authority。
+
+### 头脑风暴候选功能
+
+1. **Attempt integrity dashboard**：展示 planned/status/completion/observation/attempt digest 的对账差异；只读、digest-first。
+2. **Issue evidence manifest**：每个整改项绑定目标文件、测试命令、预期失败条件和证据摘要；自动生成审计索引。
+3. **Roundtable replay pack**：把安全、平台、治理三席的裁决输入固化为可重放 fixture，避免口头决策漂移。
+4. **Environment readiness doctor**：仅诊断 JDK/javac、Maven DNS/cache、Cargo/protoc，不改变生产信任状态。
+5. **Boundary-aware feature flags**：将 PREPARATION_ONLY、LOCAL_UNATTESTED_SHADOW、RDFC_NOT_ADMITTED 作为显式能力状态，阻止 UI/CLI 误报生产能力。
+
+### 圆桌裁决
+
+- Runtime/安全席：优先 1 和 5；任何新功能必须 fail-closed，不能把本地证据升级为 authority。
+- 平台席：优先 2 和 4；环境 doctor 可提高执行效率，但不能掩盖依赖缺失。
+- 治理/审计席：优先 2 和 3；所有决策必须可追溯到 Issue/ADR/证据，不接受计数型“完成”。
+- **综合建议**：下一切片优先实现 Issue evidence manifest（文档/fixture 层），其次做 Attempt integrity dashboard；Environment doctor 作为环境恢复后的辅助项，Roundtable replay pack 先保持设计，不接生产权限。
+
+### 当前不做
+
+- 不接 Root/HSM、Trusted CI、registry、RDFC admission 或 protected-branch authority。
+- 不引入新 SHACL/RDFC 依赖，不改变协议冻结字段，不删除现有 fail-closed 守卫。
