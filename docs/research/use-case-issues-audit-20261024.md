@@ -337,3 +337,22 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - Evidence claim linter：已完成方案探查，但当前未形成带 PASS/WARN/FAIL fixture 的可交付提交，因此不写入远端代码，避免把未验收脚本当成能力。
 - 下一次可执行顺序：先补 linter 的三态 fixture 与文档入口，再考虑跨语言 ExecuteComplete 负例；两者都必须复用现有协议字段，不新增 nonce/信任字段。
 - 若需要对外扩展 ScanReport/Runner 输出，先新增 ADR 与兼容性证据；当前 AttemptIntegrityDashboard 保持 standalone/read-only。
+
+
+## 21. Evidence claim linter slice (2026-10-27)
+
+### 已编码并推送
+
+- 新增 scripts/evidence-claim-lint.py 与 wrapper：对 evidence-claims-v1 manifest 或 Markdown marker 做 provenance 检查，要求每条 claim 具备 source file:line、replay command、evidenceLevel、commitSha、blocker responsibility、consumer responsibility。
+- grep/rg/wc/count-only 命令只能产生 WARN，永不产生 PASS；退出码固定为 PASS=0、WARN=2、FAIL=1，避免计数型静态证据被误读为行为通过。
+- 新增 PASS/WARN/FAIL fixtures、shell regression、以及 docs/research/evidence-claim-linter-v1.md。仅改 docs/scripts，未改生产 trust、协议或 authority。
+- 远端按文件顺序推送：e9084c8、2aba4e6、41a9264、1ea7d42、a1e6a6d、f80264e、72369a1；本地聚合提交 fbddc25。
+
+### 验收证据
+
+- scripts/evidence-claim-lint-test.sh：PASS，覆盖完整 claim、grep/count warning-only、缺字段/非法 SHA 失败。
+- py_compile、bash -n、git diff --check 通过；全量 scripts/check.sh 继续按用户指示暂缓，受 JDK/Maven/DNS 环境阻塞。
+
+### 下一步裁决
+
+- 推荐继续补跨语言 ExecuteComplete 负例，但只复用现有字段；若出现协议/nonce/身份扩展需求，先回到 ADR 与用户裁决。
