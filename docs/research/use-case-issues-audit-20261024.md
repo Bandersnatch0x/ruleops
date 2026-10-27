@@ -443,3 +443,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - Compare evidence: branch is ahead 93 and behind 0; local `git merge-tree` found no content conflict.
 - GitHub status/workflow runs are empty and no PR reviews exist. Current diagnosis is repository policy/review or pending GitHub mergeability calculation, not a demonstrated file conflict.
 - Action: do not force merge or bypass review. Keep PR open until review/branch policy state is observable; production authority remains disabled.
+
+
+### 25.1 Manual merge verified (2026-10-27)
+
+- 用户已手动合并 PR #248；远端 master 最新合并提交为 `2a64fa5`，提交信息包含 `(#248)`。
+- 已复核 master README 与维护文档包含本轮内容；本次合并只落地代码/文档，未启用 Trusted CI、registry、Root/HSM、ExceptionGrant 或生产 Gate authority。
+- 后续仍按 rollout plan 分阶段执行；任何生产 authority enablement 需 action-time confirmation 与独立证据/回滚点。
