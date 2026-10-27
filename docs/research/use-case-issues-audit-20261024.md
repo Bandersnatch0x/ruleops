@@ -471,3 +471,11 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - 用户已合并 PR #250；master 最新合并提交为 `fc2726d`，production-authority-preflight 两个文件已在 master（blob `924c4b9` / `3315100`）。
 - preflight 仍为只读诊断：缺失项报告 BLOCKED，`gate=NOT_RUN`、`trust=NOT_EVALUATED`；未启用 Trusted CI、registry、Root/HSM、ExceptionGrant 或生产 Gate authority。
+
+
+## 27. Dual approval policy preflight (2026-10-27)
+
+- 新增纯校验器 `scripts/dual-approval-policy-check.py`、负例测试和 root-rotation fixture；校验独立审批人、请求 digest 绑定、批准状态、撤回/过期窗口、回滚引用和重复审批人。
+- 该切片不签名、不接 HSM、密钥托管、ExceptionGrant 签发/撤回或生产 authority；fixture 仅为 illustrative / PROPOSED。
+- 本地提交 `3252895`；远端文件提交 `8d69a15`、`083806c`、`4eadf86`；PR #251 已创建，等待评审，不自动合并。
+- 验收：dual-approval-policy-test=PASS、py_compile、bash -n、git diff --check。
