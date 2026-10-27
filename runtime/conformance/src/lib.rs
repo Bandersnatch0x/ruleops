@@ -1280,6 +1280,7 @@ fn execute_attempt_accounting_rejects_tampering(config: &SuiteConfig) -> CheckRe
     let name = "execute_attempt_accounting_rejects_tampering";
     let outcome = (|| -> Result<String, HostError> {
         for (knob, marker) in [
+            ("FAKE_BAD_UNITS_REPORTED", "units_reported"),
             ("FAKE_BAD_OBSERVATION_COUNT", "observation_count"),
             ("FAKE_BAD_ATTEMPT_DIGEST", "attempt_digest"),
         ] {
@@ -1314,7 +1315,7 @@ fn execute_attempt_accounting_rejects_tampering(config: &SuiteConfig) -> CheckRe
                 }
             }
         }
-        Ok("wrong observation_count and attempt_digest were both rejected".into())
+        Ok("wrong units_reported, observation_count and attempt_digest were all rejected".into())
     })();
     match outcome {
         Ok(detail) => check(name, true, detail),
