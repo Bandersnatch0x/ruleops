@@ -435,3 +435,11 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 新增 `docs/research/production-authority-rollout-plan-20261027.md`，将 1/2/3 拆成 branch promotion、Trusted CI/registry、Root/HSM/ExceptionGrant 三阶段，分别定义输入、证据、回滚和 fail-closed 不变量。
 - 远端提交：7bf1583；本地提交 aeefaba。
 - 该文档只记录准备方案，不启用任何 production authority；每个实际启用动作仍需 action-time confirmation。
+
+
+## 25. PR #248 mergeability investigation (2026-10-27)
+
+- PR #248 targets `master`; GitHub reports `open`, `merged=false`, `mergeable=false`.
+- Compare evidence: branch is ahead 93 and behind 0; local `git merge-tree` found no content conflict.
+- GitHub status/workflow runs are empty and no PR reviews exist. Current diagnosis is repository policy/review or pending GitHub mergeability calculation, not a demonstrated file conflict.
+- Action: do not force merge or bypass review. Keep PR open until review/branch policy state is observable; production authority remains disabled.
