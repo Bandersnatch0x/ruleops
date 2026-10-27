@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "evidence-claims-v1",
+  "claims": [
+    {
+      "id": "C-WARN-001",
+      "text": "A text count found three markers.",
+      "source": "docs/research/evidence-claim-fixtures/warn.json:6",
+      "command": "grep -R 'evidence-claim' docs/research | wc -l",
+      "evidenceLevel": "STRUCTURAL",
+      "commitSha": "0123456789abcdef0123456789abcdef01234567",
+      "blocker": "none",
+      "consumer": "audit reviewer"
+    }
+  ]
+}
