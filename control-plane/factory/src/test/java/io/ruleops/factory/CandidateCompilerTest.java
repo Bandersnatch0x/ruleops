@@ -24,7 +24,11 @@ import org.junit.jupiter.api.io.TempDir;
 class CandidateCompilerTest {
 
     private static String goldenIntent() throws IOException {
-        return Files.readString(Path.of("..", "..", "specs/rule-intent/corp.java.no-system-exit.yaml"));
+        // Normalize CRLF -> LF: the assertions below do exact string replacement
+        // on "\n"-delimited fragments, and a Windows checkout (core.autocrlf)
+        // would otherwise silently miss the replacement.
+        return Files.readString(Path.of("..", "..", "specs/rule-intent/corp.java.no-system-exit.yaml"))
+                .replace("\r\n", "\n");
     }
 
     private static RuleIntent parse(String yaml) throws Exception {
