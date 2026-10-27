@@ -11,8 +11,12 @@
 //! - `FAKE_FALSE_CAPABILITY=<name>` — advertises one capability as false
 //! - `FAKE_CRASH_ON_EXECUTE=1` — exits during execute without Completion
 //! - `FAKE_FAIL_UNIT=<id>` — emits a failed UnitStatus for one unit
+//! - `FAKE_BAD_UNITS_REPORTED=1` — corrupts ExecuteComplete units_reported
 //! - `FAKE_BAD_OBSERVATION_COUNT=1` — corrupts ExecuteComplete observation_count
 //! - `FAKE_BAD_ATTEMPT_DIGEST=1` — corrupts ExecuteComplete attempt_digest
+//! - `FAKE_STATUS_ID_MODE=<duplicate|unknown|blank>` — emits malformed
+//!   UnitStatus.unit_id values while keeping the wire accounting internally
+//!   consistent (negative conformance fixture only)
 //! - `FAKE_MAX_FRAME_BYTES=<n>` — receiver frame cap (default: 16 MiB)
 //!
 //! Deterministic cancellation: with `FAKE_DELAY_MS` set, the fake sleeps
@@ -51,6 +55,8 @@ fn main() {
     let bad_correlation = std::env::var("FAKE_BAD_CORRELATION").is_ok();
     let crash_on_execute = std::env::var("FAKE_CRASH_ON_EXECUTE").is_ok();
     let fail_unit = std::env::var("FAKE_FAIL_UNIT").ok();
+    let bad_units_reported = std::env::var("FAKE_BAD_UNITS_REPORTED").is_ok();
+    let status_id_mode = StatusIdMode::from_env();
     let max_frame_bytes = std::env::var("FAKE_MAX_FRAME_BYTES")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -88,10 +94,14 @@ fn main() {
         bad_correlation,
         crash_on_execute,
         fail_unit,
+        bad_units_reported,
+        status_id_mode,
         writer: &mut writer,
         rx: &rx,
         cancelled: false,
         units_reported_total: 0,
+        status_count: 0,
+        first_status_id: None,
     };
 
     loop {
@@ -142,10 +152,32 @@ struct Session<'a> {
     bad_correlation: bool,
     crash_on_execute: bool,
     fail_unit: Option<String>,
+    bad_units_reported: bool,
+    status_id_mode: Option<StatusIdMode>,
     writer: &'a mut FrameWriter<std::io::StdoutLock<'static>>,
     rx: &'a Receiver<Inbound>,
     cancelled: bool,
     units_reported_total: u64,
+    status_count: u64,
+    first_status_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StatusIdMode {
+    Duplicate,
+    Unknown,
+    Blank,
+}
+
+impl StatusIdMode {
+    fn from_env() -> Option<Self> {
+        match std::env::var("FAKE_STATUS_ID_MODE").ok().as_deref() {
+            Some("duplicate") => Some(Self::Duplicate),
+            Some("unknown") => Some(Self::Unknown),
+            Some("blank") => Some(Self::Blank),
+            _ => None,
+        }
+    }
 }
 
 fn semantic_attempt_hasher() -> Sha256 {
@@ -301,6 +333,8 @@ impl<'a> Session<'a> {
             exit(17);
         }
         self.cancelled = false;
+        self.status_count = 0;
+        self.first_status_id = None;
         let mut units_reported: u64 = 0;
         let mut observation_count: u64 = 0;
         let mut semantic = semantic_attempt_hasher();
@@ -355,11 +389,16 @@ impl<'a> Session<'a> {
         } else {
             observation_count
         };
+        let reported_units = if self.bad_units_reported {
+            units_reported + 1
+        } else {
+            units_reported
+        };
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
             payload: Some(pb::host_envelope::Payload::ExecuteComplete(
                 pb::ExecuteComplete {
-                    units_reported,
+                    units_reported: reported_units,
                     observation_count: reported_observation_count,
                     attempt_digest,
                 },
@@ -388,9 +427,20 @@ impl<'a> Session<'a> {
         detail: &str,
         semantic: &mut Sha256,
     ) -> bool {
+        let first_id = self
+            .first_status_id
+            .get_or_insert_with(|| unit_id.to_string())
+            .clone();
+        let status_id = match (self.status_id_mode, self.status_count) {
+            (Some(StatusIdMode::Duplicate), count) if count > 0 => first_id,
+            (Some(StatusIdMode::Unknown), 0) => format!("{unit_id}-unknown"),
+            (Some(StatusIdMode::Blank), 0) => String::new(),
+            _ => unit_id.to_string(),
+        };
+        self.status_count += 1;
         let event = pb::ExecuteEvent {
             event: Some(pb::execute_event::Event::UnitStatus(pb::UnitStatus {
-                unit_id: unit_id.to_string(),
+                unit_id: status_id,
                 outcome: outcome as i32,
                 reason_code: reason_code as i32,
                 detail: detail.into(),
