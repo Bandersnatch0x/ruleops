@@ -1,0 +1,60 @@
+{
+  "schema": "roundtable-replay-v1",
+  "decisionId": "rt-execute-complete-146",
+  "topic": "ExecuteComplete accounting and cross-language negatives",
+  "issue": "#146",
+  "adr": "ADR-0179",
+  "seats": [
+    "runtime-security",
+    "platform",
+    "governance-audit"
+  ],
+  "options": [
+    {
+      "id": "A",
+      "label": "Reuse existing accounting fields and add cross-language negative fixtures",
+      "status": "RECOMMENDED"
+    },
+    {
+      "id": "B",
+      "label": "Add nonce or identity fields before negative conformance",
+      "status": "BLOCKED"
+    }
+  ],
+  "recommendation": "A",
+  "blockingConditions": [
+    "Do not add nonce, identity, or trust fields without a new ADR and user decision",
+    "Do not claim Trusted or production Gate from fake-host evidence",
+    "Full workspace gate remains blocked by JDK/javac and Maven DNS/cache"
+  ],
+  "evidence": [
+    {
+      "source": "scripts/execute-complete-negative-check.sh:1",
+      "command": "source ../toolchain/ruleops-env.sh && PROTOC=/usr/bin/vtkprotoc-pv5.13 bash scripts/execute-complete-negative-check.sh OUT_DIR",
+      "commitSha": "13f7ce7",
+      "evidenceLevel": "LOCAL_REPLAY"
+    }
+  ],
+  "boundary": "LOCAL_UNATTESTED",
+  "reviewStatus": "PROPOSED",
+  "seatInputs": {
+    "runtime-security": {
+      "position": "Reuse existing accounting fields and keep fail-closed negatives",
+      "concerns": [
+        "Do not infer Trusted from fake hosts"
+      ]
+    },
+    "platform": {
+      "position": "Prefer runnable Rust/Node conformance before environment recovery",
+      "concerns": [
+        "Keep replay command deterministic"
+      ]
+    },
+    "governance-audit": {
+      "position": "Require source line, command, commit and blocker responsibility",
+      "concerns": [
+        "Do not freeze production authority"
+      ]
+    }
+  }
+}
