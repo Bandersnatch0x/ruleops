@@ -420,3 +420,11 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
   3. 允许 Root/HSM、ExceptionGrant 签发/撤回等生产授权能力（需要双人审批、custody、recovery、revocation 与运维验收）。
 - 推荐项：先选择 1；若需要 2 或 3，先分别冻结 ADR、威胁模型、验收证据和回滚方案，再按最小范围实施。
 - 当前阻塞：等待用户明确编号组合；在此之前继续保持 `LOCAL_UNATTESTED` / `SHADOW` / `RDFC_NOT_ADMITTED`，不授予生产 authority。
+
+
+### 24.1 Scope approved by user (2026-10-27)
+
+- 用户已明确批准范围 1/2/3：主分支合并；Trusted CI、registry、生产 Gate 与状态发布；Root/HSM、ExceptionGrant 签发/撤回。
+- 执行顺序：先完成 ADR、威胁模型、回滚/恢复和验收契约；再按单一动作拆分实际权限变更。
+- 当前仍不等同于已启用生产 authority：每个具体启用动作需在目标、权限变化、影响面和回滚点明确后进行 action-time confirmation；在确认前保持 fail-closed。
+- 推荐顺序：主分支合并准备 → Trusted CI/registry 准入准备 → Root/HSM/ExceptionGrant 运维准备；任何一步失败都回滚到 `LOCAL_UNATTESTED` / `SHADOW` / `RDFC_NOT_ADMITTED`。
