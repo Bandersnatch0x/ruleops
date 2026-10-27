@@ -409,3 +409,14 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - README.md now documents the roundtable checker and its `PROPOSED` / `LOCAL_UNATTESTED` boundary; it explicitly states the checker does not execute business commands or produce production Gate/Trusted conclusions.
 - 远端提交：56e04a3；本地提交 cfaeae3。
 - 验收：roundtable checker PASS、bash -n、git diff --check；无 Cargo/Maven 依赖。
+
+
+## 24. Production authority scope decision (2026-10-27)
+
+- 用户提出“授权生产权限”，但范围尚未明确；该请求不能自动解释为合并主分支、Trusted CI、registry、Root/HSM 或 ExceptionGrant 全部授权。
+- 明确选项：
+  1. 仅允许当前分支合并主分支（不改变 runtime trust/authority）。
+  2. 允许接入生产 Gate、Trusted CI、registry 与状态发布（需要身份、attestation、回滚与审计契约）。
+  3. 允许 Root/HSM、ExceptionGrant 签发/撤回等生产授权能力（需要双人审批、custody、recovery、revocation 与运维验收）。
+- 推荐项：先选择 1；若需要 2 或 3，先分别冻结 ADR、威胁模型、验收证据和回滚方案，再按最小范围实施。
+- 当前阻塞：等待用户明确编号组合；在此之前继续保持 `LOCAL_UNATTESTED` / `SHADOW` / `RDFC_NOT_ADMITTED`，不授予生产 authority。
