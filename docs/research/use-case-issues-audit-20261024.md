@@ -458,3 +458,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 默认输出 `production-authority-preflight-v1`，`diagnosticOnly=true`、`gate=NOT_RUN`、`trust=NOT_EVALUATED`；缺失项只报告 `BLOCKED`，`--strict` 返回 3，不修改系统/网络/信任材料。
 - 本地提交 `07c9b5f`；远端分支文件提交 `5a2a846`、`89f7664`；已创建 PR #249，等待评审，不自动合并。
 - 验收：production-authority-preflight-test=PASS、bash -n、git diff --check；该切片不启用任何 production authority。
+
+
+### 26.1 PR #249 conflict resolution
+
+- PR #249 冲突原因：旧分支包含已合并前的维护文档历史，和当前 master 的维护文档发生分叉；未发现 preflight 两个新脚本本身的内容冲突。
+- 处理：从当前 master 新建 clean branch `codex/production-authority-preflight-20261027`，仅重推两个 preflight 文件，创建 PR #250；PR #249 已留言说明并关闭。
+- PR #250 当前为 open、2 commits、2 files；仍需 review/仓库策略，不自动合并。
