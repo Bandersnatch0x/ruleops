@@ -356,3 +356,23 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 ### 下一步裁决
 
 - 推荐继续补跨语言 ExecuteComplete 负例，但只复用现有字段；若出现协议/nonce/身份扩展需求，先回到 ADR 与用户裁决。
+
+
+## 22. Cross-language ExecuteComplete negative conformance (2026-10-27)
+
+### 已编码并推送
+
+- Rust Fake/Node Fake 新增仅测试用的既有字段扰动：FAKE_BAD_UNITS_REPORTED，以及 FAKE_STATUS_ID_MODE=duplicate|unknown|blank；不新增 protobuf 字段、不改 Java、不接 trust/authority。
+- 新增 scripts/execute-complete-negative-check.sh：先跑现有 Rust/Node accounting tamper 证据，再验证两种 Fake 对重复、未知、空白 UnitStatus.unit_id 均 fail-closed；Node blank 场景同时验证 canonical wire digest 不匹配也会被拒绝。
+- 远端按文件顺序推送：930d52d、d433d36、a504a49、41a993d、5ebf598、13d1d17；本地聚合提交 13f7ce7。
+
+### 验收证据
+
+- cargo test -p erf-conformance --lib：4/4（使用 PROTOC=/usr/bin/vtkprotoc-pv5.13）。
+- cargo build -p erf-conformance -p erf-fake-host：通过；node --check backend-hosts/node-fake/host.js、bash -n、git diff --check 通过。
+- 新脚本完整运行：Rust/Node duplicate、unknown、blank 六个负例均 PASS；现有 units_reported/observation_count/attempt_digest tamper probe 保持通过。
+- cargo check/full gate 未宣称通过；JDK/Maven/DNS/cache 阻塞仍按前节记录。
+
+### 裁决
+
+- 仅保留 Rust/Node Fake 负例，避免 Java Fake 缺少注入能力导致共享 conformance 误报；不新增 nonce、身份或协议字段。
