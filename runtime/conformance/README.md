@@ -46,9 +46,23 @@ cargo run -p erf-conformance -- \
 scripts/phase2-independent-acceptance.sh
 ```
 
+ExecuteComplete 的跨语言负例（Rust Fake 与 Node Fake）可单独复跑：
+
+```text
+scripts/execute-complete-negative-check.sh
+```
+
+该脚本注入重复、未知和空白 `UnitStatus.unit_id`，并确认完整性检查拒绝
+每一种状态集合；同一轮正向验收还会注入不一致的
+`units_reported`、`observation_count` 和 `attempt_digest`。这些都是既有
+协议字段的测试夹具，不改变 Java Host、生产 trust 或协议 schema。
+
 Reference Fake Host 与 Resolver 提供确定性的 failure-injection 控制。Host
 控制项包括 `FAKE_POLLUTE_STDOUT`、`FAKE_SUPPORTED_MAJOR`、
-`FAKE_BAD_CORRELATION`、`FAKE_DELAY_MS` 与 `FAKE_CRASH_ON_EXECUTE`；Resolver
+`FAKE_BAD_CORRELATION`、`FAKE_DELAY_MS`、`FAKE_CRASH_ON_EXECUTE`、
+`FAKE_BAD_UNITS_REPORTED`、`FAKE_BAD_OBSERVATION_COUNT`、
+`FAKE_BAD_ATTEMPT_DIGEST` 和负例专用的
+`FAKE_STATUS_ID_MODE=duplicate|unknown|blank`；Resolver
 控制项包括 `FAKE_SUPPORTED_MAJOR`、`FAKE_PROTOCOL_MINOR`、
 `FAKE_RESOLVE_DELAY_MS`、`FAKE_CRASH_ON_RESOLVE`、
 `FAKE_MALFORMED_ON_RESOLVE` 与 `FAKE_OVERSIZED_ON_RESOLVE`。协议字节只能写入
