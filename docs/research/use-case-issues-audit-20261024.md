@@ -465,3 +465,9 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - PR #249 冲突原因：旧分支包含已合并前的维护文档历史，和当前 master 的维护文档发生分叉；未发现 preflight 两个新脚本本身的内容冲突。
 - 处理：从当前 master 新建 clean branch `codex/production-authority-preflight-20261027`，仅重推两个 preflight 文件，创建 PR #250；PR #249 已留言说明并关闭。
 - PR #250 当前为 open、2 commits、2 files；仍需 review/仓库策略，不自动合并。
+
+
+### 26.2 PR #250 merged (2026-10-27)
+
+- 用户已合并 PR #250；master 最新合并提交为 `fc2726d`，production-authority-preflight 两个文件已在 master（blob `924c4b9` / `3315100`）。
+- preflight 仍为只读诊断：缺失项报告 BLOCKED，`gate=NOT_RUN`、`trust=NOT_EVALUATED`；未启用 Trusted CI、registry、Root/HSM、ExceptionGrant 或生产 Gate authority。
