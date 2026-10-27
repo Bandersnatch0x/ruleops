@@ -334,8 +334,8 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 ## 20. Remaining low-risk backlog (2026-10-26)
 
-- Evidence claim linter：已完成方案探查，但当前未形成带 PASS/WARN/FAIL fixture 的可交付提交，因此不写入远端代码，避免把未验收脚本当成能力。
-- 下一次可执行顺序：先补 linter 的三态 fixture 与文档入口，再考虑跨语言 ExecuteComplete 负例；两者都必须复用现有协议字段，不新增 nonce/信任字段。
+- Evidence claim linter：已形成带 PASS/WARN/FAIL fixture 的可交付提交，并通过 scripts/evidence-claim-lint-test.sh；不把静态 lint 结果升级为行为 Gate 结论。
+- 下一次可执行顺序：先记录跨语言 ExecuteComplete 负例，再补 schema-only roundtable replay pack；两者都复用现有协议字段，不新增 nonce/信任字段。
 - 若需要对外扩展 ScanReport/Runner 输出，先新增 ADR 与兼容性证据；当前 AttemptIntegrityDashboard 保持 standalone/read-only。
 
 
@@ -376,3 +376,22 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 ### 裁决
 
 - 仅保留 Rust/Node Fake 负例，避免 Java Fake 缺少注入能力导致共享 conformance 误报；不新增 nonce、身份或协议字段。
+
+## 23. Roundtable replay pack v1 (2026-10-27)
+
+### 已编码并推送
+
+- 新增 docs/research/roundtable-replay-v1.md、三席决策 fixture、静态 checker 与负例测试；仅 docs/fixture/script，不改 protobuf、Runner、Trust、SCM 或生产权限。
+- fixture 记录 runtime-security、platform、governance-audit 三席输入，明确 option、recommendation、blockingConditions、evidence 与 boundary；当前 reviewStatus=PROPOSED，不冻结生产决策。
+- 远端按文件顺序推送：fb364db、810f799、78bd428、439326d；本地聚合提交为 dc8663a（首版 294cfc4，随后补 review-aware 字段）。
+
+### 验收证据
+
+- bash -n scripts/roundtable-replay-check.sh scripts/roundtable-replay-check-test.sh：通过。
+- ./scripts/roundtable-replay-check-test.sh：roundtable-replay-test=PASS；默认 checker PASS。
+- git diff --check：通过；不依赖 Cargo/Maven/网络。
+- 该切片是 schema-only/static replay evidence，boundary=LOCAL_UNATTESTED；checker 不宣称已执行 fixture 中的业务命令，也不产生生产 Gate/Trusted 结论。
+
+### 后续增强（非阻塞）
+
+- 可继续增强 source file:line、commit SHA 格式和命令可执行性校验；当前不阻塞合并，不扩大信任边界。
