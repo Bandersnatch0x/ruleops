@@ -1,0 +1,12 @@
+{
+  "schema": "dual-approval-policy-v1",
+  "operationId": "root-rotation-demo-001",
+  "target": "root-generation:next",
+  "requestedBy": "operator-a",
+  "requestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "rollbackRef": "root-generation:current",
+  "approvals": [
+    {"actor": "approver-b", "role": "security", "decision": "APPROVED", "approvedAt": "2026-10-27T16:00:00Z", "expiresAt": "2026-10-28T16:00:00Z", "revoked": false, "requestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"actor": "approver-c", "role": "platform", "decision": "APPROVED", "approvedAt": "2026-10-27T16:01:00Z", "expiresAt": "2026-10-28T16:00:00Z", "revoked": false, "requestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+  ]
+}
