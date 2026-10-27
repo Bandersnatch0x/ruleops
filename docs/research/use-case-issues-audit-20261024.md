@@ -402,3 +402,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - checker now validates `source` as file:line and `commitSha` as a hexadecimal 7-40 character reference; negative fixture covers invalid source location.
 - 远端更新：8e1904b（checker）、63120d6（negative test）；本地聚合提交 7c4df78。
 - 验收：roundtable-replay-test=PASS、默认 checker PASS、bash -n、git diff --check；仍为 schema-only/static evidence，不执行业务命令，不扩大 authority。
+
+
+### 23.2 README entrypoint
+
+- README.md now documents the roundtable checker and its `PROPOSED` / `LOCAL_UNATTESTED` boundary; it explicitly states the checker does not execute business commands or produce production Gate/Trusted conclusions.
+- 远端提交：56e04a3；本地提交 cfaeae3。
+- 验收：roundtable checker PASS、bash -n、git diff --check；无 Cargo/Maven 依赖。
