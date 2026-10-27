@@ -15,4 +15,14 @@ if ./scripts/roundtable-replay-check.sh "$TMP_DIR/bad.json" >/dev/null 2>&1; the
   echo "FAIL negative fixture accepted"
   exit 1
 fi
+python3 - "$TMP_DIR/good.json" "$TMP_DIR/bad-location.json" <<'PY2'
+import json, pathlib, sys
+data = json.loads(pathlib.Path(sys.argv[1]).read_text())
+data["evidence"][0]["source"] = "scripts/check.sh"
+pathlib.Path(sys.argv[2]).write_text(json.dumps(data))
+PY2
+if ./scripts/roundtable-replay-check.sh "$TMP_DIR/bad-location.json" >/dev/null 2>&1; then
+  echo "FAIL invalid source accepted"
+  exit 1
+fi
 echo "roundtable-replay-test=PASS"
