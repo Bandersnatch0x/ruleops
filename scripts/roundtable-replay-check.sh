@@ -35,6 +35,11 @@ for e in data["evidence"]:
     for k in ("source", "command", "commitSha", "evidenceLevel"):
         if not e.get(k):
             raise SystemExit(f"FAIL evidence-{k}")
+    import re
+    if not re.fullmatch(r"[^:]+:[0-9]+", e["source"]):
+        raise SystemExit("FAIL evidence-source-location")
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", e["commitSha"]):
+        raise SystemExit("FAIL evidence-commit-sha")
     if "grep" in e["command"] and e.get("evidenceLevel") == "BEHAVIOR_PASS":
         raise SystemExit("FAIL count-only-evidence")
 if data["boundary"] not in {"LOCAL_UNATTESTED", "SHADOW", "RDFC_NOT_ADMITTED"}:
