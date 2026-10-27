@@ -8,8 +8,15 @@
 //!   where a client-side deadline can be observed to fire
 //! - `FAKE_SUPPORTED_MAJOR=<n>` — protocol major this fake accepts (default 0)
 //! - `FAKE_BAD_CORRELATION=1`  — answers Hello with a mismatched correlation id
+//! - `FAKE_FALSE_CAPABILITY=<name>` — advertises one capability as false
 //! - `FAKE_CRASH_ON_EXECUTE=1` — exits during execute without Completion
 //! - `FAKE_FAIL_UNIT=<id>` — emits a failed UnitStatus for one unit
+//! - `FAKE_BAD_UNITS_REPORTED=1` — corrupts ExecuteComplete units_reported
+//! - `FAKE_BAD_OBSERVATION_COUNT=1` — corrupts ExecuteComplete observation_count
+//! - `FAKE_BAD_ATTEMPT_DIGEST=1` — corrupts ExecuteComplete attempt_digest
+//! - `FAKE_STATUS_ID_MODE=<duplicate|unknown|blank>` — emits malformed
+//!   UnitStatus.unit_id values while keeping the wire accounting internally
+//!   consistent (negative conformance fixture only)
 //! - `FAKE_MAX_FRAME_BYTES=<n>` — receiver frame cap (default: 16 MiB)
 //!
 //! Deterministic cancellation: with `FAKE_DELAY_MS` set, the fake sleeps
@@ -29,6 +36,7 @@ use std::io::Write;
 use std::process::exit;
 use std::sync::mpsc::{Receiver, RecvError, TryRecvError, channel};
 use std::time::Duration;
+use sha2::{Digest, Sha256};
 
 fn main() {
     if std::env::var("FAKE_POLLUTE_STDOUT").is_ok() {
@@ -47,6 +55,8 @@ fn main() {
     let bad_correlation = std::env::var("FAKE_BAD_CORRELATION").is_ok();
     let crash_on_execute = std::env::var("FAKE_CRASH_ON_EXECUTE").is_ok();
     let fail_unit = std::env::var("FAKE_FAIL_UNIT").ok();
+    let bad_units_reported = std::env::var("FAKE_BAD_UNITS_REPORTED").is_ok();
+    let status_id_mode = StatusIdMode::from_env();
     let max_frame_bytes = std::env::var("FAKE_MAX_FRAME_BYTES")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -84,10 +94,14 @@ fn main() {
         bad_correlation,
         crash_on_execute,
         fail_unit,
+        bad_units_reported,
+        status_id_mode,
         writer: &mut writer,
         rx: &rx,
         cancelled: false,
         units_reported_total: 0,
+        status_count: 0,
+        first_status_id: None,
     };
 
     loop {
@@ -138,10 +152,43 @@ struct Session<'a> {
     bad_correlation: bool,
     crash_on_execute: bool,
     fail_unit: Option<String>,
+    bad_units_reported: bool,
+    status_id_mode: Option<StatusIdMode>,
     writer: &'a mut FrameWriter<std::io::StdoutLock<'static>>,
     rx: &'a Receiver<Inbound>,
     cancelled: bool,
     units_reported_total: u64,
+    status_count: u64,
+    first_status_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StatusIdMode {
+    Duplicate,
+    Unknown,
+    Blank,
+}
+
+impl StatusIdMode {
+    fn from_env() -> Option<Self> {
+        match std::env::var("FAKE_STATUS_ID_MODE").ok().as_deref() {
+            Some("duplicate") => Some(Self::Duplicate),
+            Some("unknown") => Some(Self::Unknown),
+            Some("blank") => Some(Self::Blank),
+            _ => None,
+        }
+    }
+}
+
+fn semantic_attempt_hasher() -> Sha256 {
+    let mut hasher = Sha256::new();
+    hasher.update(b"erf-execute-attempt-v1\0");
+    hasher
+}
+
+fn append_length_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
 }
 
 impl<'a> Session<'a> {
@@ -255,7 +302,7 @@ impl<'a> Session<'a> {
         let missing: Vec<String> = hello
             .required_capabilities
             .iter()
-            .filter(|c| !facts.contains_key(*c))
+            .filter(|c| !facts.get(*c).copied().unwrap_or(false))
             .cloned()
             .collect();
         if !missing.is_empty() {
@@ -286,7 +333,11 @@ impl<'a> Session<'a> {
             exit(17);
         }
         self.cancelled = false;
+        self.status_count = 0;
+        self.first_status_id = None;
         let mut units_reported: u64 = 0;
+        let mut observation_count: u64 = 0;
+        let mut semantic = semantic_attempt_hasher();
         for unit_id in &unit_ids {
             if self.fail_unit.as_deref() == Some(unit_id.as_str()) {
                 if !self.unit_status(
@@ -295,6 +346,7 @@ impl<'a> Session<'a> {
                     pb::UnitOutcome::Failed,
                     pb::UnitFailureReason::UnitInternalError,
                     "injected unit failure",
+                    &mut semantic,
                 ) {
                     return false;
                 }
@@ -305,40 +357,63 @@ impl<'a> Session<'a> {
             if self.delay_ms > 0 {
                 std::thread::sleep(Duration::from_millis(self.delay_ms));
                 if self.drain_cancel() {
-                    return self.finish_cancelled(correlation, unit_id, units_reported);
+                    return self.finish_cancelled(correlation, unit_id, units_reported, &mut semantic);
                 }
             }
-            if !self.observation(correlation, unit_id) {
+            if !self.observation(correlation, unit_id, &mut semantic) {
                 return false;
             }
+            observation_count += 1;
             if !self.unit_status(
                 correlation,
                 unit_id,
                 pb::UnitOutcome::Executed,
                 pb::UnitFailureReason::Unspecified,
                 "",
+                &mut semantic,
             ) {
                 return false;
             }
             units_reported += 1;
             self.units_reported_total += 1;
         }
+        let mut digest = semantic;
+        append_length_prefixed(&mut digest, &units_reported.to_be_bytes());
+        append_length_prefixed(&mut digest, &observation_count.to_be_bytes());
+        let mut attempt_digest = digest.finalize().to_vec();
+        if std::env::var("FAKE_BAD_ATTEMPT_DIGEST").is_ok() {
+            attempt_digest[0] ^= 0xff;
+        }
+        let reported_observation_count = if std::env::var("FAKE_BAD_OBSERVATION_COUNT").is_ok() {
+            observation_count + 1
+        } else {
+            observation_count
+        };
+        let reported_units = if self.bad_units_reported {
+            units_reported + 1
+        } else {
+            units_reported
+        };
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
             payload: Some(pb::host_envelope::Payload::ExecuteComplete(
-                pb::ExecuteComplete { units_reported },
+                pb::ExecuteComplete {
+                    units_reported: reported_units,
+                    observation_count: reported_observation_count,
+                    attempt_digest,
+                },
             )),
         })
     }
 
-    fn observation(&mut self, correlation: u64, unit_id: &str) -> bool {
+    fn observation(&mut self, correlation: u64, unit_id: &str, semantic: &mut Sha256) -> bool {
+        let event = pb::ExecuteEvent {
+            event: Some(pb::execute_event::Event::Observation(erf_fake_host::canned_observation(unit_id))),
+        };
+        append_length_prefixed(semantic, &event.encode_to_vec());
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
-            payload: Some(pb::host_envelope::Payload::ExecuteEvent(pb::ExecuteEvent {
-                event: Some(pb::execute_event::Event::Observation(
-                    erf_fake_host::canned_observation(unit_id),
-                )),
-            })),
+            payload: Some(pb::host_envelope::Payload::ExecuteEvent(event)),
         })
     }
 
@@ -350,17 +425,31 @@ impl<'a> Session<'a> {
         outcome: pb::UnitOutcome,
         reason_code: pb::UnitFailureReason,
         detail: &str,
+        semantic: &mut Sha256,
     ) -> bool {
+        let first_id = self
+            .first_status_id
+            .get_or_insert_with(|| unit_id.to_string())
+            .clone();
+        let status_id = match (self.status_id_mode, self.status_count) {
+            (Some(StatusIdMode::Duplicate), count) if count > 0 => first_id,
+            (Some(StatusIdMode::Unknown), 0) => format!("{unit_id}-unknown"),
+            (Some(StatusIdMode::Blank), 0) => String::new(),
+            _ => unit_id.to_string(),
+        };
+        self.status_count += 1;
+        let event = pb::ExecuteEvent {
+            event: Some(pb::execute_event::Event::UnitStatus(pb::UnitStatus {
+                unit_id: status_id,
+                outcome: outcome as i32,
+                reason_code: reason_code as i32,
+                detail: detail.into(),
+            })),
+        };
+        append_length_prefixed(semantic, &event.encode_to_vec());
         self.send(pb::HostEnvelope {
             correlation_id: correlation,
-            payload: Some(pb::host_envelope::Payload::ExecuteEvent(pb::ExecuteEvent {
-                event: Some(pb::execute_event::Event::UnitStatus(pb::UnitStatus {
-                    unit_id: unit_id.to_string(),
-                    outcome: outcome as i32,
-                    reason_code: reason_code as i32,
-                    detail: detail.into(),
-                })),
-            })),
+            payload: Some(pb::host_envelope::Payload::ExecuteEvent(event)),
         })
     }
 
@@ -418,6 +507,7 @@ impl<'a> Session<'a> {
         correlation: u64,
         unit_id: &str,
         units_reported: u64,
+        semantic: &mut Sha256,
     ) -> bool {
         // Cooperative cancellation still accounts the interrupted unit.
         if !self.unit_status(
@@ -426,6 +516,7 @@ impl<'a> Session<'a> {
             pb::UnitOutcome::Failed,
             pb::UnitFailureReason::CancelledByRuntime,
             "cancelled before completion",
+            semantic,
         ) {
             return false;
         }

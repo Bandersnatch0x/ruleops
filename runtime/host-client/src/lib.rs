@@ -13,11 +13,19 @@
 use erf_contracts::backend::v0 as pb;
 use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
+use std::collections::HashMap;
 use std::io::Read;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::time::Duration;
 use sha2::{Digest, Sha256};
+
+mod attempt_integrity;
+
+pub use attempt_integrity::{
+    AttemptIntegrityDashboard, AttemptIntegrityInput, AttemptIntegrityStatus,
+    canonical_attempt_digest,
+};
 
 pub const PROTOCOL_MAJOR: u32 = 0;
 pub const PROTOCOL_MINOR: u32 = 1;
@@ -25,6 +33,14 @@ pub const PROTOCOL_MINOR: u32 = 1;
 /// The reader applies backpressure instead of allowing unbounded child output
 /// to grow Runtime memory.
 pub const RESPONSE_QUEUE_CAPACITY: usize = 8;
+
+fn unmet_capabilities(required: &[String], facts: &HashMap<String, bool>) -> Vec<String> {
+    required
+        .iter()
+        .filter(|capability| !facts.get(*capability).copied().unwrap_or(false))
+        .cloned()
+        .collect()
+}
 
 #[derive(Debug, Clone)]
 pub struct HostConfig {
@@ -181,12 +197,7 @@ impl HostHandle {
                 let caps = ack.capabilities.as_ref().ok_or_else(|| {
                     HostError::Violation("HelloAck without CapabilityDescriptor".into())
                 })?;
-                let missing: Vec<String> = config
-                    .required_capabilities
-                    .iter()
-                    .filter(|c| !caps.facts.contains_key(*c))
-                    .cloned()
-                    .collect();
+                let missing = unmet_capabilities(&config.required_capabilities, &caps.facts);
                 if !missing.is_empty() {
                     return Err(HostError::MissingCapabilities { missing });
                 }
@@ -264,6 +275,9 @@ impl HostHandle {
             events_seen: 0,
             finished: false,
             transcript: Sha256::new(),
+            semantic: semantic_attempt_hasher(),
+            observation_count: 0,
+            unit_status_count: 0,
         })
     }
 
@@ -384,6 +398,9 @@ pub struct ExecuteStream<'a> {
     events_seen: u64,
     finished: bool,
     transcript: Sha256,
+    semantic: Sha256,
+    observation_count: u64,
+    unit_status_count: u64,
 }
 
 #[derive(Debug)]
@@ -422,11 +439,15 @@ impl<'a> ExecuteStream<'a> {
                             max_events: self.handle.limits.max_events_per_execute,
                         });
                     }
+                    let event_payload = ev.encode_to_vec();
+                    append_length_prefixed(&mut self.semantic, &event_payload);
                     match ev.event {
                         Some(pb::execute_event::Event::Observation(o)) => {
+                            self.observation_count += 1;
                             Ok(Some(ExecEvent::Observation(o)))
                         }
                         Some(pb::execute_event::Event::UnitStatus(u)) => {
+                            self.unit_status_count += 1;
                             Ok(Some(ExecEvent::UnitStatus(u)))
                         }
                         None => {
@@ -437,6 +458,28 @@ impl<'a> ExecuteStream<'a> {
                     }
                 }
                 Some(pb::host_envelope::Payload::ExecuteComplete(c)) => {
+                    if self.unit_status_count != c.units_reported {
+                        return Err(HostError::Violation(format!(
+                            "ExecuteComplete units_reported={} but runtime received {} UnitStatus events",
+                            c.units_reported, self.unit_status_count
+                        )));
+                    }
+                    if self.observation_count != c.observation_count {
+                        return Err(HostError::Violation(format!(
+                            "ExecuteComplete observation_count={} but runtime received {} observations",
+                            c.observation_count, self.observation_count
+                        )));
+                    }
+                    if c.attempt_digest.len() != 32 {
+                        return Err(HostError::Violation(
+                            "ExecuteComplete attempt_digest must contain 32 bytes".into(),
+                        ));
+                    }
+                    if self.computed_attempt_digest(&c) != c.attempt_digest {
+                        return Err(HostError::Violation(
+                            "ExecuteComplete attempt_digest does not match received events".into(),
+                        ));
+                    }
                     self.finished = true;
                     Ok(Some(ExecEvent::Complete(c)))
                 }
@@ -466,6 +509,25 @@ impl<'a> ExecuteStream<'a> {
     /// Digest of the exact length-delimited response frames received for execute.
     pub fn transcript_digest(&self) -> Vec<u8> {
         self.transcript.clone().finalize().to_vec()
+    }
+
+    /// Returns the canonical semantic digest computed from the events already
+    /// received by this stream and the supplied terminal accounting fields.
+    /// This is a read-only projection for evidence/dashboard consumers; the
+    /// stream still validates the same value before yielding ExecuteComplete.
+    pub fn computed_attempt_digest(&self, completion: &pb::ExecuteComplete) -> Vec<u8> {
+        let mut digest = self.semantic.clone();
+        append_length_prefixed(&mut digest, &completion.units_reported.to_be_bytes());
+        append_length_prefixed(&mut digest, &completion.observation_count.to_be_bytes());
+        digest.finalize().to_vec()
+    }
+
+    pub fn observation_count(&self) -> u64 {
+        self.observation_count
+    }
+
+    pub fn unit_status_count(&self) -> u64 {
+        self.unit_status_count
     }
 
     /// Sends CancelRequest for this execute. Events keep flowing until the
@@ -508,6 +570,17 @@ impl<'a> ExecuteStream<'a> {
             }
         }
     }
+}
+
+fn semantic_attempt_hasher() -> Sha256 {
+    let mut hasher = Sha256::new();
+    hasher.update(b"erf-execute-attempt-v1\0");
+    hasher
+}
+
+fn append_length_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
 }
 
 #[cfg(test)]
@@ -580,5 +653,28 @@ mod tests {
         assert_eq!(receiver.try_iter().count(), RESPONSE_QUEUE_CAPACITY);
         release.store(true, Ordering::Release);
         drop(receiver);
+    }
+}
+
+
+#[cfg(test)]
+mod capability_tests {
+    use super::unmet_capabilities;
+    use std::collections::HashMap;
+
+    #[test]
+    fn required_capability_must_be_true() {
+        let required = vec!["java.ast".to_string(), "java.bytecode".to_string()];
+        let facts = HashMap::from([
+            ("java.ast".to_string(), true),
+            ("java.bytecode".to_string(), false),
+        ]);
+        assert_eq!(unmet_capabilities(&required, &facts), vec!["java.bytecode"]);
+    }
+
+    #[test]
+    fn missing_required_capability_is_unmet() {
+        let required = vec!["java.ast".to_string()];
+        assert_eq!(unmet_capabilities(&required, &HashMap::new()), vec!["java.ast"]);
     }
 }

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "evidence-claims-v1",
+  "claims": [
+    {
+      "id": "C-PASS-001",
+      "text": "The local evidence check is repeatable.",
+      "source": "scripts/evidence-claim-lint.py:205",
+      "command": "python3 scripts/evidence-claim-lint.py docs/research/evidence-claim-fixtures/pass.json",
+      "evidenceLevel": "EXECUTABLE",
+      "commitSha": "0123456789abcdef0123456789abcdef01234567",
+      "blocker": "none",
+      "consumer": "audit reviewer"
+    }
+  ]
+}

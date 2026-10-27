@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 35415)
+Total output lines: 3038
+
 //! Minimal scan orchestration slice for Phase 1.
 
 use erf_contracts::{backend::v0 as host_pb, workspace::v0 as workspace_pb};
@@ -15,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
@@ -1304,421 +1309,11 @@ pub fn scan(config: &ScanConfig) -> Result<ScanResult, ScanError> {
             return Err(ScanError::Trust(format!("execution lock resolver mismatch: expected {}/{} got {}/{}", lock.resolver_id, lock.resolver_version, descriptor.resolver_id, descriptor.resolver_version)));
         }
         if !resolver_provider_id.is_empty()
-            && (lock.resolver_sandbox_provider_id != resolver_provider_id
-                || lock.resolver_sandbox_policy_digest != resolver_policy_digest)
-        {
-            return Err(ScanError::Trust("execution lock resolver sandbox identity mismatch".into()));
-        }
+            && (lock.resolver_sandbox_provider_id != resolver_pr…5415 tokens truncated…(), String> {
+    if status.unit_id.trim().is_empty() {
+        return Err("UNASSIGNED_EVENT_UNIT: UnitStatus.unit_id must not be empty".into());
     }
-    let completion = match resolver.complete() {
-        Ok(completion) => completion,
-        Err(error) => {
-            record_stage_with_outcome(
-                &mut stage_telemetry,
-                resolve_timer,
-                erf_incremental_baseline::StageOutcome::Failed,
-            )?;
-            return incomplete_result(
-                rule_id.clone(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                descriptor.descriptor_sha256.clone(),
-                Vec::new(),
-                format!("workspace resolver completion was unavailable: {error}"),
-                effective_frozen_plan.as_ref(),
-                fallback_decision.clone(),
-                bundle_delivery_identity.clone(),
-                stage_telemetry,
-                resolver_unresolved_facts.clone(),
-                resolver_required_unresolved_facts.clone(),
-            );
-        }
-    };
-    if completion.status != workspace_pb::completion::Status::Completed as i32 {
-        record_stage_with_outcome(
-            &mut stage_telemetry,
-            resolve_timer,
-            erf_incremental_baseline::StageOutcome::Failed,
-        )?;
-        return incomplete_result(
-            rule_id.clone(),
-            Vec::new(),
-            Vec::new(),
-            descriptor.descriptor_sha256.clone(),
-            Vec::new(),
-            Vec::new(),
-            format!(
-                "workspace resolver completed with status {}: {}",
-                completion.status, completion.reason
-            ),
-            effective_frozen_plan.as_ref(),
-            fallback_decision.clone(),
-            bundle_delivery_identity.clone(),
-            stage_telemetry,
-            resolver_unresolved_facts.clone(),
-            resolver_required_unresolved_facts.clone(),
-        );
-    }
-    record_stage(&mut stage_telemetry, resolve_timer)?;
-
-    // Freeze the global denominator before asking the host to refine it.
-    let mut module_ids_for_units = Vec::new();
-    let all_units: Vec<host_pb::AnalysisUnit> = descriptor
-        .modules
-        .iter()
-        .filter_map(|module| {
-            let files = module
-                .files
-                .iter()
-                .filter(|file| config.project_scope.as_ref().map_or(true, |scope| scope.selects(&file.path)))
-                .map(|file| file.path.clone())
-                .collect::<Vec<_>>();
-            if config.project_scope.is_some() && files.is_empty() {
-                None
-            } else {
-                module_ids_for_units.push(module.module_id.clone());
-                Some(host_pb::AnalysisUnit {
-                    unit_id: format!("{}:{}", module.module_id, rule_id),
-                    language: module.language.clone(),
-                    files,
-                    classpath_entries: module.classpath_entries.clone(),
-                    build_output_roots: module.build_output_roots.clone(),
-                    invocation_identity: module.invocation_identity.clone(),
-                    classpath_sha256: module.classpath_sha256.clone(),
-                    build_output_sha256: module.build_output_sha256.clone(),
-                })
-            }
-        })
-        .collect();
-    if config.project_scope.is_some() && all_units.is_empty() {
-        return Err(ScanError::Plan("project config selected no resolver files".into()));
-    }
-    if let Some(request) = &config.incremental {
-        let range = erf_git_scope::GitChangeRange::new(&request.base, &request.head)
-            .map_err(|error| ScanError::Plan(format!("incremental Git range is invalid: {error}")))?;
-        let changed = erf_git_scope::GitChangeResolver::new(&config.repo_root)
-            .resolve(&range)
-            .map_err(|error| ScanError::Plan(format!("incremental ChangedSet could not be resolved: {error}")))?;
-        let affected = erf_affected_scope::AffectedScopeResolver::new(&config.repo_root)
-            .resolve(&changed)
-            .map_err(|error| ScanError::Plan(format!("incremental affected scope could not be resolved: {error}")))?;
-        let backend = if request.backend_identity.contains("spotbugs") {
-            erf_affected_scope::AnalysisKind::SpotBugsBytecode
-        } else {
-            erf_affected_scope::AnalysisKind::PmdAst
-        };
-        let tree = git_tree_identity(&config.repo_root, changed.range().head_commit())?;
-        let plan_units = all_units
-            .iter()
-            .zip(module_ids_for_units.iter())
-            .map(|(unit, module_id)| erf_scan_plan::AnalysisUnit {
-                unit_id: unit.unit_id.clone(),
-                backend,
-                module_id: module_id.clone(),
-                path: None,
-            })
-            .collect::<Vec<_>>();
-        let plan_identity = erf_scan_plan::PlanIdentity {
-            repository: request.repository.clone(),
-            base: changed.range().base_commit().to_string(),
-            head: changed.range().head_commit().to_string(),
-            tree,
-            scope_digest: affected.digest().to_string(),
-            rule_bundle_digest: request.rule_bundle_digest.clone(),
-            policy_digest: request.policy_digest.clone(),
-            resolver_identity: request.resolver_identity.clone(),
-            backend_identity: request.backend_identity.clone(),
-            runner_identity: request.runner_identity.clone(),
-            protocol_major: erf_host_client::PROTOCOL_MAJOR,
-            canonical_set_version: request.canonical_set_version.clone(),
-        };
-        let freeze_plan = |requested_mode| {
-            erf_scan_plan::ScanPlan::freeze(erf_scan_plan::ScanPlanRequest {
-                identity: plan_identity.clone(),
-                affected_scope: affected.clone(),
-                requested_mode,
-                units: plan_units.clone(),
-            })
-            .map_err(|error| ScanError::Plan(format!("incremental ScanPlan could not be frozen: {error}")))
-        };
-        let provisional_plan = freeze_plan(erf_scan_plan::PlanMode::Module)?;
-        let mut requested_mode = erf_scan_plan::PlanMode::Module;
-        if let Some(cache_dir) = &config.scan_cache_dir {
-            let probe = erf_scan_plan::FileScanCache::new(cache_dir)
-                .probe_plan(&provisional_plan, unix_now_epoch_secs())
-                .map_err(|error| ScanError::Plan(format!("incremental scan cache probe failed: {error}")))?;
-            match probe {
-                erf_scan_plan::CacheProbe::WarmHit => {
-                    incremental_cache_observation = erf_incremental_baseline::CacheObservation::WarmHit;
-                }
-                erf_scan_plan::CacheProbe::ColdMiss => {
-                    incremental_cache_observation = erf_incremental_baseline::CacheObservation::ColdMiss;
-                }
-                erf_scan_plan::CacheProbe::Expired => {
-                    incremental_cache_observation = erf_incremental_baseline::CacheObservation::Expired;
-                    requested_mode = erf_scan_plan::PlanMode::Full;
-                }
-                erf_scan_plan::CacheProbe::Corrupt => {
-                    incremental_cache_observation = erf_incremental_baseline::CacheObservation::Corrupt;
-                    requested_mode = erf_scan_plan::PlanMode::Full;
-                }
-            }
-        }
-        let plan = if requested_mode == erf_scan_plan::PlanMode::Full {
-            freeze_plan(erf_scan_plan::PlanMode::Full)?
-        } else {
-            provisional_plan
-        };
-        let plan_observation = erf_incremental_baseline::PlanObservation::new(
-            plan.digest(),
-            plan.mode(),
-            plan.authority(),
-            plan.planned_units().len(),
-            true,
-        )
-        .map_err(|error| ScanError::Plan(format!("incremental plan observation is invalid: {error}")))?;
-        let has_reason = |code| affected.reasons().iter().any(|reason| reason.code() == code);
-        let fallback_inputs = erf_incremental_baseline::FallbackInputs {
-            requested_route: erf_incremental_baseline::ExecutionRoute::Incremental,
-            plan: plan_observation,
-            cache: incremental_cache_observation,
-            build: erf_incremental_baseline::BuildOutcome::Success,
-            build_configuration_changed: has_reason(erf_affected_scope::ReasonCode::SharedBuildConfiguration)
-                || has_reason(erf_affected_scope::ReasonCode::DynamicBuildGraph)
-                || has_reason(erf_affected_scope::ReasonCode::BuildGraphIncomplete),
-            rule_bundle_changed: has_reason(erf_affected_scope::ReasonCode::RuleConfigurationChanged),
-            policy_changed: has_reason(erf_affected_scope::ReasonCode::PolicyConfigurationChanged),
-            resolver_changed: has_reason(erf_affected_scope::ReasonCode::ResolverConfigurationChanged),
-            dependency_graph: if has_reason(erf_affected_scope::ReasonCode::DynamicBuildGraph)
-                || has_reason(erf_affected_scope::ReasonCode::BuildGraphIncomplete)
-            {
-                erf_incremental_baseline::DependencyGraphState::Uncertain
-            } else {
-                erf_incremental_baseline::DependencyGraphState::Proven
-            },
-            generated_source: if has_reason(erf_affected_scope::ReasonCode::GeneratedSourcesUncertain) {
-                erf_incremental_baseline::GeneratedSourceState::Uncertain
-            } else {
-                erf_incremental_baseline::GeneratedSourceState::Stable
-            },
-            merge_base: erf_incremental_baseline::MergeBaseState::Verifiable,
-            affected_unit_count: plan.planned_units().len(),
-            scope_budget: all_units.len().max(1),
-        };
-        fallback_decision = Some(
-            erf_incremental_baseline::assess_fallback(fallback_inputs)
-                .map_err(|error| ScanError::Plan(format!("incremental fallback assessment failed: {error}")))?,
-        );
-        effective_frozen_plan = Some(plan);
-    }
-    let scope_timer = start_stage_timer(erf_incremental_baseline::Stage::AffectedScope, "affected-scope", &hex_digest(&descriptor.descriptor_sha256))?;
-    let (units, plan_digest) = if let Some(frozen_plan) = &effective_frozen_plan {
-        let selected = frozen_plan.planned_unit_ids();
-        let available = all_units.into_iter().map(|unit| (unit.unit_id.clone(), unit)).collect::<std::collections::BTreeMap<_, _>>();
-        if available.len() != selected.len() && frozen_plan.mode() == erf_scan_plan::PlanMode::Full {
-            return Err(ScanError::Plan("FULL ScanPlan omitted a resolver analysis unit".into()));
-        }
-        let units = selected.iter().map(|unit_id| available.get(unit_id).cloned().ok_or_else(|| ScanError::Plan("frozen ScanPlan contains an analysis unit absent from the WorkspaceDescriptor".into()))).collect::<Result<Vec<_>, _>>()?;
-        if units.is_empty() { return Err(ScanError::Plan("frozen ScanPlan selected no resolver analysis units".into())); }
-        (units, frozen_plan.digest_bytes().to_vec())
-    } else {
-        (all_units, Vec::new())
-    };
-    let planned_ids: Vec<String> = units.iter().map(|u| u.unit_id.clone()).collect();
-    if let Some(frozen_plan) = &effective_frozen_plan {
-        frozen_plan.validate_execution_unit_ids(&planned_ids).map_err(|error| ScanError::Plan(error.to_string()))?;
-    }
-    let planned = planned_ids.len();
-    let plan_digest = if plan_digest.is_empty() { digest_plan(&units) } else { plan_digest };
-    record_stage(&mut stage_telemetry, scope_timer)?;
-
-    let sandboxed = config.sandbox_policy.is_some();
-    let mut host_command = if let Some(policy) = &config.sandbox_policy {
-        if policy.repository_root != Path::new(&config.repo_root)
-            || rule_bundle_path.as_ref().map(Path::new) != Some(policy.rule_bundle.as_path())
-        {
-            return Err(ScanError::Sandbox("sandbox mounts do not match scan inputs".into()));
-        }
-        let provider = erf_sandbox::DockerSandboxProvider::default();
-        provider.preflight().map_err(|error| ScanError::Sandbox(error.to_string()))?;
-        let prepared = provider.prepare(policy).map_err(|error| ScanError::Sandbox(error.to_string()))?;
-        if let Some(lock) = execution_lock {
-            if lock.sandbox_provider_id != prepared.provider_id
-                || lock.sandbox_policy_digest != prepared.policy_digest
-            {
-                return Err(ScanError::Trust("execution lock backend sandbox identity mismatch".into()));
-            }
-        }
-        let mut command = Command::new(&prepared.command[0]);
-        command.args(&prepared.command[1..]);
-        command
-    } else {
-        let mut command = Command::new(&config.host_command);
-        command.args(&config.host_args);
-        command
-    };
-    // The descriptor paths are relative to the resolved snapshot, not the
-    // runtime process cwd. Bind that identity into the host session.
-    if !sandboxed {
-        host_command.env("ERF_REPO_ROOT", &config.repo_root);
-        host_command.env("ERF_BACKEND", backend_mode);
-        if let Some(bundle) = &validated_bundle {
-            host_command.env("ERF_RULESET", &bundle.ruleset_path);
-            host_command.env("ERF_RULE_BUNDLE", rule_bundle_path.as_deref().unwrap_or_default());
-        }
-        if let Some(identity) = &bundle_delivery_identity {
-            host_command.env("ERF_RULE_BUNDLE_DIGEST", &identity.bundle_digest);
-            host_command.env("ERF_BUNDLE_DELIVERY_DESCRIPTOR_DIGEST", &identity.descriptor_digest);
-            host_command.env("ERF_BUNDLE_COMPATIBILITY", &identity.compatibility_identity);
-            host_command.env("ERF_BUNDLE_PLATFORM", &identity.platform);
-        }
-    }
-    let required_backend_capability = if backend_mode == "spotbugs" {
-        "java.bytecode"
-    } else {
-        "java.ast"
-    };
-    let mut host_config = HostConfig {
-        required_capabilities: vec![required_backend_capability.into()],
-        ..Default::default()
-    };
-    host_config.limits.deadline_ms = config.host_deadline_ms;
-    let (mut host, ack) = HostHandle::spawn(&mut host_command, &host_config)?;
-    if let Some(lock) = execution_lock {
-        let capabilities = ack.capabilities.as_ref().ok_or_else(|| ScanError::Plan("host ack omitted capabilities for execution lock".into()))?;
-        if capabilities.backend_id != lock.backend_id || capabilities.backend_version != lock.backend_version {
-            return Err(ScanError::Trust(format!("execution lock backend mismatch: expected {}/{} got {}/{}", lock.backend_id, lock.backend_version, capabilities.backend_id, capabilities.backend_version)));
-        }
-    }
-    let compile_timer = start_stage_timer(erf_incremental_baseline::Stage::Compile, "compile", &hex_digest(&plan_digest))?;
-    let plan = host.plan(units)?;
-    record_stage(&mut stage_telemetry, compile_timer)?;
-    let returned: Vec<String> = plan.planned.iter().map(|u| u.unit_id.clone()).collect();
-    if returned != planned_ids || !plan.unsupported.is_empty() {
-        return Err(ScanError::Plan(format!(
-            "host refinement changed frozen plan: expected {planned_ids:?}, got {returned:?}, unsupported={:?}",
-            plan.unsupported
-        )));
-    }
-
-    let backend_timer = start_stage_timer(erf_incremental_baseline::Stage::Backend, "backend", &hex_digest(&plan_digest))?;
-    let mut stream = match host.execute(planned_ids.clone()) {
-        Ok(stream) => stream,
-        Err(error) => {
-            record_stage_with_outcome(&mut stage_telemetry, backend_timer, erf_incremental_baseline::StageOutcome::Failed)?;
-            return incomplete_result(
-                rule_id.clone(),
-                planned_ids,
-                Vec::new(),
-                plan_digest,
-                descriptor.descriptor_sha256.clone(),
-                Vec::new(),
-                error.to_string(),
-                effective_frozen_plan.as_ref(),
-                fallback_decision.clone(),
-                bundle_delivery_identity.clone(),
-                stage_telemetry,
-                resolver_unresolved_facts.clone(),
-                resolver_required_unresolved_facts.clone(),
-            );
-        }
-    };
-    let mut statuses = Vec::new();
-    let mut staging = AttemptStaging::new(config.max_staging_bytes)?;
-    let (completion, attempt_failure) = loop {
-        match stream.next_event() {
-            Ok(Some(ExecEvent::Observation(observation))) => {
-        if let Err(error) = staging.append(&observation) {
-                    break (None, Some(error.to_string()));
-                }
-            }
-            Ok(Some(ExecEvent::UnitStatus(status))) => {
-                statuses.push(status);
-            }
-            Ok(Some(ExecEvent::Complete(complete))) => {
-                break (Some(complete), None);
-            }
-            Ok(None) => break (None, Some("execute ended without ExecuteComplete".into())),
-            Err(error) => break (None, Some(error.to_string())),
-        }
-    };
-    let attempt_transcript_digest = stream.transcript_digest();
-    drop(stream);
-    record_stage_with_outcome(
-        &mut stage_telemetry,
-        backend_timer,
-        if attempt_failure.is_some() {
-            erf_incremental_baseline::StageOutcome::Failed
-        } else {
-            erf_incremental_baseline::StageOutcome::Completed
-        },
-    )?;
-    if let Some(reason) = attempt_failure {
-        return incomplete_result(rule_id.clone(), planned_ids, statuses, plan_digest, descriptor.descriptor_sha256.clone(), attempt_transcript_digest, reason, effective_frozen_plan.as_ref(), fallback_decision.clone(), bundle_delivery_identity.clone(), stage_telemetry, resolver_unresolved_facts.clone(), resolver_required_unresolved_facts.clone());
-    }
-    let completion = completion.expect("successful execute loop must have completion");
-    if let Err(error) = host.complete() {
-        return incomplete_result(rule_id.clone(), planned_ids, statuses, plan_digest, descriptor.descriptor_sha256.clone(), attempt_transcript_digest, error.to_string(), effective_frozen_plan.as_ref(), fallback_decision.clone(), bundle_delivery_identity.clone(), stage_telemetry, resolver_unresolved_facts.clone(), resolver_required_unresolved_facts.clone());
-    }
-
-    let mut status_ids: Vec<String> = statuses.iter().map(|s| s.unit_id.clone()).collect();
-    status_ids.sort();
-    let mut expected_ids = planned_ids.clone();
-    expected_ids.sort();
-    if status_ids != expected_ids || completion.units_reported as usize != planned {
-        let reason = format!(
-            "incomplete attempt: planned={planned_ids:?}, status={status_ids:?}, reported={}",
-            completion.units_reported);
-        return incomplete_result(rule_id.clone(), planned_ids, statuses, plan_digest, descriptor.descriptor_sha256.clone(), attempt_transcript_digest, reason, effective_frozen_plan.as_ref(), fallback_decision.clone(), bundle_delivery_identity.clone(), stage_telemetry, resolver_unresolved_facts.clone(), resolver_required_unresolved_facts.clone());
-    }
-    let failed = statuses
-        .iter()
-        .filter(|s| s.outcome != host_pb::UnitOutcome::Executed as i32)
-        .count();
-    let executed = planned - failed;
-    // A failed unit invalidates the whole attempt. Keep the completeness
-    // facts for governance, but never leak observations from a partial run.
-    let cache_timer = start_stage_timer(erf_incremental_baseline::Stage::Cache, "cache", &hex_digest(&plan_digest))?;
-    let committed_findings = if failed == 0 {
-        let findings = staging.read_observations()?;
-        record_stage(&mut stage_telemetry, cache_timer)?;
-        findings
-    } else {
-        stage_telemetry
-            .record_skipped(erf_incremental_baseline::Stage::Cache, erf_incremental_baseline::digest_summary(&format!("cache-skipped:failed-units:{}", failed)))
-            .map_err(|error| ScanError::Plan(format!("cannot record skipped cache stage: {error}")))?;
-        Vec::new()
-    };
-    let gate_timer = start_stage_timer(erf_incremental_baseline::Stage::Gate, "gate", &hex_digest(&plan_digest))?;
-    let plan_completeness = completeness_report(
-        effective_frozen_plan.as_ref(),
-        &statuses,
-        resolver_required_unresolved_facts.len(),
-    )?;
-    record_stage(&mut stage_telemetry, gate_timer)?;
-    Ok(ScanResult {
-        rule_id,
-        planned,
-        executed,
-        failed,
-        attempt_failure: None,
-        committed_findings,
-        attempt_transcript_digest,
-        trust: "LOCAL_UNATTESTED",
-        plan_digest,
-        workspace_descriptor_digest: descriptor.descriptor_sha256,
-        resolver_unresolved_facts,
-        resolver_required_unresolved_facts,
-        planned_unit_ids: planned_ids,
-        unit_statuses: statuses,
-        scan_plan: effective_frozen_plan.clone(),
-        plan_authority: effective_frozen_plan.as_ref().map(|plan| plan.authority()),
-        plan_completeness,
-        fallback_decision,
-        stage_telemetry: Some(stage_telemetry),
-        bundle_delivery_identity,
-    })
+    Ok(())
 }
 
 fn start_stage_timer(
@@ -1806,6 +1401,39 @@ fn incomplete_result(
         stage_telemetry: Some(stage_telemetry),
         bundle_delivery_identity,
     })
+}
+
+/// Backend observations carry a content digest for source/file locations.
+/// Bind that digest to the resolver's immutable workspace descriptor before
+/// staging any observation; a backend must not be able to invent a digest or
+/// point at a different file version and still reach Gate.
+fn validate_observation_blob_identity(
+    observation: &host_pb::BackendObservation,
+    descriptor: &workspace_pb::WorkspaceDescriptor,
+) -> Result<(), &'static str> {
+    let location = observation.location.as_ref().ok_or("missing observation location")?;
+    let (path, digest) = match location.kind.as_ref() {
+        Some(host_pb::observation_location::Kind::SourceSpan(span)) => (&span.path, &span.blob_sha256),
+        Some(host_pb::observation_location::Kind::File(file)) => (&file.path, &file.blob_sha256),
+        Some(host_pb::observation_location::Kind::Symbol(_))
+        | Some(host_pb::observation_location::Kind::BytecodeMember(_)) => return Ok(()),
+        None => return Err("missing observation location kind"),
+    };
+    let mut matches = descriptor
+        .modules
+        .iter()
+        .flat_map(|module| module.files.iter())
+        .filter(|file| file.path == *path);
+    let expected = matches
+        .next()
+        .ok_or("observation path is absent from workspace descriptor")?;
+    if matches.next().is_some() {
+        return Err("observation path is ambiguous in workspace descriptor");
+    }
+    if expected.blob_sha256.as_slice() != digest.as_slice() {
+        return Err("observation blob digest does not match workspace descriptor");
+    }
+    Ok(())
 }
 
 fn completeness_report(
@@ -1904,7 +1532,11 @@ impl AttemptStaging {
                 .map_err(|e| ScanError::Plan(format!("staging clock failed: {e}")))?
                 .as_nanos()
         ));
-        let file = OpenOptions::new().create_new(true).read(true).write(true).open(&path)
+        let mut options = OpenOptions::new();
+        options.create_new(true).read(true).write(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let file = options.open(&path)
             .map_err(|e| ScanError::Plan(format!("cannot create staging file: {e}")))?;
         Ok(Self { file, path, bytes: 0, limit })
     }
@@ -2042,6 +1674,9 @@ fn materialize_delivered_bundle(
     let temp = parent.join(format!(".{digest}.{}.tmp", unique_suffix()));
     fs::create_dir(&temp)
         .map_err(|error| ScanError::Delivery(format!("cannot create materialized RuleBundle staging directory: {error}")))?;
+    #[cfg(unix)]
+    fs::set_permissions(&temp, fs::Permissions::from_mode(0o700))
+        .map_err(|error| ScanError::Delivery(format!("cannot restrict materialized RuleBundle staging directory: {error}")))?;
     let result = (|| {
         let entries = decode_canonical_bundle(bytes)?;
         let mut seen = BTreeSet::new();
@@ -2061,11 +1696,16 @@ fn materialize_delivered_bundle(
                 fs::create_dir_all(parent).map_err(|error| {
                     ScanError::Delivery(format!("cannot create materialized RuleBundle directory: {error}"))
                 })?;
+                #[cfg(unix)]
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).map_err(|error| {
+                    ScanError::Delivery(format!("cannot restrict materialized RuleBundle directory: {error}"))
+                })?;
             }
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut file = options.open(&path)
                 .map_err(|error| ScanError::Delivery(format!("cannot materialize RuleBundle file: {error}")))?;
             file.write_all(&file_bytes)
                 .and_then(|_| file.sync_all())
@@ -2078,10 +1718,14 @@ fn materialize_delivered_bundle(
             "intent": {"id": rule_id},
             "digest": digest,
         });
-        fs::write(temp.join("manifest.json"), serde_json::to_vec(&manifest).map_err(|error| {
+        let manifest_path = temp.join("manifest.json");
+        fs::write(&manifest_path, serde_json::to_vec(&manifest).map_err(|error| {
             ScanError::Delivery(format!("cannot encode materialized RuleBundle manifest: {error}"))
         })?)
         .map_err(|error| ScanError::Delivery(format!("cannot write materialized RuleBundle manifest: {error}")))?;
+        #[cfg(unix)]
+        fs::set_permissions(&manifest_path, fs::Permissions::from_mode(0o600))
+            .map_err(|error| ScanError::Delivery(format!("cannot restrict materialized RuleBundle manifest: {error}")))?;
         fs::rename(&temp, &target)
             .map_err(|error| ScanError::Delivery(format!("cannot publish materialized RuleBundle: {error}")))?;
         Ok(())
@@ -2439,6 +2083,16 @@ mod tests {
     }
 
     #[test]
+    fn unit_status_requires_an_assigned_event_unit() {
+        let empty = host_pb::UnitStatus { unit_id: "   ".into(), outcome: 0, detail: String::new(), reason_code: 0 };
+        let error = validate_unit_status_identity(&empty).unwrap_err();
+        assert!(error.starts_with("UNASSIGNED_EVENT_UNIT:"));
+
+        let assigned = host_pb::UnitStatus { unit_id: "module:rule".into(), outcome: 0, detail: String::new(), reason_code: 0 };
+        assert!(validate_unit_status_identity(&assigned).is_ok());
+    }
+
+    #[test]
     fn content_addressed_directory_must_match_manifest() {
         let parent = test_bundle();
         let root = parent.join("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -2563,6 +2217,13 @@ mod tests {
         let validated = validate_rule_bundle(&materialized_path).unwrap();
         assert_eq!(validated.rule_id, "corp.test");
         assert_eq!(bundle_payload_bytes(&materialized_path).unwrap(), payload);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&materialized_path).unwrap().permissions().mode() & 0o777, 0o700);
+            assert_eq!(fs::metadata(materialized_path.join("ruleset.xml")).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(fs::metadata(materialized_path.join("manifest.json")).unwrap().permissions().mode() & 0o777, 0o600);
+        }
         assert_eq!(materialize_delivered_bundle(&cache_root.to_string_lossy(), "corp.test", &descriptor, &payload).unwrap(), materialized);
         fs::remove_dir_all(source).unwrap();
         fs::remove_dir_all(cache_root).unwrap();
@@ -2689,6 +2350,52 @@ mod tests {
         let mut staging = AttemptStaging::new(7).unwrap();
         let observation = host_pb::BackendObservation::default();
         assert!(staging.append(&observation).is_err());
+    }
+
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let staging = AttemptStaging::new(1024).unwrap();
+        let mode = fs::metadata(&staging.path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn observation_blob_digest_must_match_workspace_descriptor() {
+        let descriptor = workspace_pb::WorkspaceDescriptor {
+            modules: vec![workspace_pb::ModuleDescriptor {
+                files: vec![workspace_pb::FileEntry {
+                    path: "src/A.java".into(),
+                    blob_sha256: vec![7; 32],
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut observation = host_pb::BackendObservation {
+            location: Some(host_pb::ObservationLocation {
+                kind: Some(host_pb::observation_location::Kind::SourceSpan(host_pb::SourceSpan {
+                    path: "src/A.java".into(),
+                    blob_sha256: vec![7; 32],
+                    line: 1,
+                    column: 1,
+                    ..Default::default()
+                })),
+            }),
+            ..Default::default()
+        };
+        assert!(validate_observation_blob_identity(&observation, &descriptor).is_ok());
+        if let Some(location) = observation.location.as_mut() {
+            if let Some(host_pb::observation_location::Kind::SourceSpan(span)) = location.kind.as_mut() {
+                span.blob_sha256 = vec![8; 32];
+            }
+        }
+        assert_eq!(
+            validate_observation_blob_identity(&observation, &descriptor),
+            Err("observation blob digest does not match workspace descriptor")
+        );
     }
 
     #[test]

@@ -109,6 +109,26 @@ release 的标准 `rf scan` 不要求拼接内部 Host/Resolver 命令；`--host
 scan probe，缓存命中仍需重新通过签名、freshness、撤回快照和 execution identity 验证，缺失
 或不确定不会降级为可信执行。
 
+开发环境的工具链事实（`java`/`javac`/`cargo`/`mvn`/`protoc`、Maven DNS 与本地缓存）可用只读
+诊断脚本复核：
+
+```text
+bash scripts/environment-readiness-doctor.sh .scratch/environment-readiness-doctor
+```
+
+该脚本只写入指定输出目录中的 JSON、命令记录和 stdout/stderr 日志，不执行构建、不下载依赖、
+不修改 DNS/代理或信任状态；报告只使用 `READY`/`BLOCKED`，`gate=NOT_RUN`、`trust=NOT_EVALUATED`。
+默认即使 `BLOCKED` 也返回 0 以免阻塞开发；需要把环境事实作为门禁时显式传 `--strict`（返回 3）。
+
+审计决策与证据索引可用 schema-only 的 Roundtable replay pack 复核：
+
+```text
+bash scripts/roundtable-replay-check.sh
+bash scripts/roundtable-replay-check-test.sh
+```
+
+该 checker 只校验三席决策 fixture 的字段、推荐项、阻塞条件、证据来源行号、commit 引用和 authority boundary；fixture 当前为 `PROPOSED`、`LOCAL_UNATTESTED`，不会执行业务命令，也不会产生生产 Gate 或 Trusted 结论。详情见 `docs/research/roundtable-replay-v1.md` 与维护审计文档。
+
 `rf scan` 返回 `0` 表示执行完整（Gate 可为 PASS 或 FAIL），`3` 表示
 INCONCLUSIVE/执行不完整，`2` 表示输入或契约错误，`4` 表示 trust failure。
 

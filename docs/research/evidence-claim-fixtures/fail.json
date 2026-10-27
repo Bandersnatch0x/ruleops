@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "evidence-claims-v1",
+  "claims": [
+    {
+      "id": "C-FAIL-001",
+      "text": "This claim is intentionally incomplete.",
+      "source": "absolute/path.md:0",
+      "command": "",
+      "evidenceLevel": "UNKNOWN",
+      "commitSha": "not-a-sha",
+      "blocker": "",
+      "consumer": ""
+    }
+  ]
+}

@@ -10,8 +10,10 @@ use thiserror::Error;
 
 pub const PILOT_EVIDENCE_PACKAGE_VERSION: &str = "pilot-evidence-package-v1";
 pub const PILOT_ADJUDICATION_VERSION: &str = "pilot-adjudication-v1";
+pub const PILOT_EVIDENCE_MANIFEST_VERSION: &str = "pilot-evidence-manifest-v1";
 pub const PACKAGE_FORMAT: &str = "erf-pilot-evidence-package-v1";
 pub const INPUT_FORMAT: &str = "erf-pilot-evidence-input-v1";
+pub const MANIFEST_FORMAT: &str = "erf-pilot-evidence-manifest-v1";
 pub const ADJUDICATION_FORMAT: &str = "erf-pilot-adjudication-v1";
 pub const DECISION_OWNER: &str = "platform-engineering";
 pub const APPROVED_CONTRACT_ID: &str = "pilot-success-contract-v0";
@@ -146,6 +148,204 @@ pub struct PilotEvidencePackage {
     pub sample_digest: [u8; 32],
     pub records: Vec<EvidenceRecord>,
     pub package_digest: [u8; 32],
+}
+
+/// A digest-only index of the artifacts referenced by a sealed evidence package.
+///
+/// The manifest intentionally retains no filesystem paths or artifact contents.  A
+/// caller may use a local path while creating a manifest, but only the logical
+/// metric id, provenance, byte length and digest are serialized.  This makes the
+/// manifest useful for audit/replay without turning it into a source or Finding
+/// upload channel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceManifestEntry {
+    pub metric_id: String,
+    pub provenance: String,
+    pub artifact_size: u64,
+    pub artifact_digest: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceManifest {
+    pub package_digest: [u8; 32],
+    pub contract_digest: [u8; 32],
+    pub sample_digest: [u8; 32],
+    pub entries: Vec<EvidenceManifestEntry>,
+    pub manifest_digest: [u8; 32],
+}
+
+impl EvidenceManifest {
+    /// Build a manifest from local artifact measurements.  The input labels are
+    /// metric ids; paths are deliberately not accepted by this API, so callers
+    /// must hash/read files before crossing the digest-only boundary.
+    pub fn from_package_artifacts(
+        package: &PilotEvidencePackage,
+        artifacts: Vec<(String, u64, [u8; 32])>,
+    ) -> Result<Self, EvidenceError> {
+        package.validate().map_err(|_| EvidenceError::ManifestPackageInvalid)?;
+        if artifacts.len() != package.records.len() {
+            return Err(EvidenceError::ManifestEntryMismatch("artifact count".into()));
+        }
+        let mut by_metric = BTreeMap::new();
+        for (metric_id, artifact_size, artifact_digest) in artifacts {
+            if by_metric.insert(metric_id.clone(), (artifact_size, artifact_digest)).is_some() {
+                return Err(EvidenceError::ConflictingManifestEntry(metric_id));
+            }
+        }
+        let mut entries = Vec::with_capacity(package.records.len());
+        for record in &package.records {
+            let Some((artifact_size, artifact_digest)) = by_metric.remove(&record.metric_id) else {
+                return Err(EvidenceError::ManifestEntryMismatch(record.metric_id.clone()));
+            };
+            if artifact_digest != record.artifact_digest {
+                return Err(EvidenceError::ManifestArtifactMismatch(record.metric_id.clone()));
+            }
+            entries.push(EvidenceManifestEntry {
+                metric_id: record.metric_id.clone(),
+                provenance: record.provenance.clone(),
+                artifact_size,
+                artifact_digest,
+            });
+        }
+        if !by_metric.is_empty() {
+            return Err(EvidenceError::ManifestEntryMismatch("unexpected metric".into()));
+        }
+        let mut manifest = Self {
+            package_digest: package.package_digest,
+            contract_digest: package.contract_digest,
+            sample_digest: package.sample_digest,
+            entries,
+            manifest_digest: [0; 32],
+        };
+        manifest.seal()?;
+        Ok(manifest)
+    }
+
+    pub fn content_digest(&self) -> [u8; 32] {
+        Sha256::digest(self.canonical_payload()).into()
+    }
+
+    pub fn seal(&mut self) -> Result<(), EvidenceError> {
+        self.validate_structure()?;
+        self.entries.sort_by(|left, right| left.metric_id.cmp(&right.metric_id));
+        self.manifest_digest = self.content_digest();
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), EvidenceError> {
+        self.validate_structure()?;
+        if self.manifest_digest == [0; 32] {
+            return Err(EvidenceError::UnsignedManifest);
+        }
+        if self.manifest_digest != self.content_digest() {
+            return Err(EvidenceError::TamperedManifest);
+        }
+        Ok(())
+    }
+
+    pub fn validate_bindings(
+        &self,
+        expected_contract_digest: [u8; 32],
+        expected_sample_digest: [u8; 32],
+    ) -> Result<(), EvidenceError> {
+        self.validate()?;
+        if self.contract_digest != expected_contract_digest {
+            return Err(EvidenceError::ContractMismatch);
+        }
+        if self.sample_digest != expected_sample_digest {
+            return Err(EvidenceError::SampleMismatch);
+        }
+        Ok(())
+    }
+
+    /// Verify that the manifest is an exact digest-only index of the package's
+    /// metric records.  This catches stale, missing, duplicate or substituted
+    /// artifact measurements while retaining the package's own tri-state result.
+    pub fn validate_against_package(
+        &self,
+        package: &PilotEvidencePackage,
+    ) -> Result<(), EvidenceError> {
+        package.validate().map_err(|_| EvidenceError::ManifestPackageInvalid)?;
+        self.validate()?;
+        if self.package_digest != package.package_digest {
+            return Err(EvidenceError::ManifestPackageMismatch);
+        }
+        if self.contract_digest != package.contract_digest {
+            return Err(EvidenceError::ContractMismatch);
+        }
+        if self.sample_digest != package.sample_digest {
+            return Err(EvidenceError::SampleMismatch);
+        }
+        if self.entries.len() != package.records.len() {
+            return Err(EvidenceError::ManifestEntryMismatch("record count".into()));
+        }
+        let mut by_metric = BTreeMap::new();
+        for entry in &self.entries {
+            if by_metric.insert(entry.metric_id.as_str(), entry).is_some() {
+                return Err(EvidenceError::ConflictingManifestEntry(entry.metric_id.clone()));
+            }
+        }
+        for record in &package.records {
+            let Some(entry) = by_metric.get(record.metric_id.as_str()) else {
+                return Err(EvidenceError::ManifestEntryMismatch(record.metric_id.clone()));
+            };
+            if entry.provenance != record.provenance || entry.artifact_digest != record.artifact_digest {
+                return Err(EvidenceError::ManifestArtifactMismatch(record.metric_id.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_structure(&self) -> Result<(), EvidenceError> {
+        for (field, digest) in [
+            ("package_digest", self.package_digest),
+            ("contract_digest", self.contract_digest),
+            ("sample_digest", self.sample_digest),
+        ] {
+            if digest == [0; 32] {
+                return Err(EvidenceError::InvalidManifestField(field));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for entry in &self.entries {
+            validate_text("manifest_metric_id", &entry.metric_id)?;
+            if !REQUIRED_METRICS.contains(&entry.metric_id.as_str()) {
+                return Err(EvidenceError::UnsupportedMetric(entry.metric_id.clone()));
+            }
+            if !seen.insert(entry.metric_id.as_str()) {
+                return Err(EvidenceError::ConflictingManifestEntry(entry.metric_id.clone()));
+            }
+            validate_text("manifest_provenance", &entry.provenance)?;
+            // Provenance is a logical source identity at this boundary.  A
+            // filesystem path (absolute or relative) must never be serialized
+            // into the digest-only manifest.
+            if entry.provenance.contains('/') || entry.provenance.contains('\\') {
+                return Err(EvidenceError::InvalidManifestField("manifest_provenance"));
+            }
+            if entry.artifact_digest == [0; 32] {
+                return Err(EvidenceError::InvalidManifestArtifact(entry.metric_id.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    fn canonical_payload(&self) -> Vec<u8> {
+        let mut payload = PILOT_EVIDENCE_MANIFEST_VERSION.as_bytes().to_vec();
+        payload.push(0);
+        payload.extend_from_slice(&self.package_digest);
+        payload.extend_from_slice(&self.contract_digest);
+        payload.extend_from_slice(&self.sample_digest);
+        let mut entries = self.entries.clone();
+        entries.sort_by(|left, right| left.metric_id.cmp(&right.metric_id));
+        append_u64(&mut payload, entries.len() as u64);
+        for entry in entries {
+            append_string(&mut payload, &entry.metric_id);
+            append_string(&mut payload, &entry.provenance);
+            payload.extend_from_slice(&entry.artifact_size.to_be_bytes());
+            payload.extend_from_slice(&entry.artifact_digest);
+        }
+        payload
+    }
 }
 
 impl PilotEvidencePackage {
@@ -463,6 +663,24 @@ pub enum EvidenceError {
     InvalidDigest,
     #[error("evidence input number is invalid: {0}")]
     InvalidNumber(&'static str),
+    #[error("evidence manifest field is invalid: {0}")]
+    InvalidManifestField(&'static str),
+    #[error("evidence manifest artifact digest is invalid: {0}")]
+    InvalidManifestArtifact(String),
+    #[error("evidence manifest entry is duplicated or unexpected: {0}")]
+    ConflictingManifestEntry(String),
+    #[error("evidence manifest entry does not match the package: {0}")]
+    ManifestEntryMismatch(String),
+    #[error("evidence manifest artifact does not match the package: {0}")]
+    ManifestArtifactMismatch(String),
+    #[error("evidence manifest package digest does not match the package")]
+    ManifestPackageMismatch,
+    #[error("evidence package is invalid for manifest creation")]
+    ManifestPackageInvalid,
+    #[error("evidence manifest is not sealed")]
+    UnsignedManifest,
+    #[error("evidence manifest digest does not match its content")]
+    TamperedManifest,
 }
 
 pub fn parse_package(text: &str) -> Result<PilotEvidencePackage, EvidenceError> {
@@ -553,6 +771,72 @@ pub fn serialize_package(package: &PilotEvidencePackage) -> Result<String, Evide
     Ok(output)
 }
 
+pub fn parse_manifest(text: &str) -> Result<EvidenceManifest, EvidenceError> {
+    let mut format = None;
+    let mut package_digest = None;
+    let mut contract_digest = None;
+    let mut sample_digest = None;
+    let mut manifest_digest = [0; 32];
+    let mut manifest_digest_seen = false;
+    let mut entries = Vec::new();
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        if let Some(value) = line.strip_prefix("format=") {
+            if format.is_some() {
+                return Err(EvidenceError::UnknownField("duplicate format".into()));
+            }
+            format = Some(value);
+        } else if let Some(value) = line.strip_prefix("package-digest=") {
+            set_digest(&mut package_digest, value)?;
+        } else if let Some(value) = line.strip_prefix("contract-digest=") {
+            set_digest(&mut contract_digest, value)?;
+        } else if let Some(value) = line.strip_prefix("sample-digest=") {
+            set_digest(&mut sample_digest, value)?;
+        } else if let Some(value) = line.strip_prefix("entry=") {
+            entries.push(parse_manifest_entry(value)?);
+        } else if let Some(value) = line.strip_prefix("manifest-digest=") {
+            if manifest_digest_seen {
+                return Err(EvidenceError::UnknownField("duplicate manifest-digest".into()));
+            }
+            manifest_digest = parse_hex_digest(value)?;
+            manifest_digest_seen = true;
+        } else {
+            return Err(EvidenceError::UnknownField(line.into()));
+        }
+    }
+    if format.ok_or(EvidenceError::MissingField("format"))? != MANIFEST_FORMAT {
+        return Err(EvidenceError::InvalidFormat);
+    }
+    Ok(EvidenceManifest {
+        package_digest: package_digest.ok_or(EvidenceError::MissingField("package-digest"))?,
+        contract_digest: contract_digest.ok_or(EvidenceError::MissingField("contract-digest"))?,
+        sample_digest: sample_digest.ok_or(EvidenceError::MissingField("sample-digest"))?,
+        entries,
+        manifest_digest,
+    })
+}
+
+pub fn serialize_manifest(manifest: &EvidenceManifest) -> Result<String, EvidenceError> {
+    manifest.validate()?;
+    let mut output = String::new();
+    output.push_str(&format!("format={MANIFEST_FORMAT}\n"));
+    output.push_str(&format!("package-digest={}\n", hex_digest(&manifest.package_digest)));
+    output.push_str(&format!("contract-digest={}\n", hex_digest(&manifest.contract_digest)));
+    output.push_str(&format!("sample-digest={}\n", hex_digest(&manifest.sample_digest)));
+    let mut entries = manifest.entries.clone();
+    entries.sort_by(|left, right| left.metric_id.cmp(&right.metric_id));
+    for entry in entries {
+        output.push_str(&format!(
+            "entry={}\t{}\t{}\t{}\n",
+            entry.metric_id,
+            entry.provenance,
+            entry.artifact_size,
+            hex_digest(&entry.artifact_digest),
+        ));
+    }
+    output.push_str(&format!("manifest-digest={}\n", hex_digest(&manifest.manifest_digest)));
+    Ok(output)
+}
+
 pub fn serialize_adjudication(adjudication: &PilotAdjudication) -> Result<String, EvidenceError> {
     adjudication.validate()?;
     Ok(format!(
@@ -593,6 +877,21 @@ fn parse_record(value: &str) -> Result<EvidenceRecord, EvidenceError> {
         completeness: EvidenceCompleteness::parse(fields[4])?,
         status: EvidenceStatus::parse(fields[5])?,
         artifact_digest: parse_hex_digest(fields[6])?,
+    })
+}
+
+fn parse_manifest_entry(value: &str) -> Result<EvidenceManifestEntry, EvidenceError> {
+    let fields = value.split('\t').collect::<Vec<_>>();
+    if fields.len() != 4 {
+        return Err(EvidenceError::InvalidFormat);
+    }
+    Ok(EvidenceManifestEntry {
+        metric_id: fields[0].into(),
+        provenance: fields[1].into(),
+        artifact_size: fields[2]
+            .parse()
+            .map_err(|_| EvidenceError::InvalidNumber("manifest artifact-size"))?,
+        artifact_digest: parse_hex_digest(fields[3])?,
     })
 }
 
@@ -708,6 +1007,15 @@ mod tests {
         );
         package.seal().unwrap();
         package
+    }
+
+    fn manifest_for(package: &PilotEvidencePackage) -> EvidenceManifest {
+        let artifacts = package
+            .records
+            .iter()
+            .map(|record| (record.metric_id.clone(), record.metric_id.len() as u64, record.artifact_digest))
+            .collect();
+        EvidenceManifest::from_package_artifacts(package, artifacts).unwrap()
     }
 
     #[test]
@@ -832,5 +1140,69 @@ mod tests {
             assert_eq!(mismatched.validate_bindings(digest(7), digest(8)).as_ref().err(), Some(&expected));
             assert_eq!(mismatched.seal(), Err(expected));
         }
+    }
+
+    #[test]
+    fn evidence_manifest_round_trip_binds_every_package_artifact() {
+        let package = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+        let manifest = manifest_for(&package);
+        manifest.validate_against_package(&package).unwrap();
+        let text = serialize_manifest(&manifest).unwrap();
+        let restored = parse_manifest(&text).unwrap();
+        assert_eq!(restored, manifest);
+        restored.validate_bindings(digest(7), digest(8)).unwrap();
+    }
+
+    #[test]
+    fn evidence_manifest_rejects_missing_substituted_or_extra_artifacts() {
+        let package = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+        let mut artifacts = package
+            .records
+            .iter()
+            .map(|record| (record.metric_id.clone(), 1, record.artifact_digest))
+            .collect::<Vec<_>>();
+        artifacts.pop();
+        assert_eq!(
+            EvidenceManifest::from_package_artifacts(&package, artifacts),
+            Err(EvidenceError::ManifestEntryMismatch("artifact count".into()))
+        );
+
+        let mut manifest = manifest_for(&package);
+        manifest.entries[0].artifact_digest[0] ^= 1;
+        manifest.seal().unwrap();
+        assert_eq!(
+            manifest.validate_against_package(&package),
+            Err(EvidenceError::ManifestArtifactMismatch("author-active-time".into()))
+        );
+
+        let mut manifest = manifest_for(&package);
+        manifest.entries[0].artifact_digest = [0; 32];
+        assert_eq!(manifest.seal(), Err(EvidenceError::InvalidManifestArtifact("author-active-time".into())));
+    }
+
+    #[test]
+    fn evidence_manifest_digest_detects_tampering_and_unknown_fields() {
+        let package = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+        let manifest = manifest_for(&package);
+        let text = serialize_manifest(&manifest).unwrap();
+        let tampered = text.replacen("artifact-0", "artifact-x", 1);
+        assert_eq!(parse_manifest(&tampered).unwrap().validate(), Err(EvidenceError::TamperedManifest));
+        assert_eq!(parse_manifest(&format!("{text}extra=value\n")), Err(EvidenceError::UnknownField("extra=value".into())));
+    }
+
+    #[test]
+    fn evidence_manifest_rejects_path_like_provenance() {
+        let mut package = package(EvidenceStatus::Pass, EvidenceCompleteness::Complete);
+        package.records[0].provenance = "artifacts/precision.json".into();
+        package.seal().unwrap();
+        let artifacts = package
+            .records
+            .iter()
+            .map(|record| (record.metric_id.clone(), 1, record.artifact_digest))
+            .collect();
+        assert_eq!(
+            EvidenceManifest::from_package_artifacts(&package, artifacts),
+            Err(EvidenceError::InvalidManifestField("manifest_provenance"))
+        );
     }
 }

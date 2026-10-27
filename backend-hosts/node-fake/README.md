@@ -17,3 +17,10 @@ cargo run -p erf-conformance -- --host node \
 The resolver is dependency-free and SAFE_STATIC only: it reads Java source
 files and emits descriptors with SHA-256 file bindings; it never executes a
 project build script.
+
+For ExecuteComplete negative conformance, the host mirrors the Rust fake's
+test-only controls: `FAKE_BAD_UNITS_REPORTED`,
+`FAKE_BAD_OBSERVATION_COUNT`, `FAKE_BAD_ATTEMPT_DIGEST`, and
+`FAKE_STATUS_ID_MODE=duplicate|unknown|blank`. These controls alter only
+existing protocol fields and are exercised by
+`scripts/execute-complete-negative-check.sh`.

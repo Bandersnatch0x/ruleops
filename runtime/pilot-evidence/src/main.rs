@@ -1,6 +1,7 @@
 use erf_pilot_evidence::{
-    parse_package, serialize_adjudication, serialize_package, EvidenceError, PilotAdjudication,
-    PilotAdjudicationDecision, DECISION_OWNER,
+    parse_package, serialize_adjudication, serialize_manifest, serialize_package,
+    EvidenceError, EvidenceManifest, PilotAdjudication, PilotAdjudicationDecision,
+    DECISION_OWNER,
 };
 use sha2::{Digest, Sha256};
 use std::env;
@@ -32,6 +33,31 @@ fn run() -> Result<u8, EvidenceError> {
             println!("pilot-evidence-package={} aggregate={} digest={}", output, package.aggregate_status()?.as_str(), erf_pilot_evidence::hex_digest(&package.package_digest));
             Ok(0)
         }
+        Some("manifest") => {
+            let package_path = args.next().ok_or(EvidenceError::MissingField("package"))?;
+            let output = args.next().ok_or(EvidenceError::MissingField("output"))?;
+            let (contract_digest, sample_digest, artifact_paths) = parse_manifest_options(args.collect())?;
+            let package_text = fs::read_to_string(&package_path).map_err(|_| EvidenceError::InvalidFormat)?;
+            let package = parse_package(&package_text)?;
+            package.validate_bindings(contract_digest, sample_digest)?;
+            package.validate().map_err(|_| EvidenceError::ManifestPackageInvalid)?;
+            let mut artifacts = Vec::with_capacity(artifact_paths.len());
+            for (metric_id, path) in artifact_paths {
+                let bytes = fs::read(&path).map_err(|_| EvidenceError::InvalidFormat)?;
+                let digest: [u8; 32] = Sha256::digest(&bytes).into();
+                artifacts.push((metric_id, bytes.len() as u64, digest));
+            }
+            let manifest = EvidenceManifest::from_package_artifacts(&package, artifacts)?;
+            manifest.validate_against_package(&package)?;
+            write_atomic(Path::new(&output), serialize_manifest(&manifest)?)?;
+            println!(
+                "pilot-evidence-manifest={} entries={} digest={}",
+                output,
+                manifest.entries.len(),
+                erf_pilot_evidence::hex_digest(&manifest.manifest_digest)
+            );
+            Ok(0)
+        }
         Some("adjudicate") => {
             let input = args.next().ok_or(EvidenceError::MissingField("package"))?;
             let output = args.next().ok_or(EvidenceError::MissingField("output"))?;
@@ -60,7 +86,7 @@ fn run() -> Result<u8, EvidenceError> {
             })
         }
         _ => {
-            eprintln!("usage: erf-pilot-evidence package INPUT OUTPUT --contract-digest HEX --sample-digest HEX | adjudicate PACKAGE OUTPUT --contract-digest HEX --sample-digest HEX [--owner OWNER]");
+            eprintln!("usage: erf-pilot-evidence package INPUT OUTPUT --contract-digest HEX --sample-digest HEX | manifest PACKAGE OUTPUT --contract-digest HEX --sample-digest HEX --artifact METRIC=PATH... | adjudicate PACKAGE OUTPUT --contract-digest HEX --sample-digest HEX [--owner OWNER]");
             Err(EvidenceError::InvalidFormat)
         }
     }
@@ -105,6 +131,41 @@ fn parse_adjudication_options(args: Vec<String>) -> Result<(String, [u8; 32], [u
     }
     let (contract, sample) = parse_bindings(bindings)?;
     Ok((owner, contract, sample))
+}
+
+fn parse_manifest_options(
+    args: Vec<String>,
+) -> Result<([u8; 32], [u8; 32], Vec<(String, String)>), EvidenceError> {
+    let mut contract = None;
+    let mut sample = None;
+    let mut artifacts = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let flag = args.get(index).ok_or(EvidenceError::InvalidFormat)?;
+        let value = args.get(index + 1).ok_or(EvidenceError::InvalidFormat)?;
+        match flag.as_str() {
+            "--contract-digest" if contract.is_none() => {
+                contract = Some(erf_pilot_evidence::parse_hex_digest(value)?);
+            }
+            "--sample-digest" if sample.is_none() => {
+                sample = Some(erf_pilot_evidence::parse_hex_digest(value)?);
+            }
+            "--artifact" => {
+                let (metric_id, path) = value.split_once('=').ok_or(EvidenceError::InvalidFormat)?;
+                if metric_id.is_empty() || path.is_empty() {
+                    return Err(EvidenceError::InvalidFormat);
+                }
+                artifacts.push((metric_id.to_string(), path.to_string()));
+            }
+            _ => return Err(EvidenceError::InvalidFormat),
+        }
+        index += 2;
+    }
+    Ok((
+        contract.ok_or(EvidenceError::MissingField("contract-digest"))?,
+        sample.ok_or(EvidenceError::MissingField("sample-digest"))?,
+        artifacts,
+    ))
 }
 
 fn fail_closed_adjudication(

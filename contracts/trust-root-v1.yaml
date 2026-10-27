@@ -1,0 +1,112 @@
+schema: erf-trust-root-v1
+version: 1
+status: PREPARATION_ONLY
+authority: LOCAL_UNATTESTED_SHADOW
+description: >-
+  ADR-0180 metadata contract for an offline Root and its delegated role
+  generations. This contract freezes the content-addressed shape and negative
+  cases before registry, HSM custody, or production authority integration.
+
+payload:
+  payloadType: application/vnd.erf.root-trust-metadata.v1
+  canonicalEncoding:
+    format: length-delimited-binary
+    domainSeparator: erf-root-trust-metadata-v1
+    ordering: lexicographic-by-key-id-and-role
+  requiredFields:
+    - namespace
+    - version
+    - issuedAtEpochSecs
+    - expiresAtEpochSecs
+    - threshold
+    - rootKeys
+    - delegatedRoles
+  fields:
+    namespace:
+      type: string
+      constraints: non-empty, no-control-characters
+    version:
+      type: uint64
+      constraints: greater-than-zero, monotonic-with-persisted-state
+    issuedAtEpochSecs:
+      type: uint64
+    expiresAtEpochSecs:
+      type: uint64
+      constraints: greater-than-issuedAtEpochSecs
+    threshold:
+      type: uint8
+      const: 2
+    rootKeys:
+      type: array
+      constraints: exactly-three, unique-key-id, unique-public-key
+      item:
+        requiredFields: [keyId, publicKeyHex, revoked]
+        fields:
+          keyId: { type: string, constraints: non-empty }
+          publicKeyHex: { type: string, constraints: exactly-32-bytes }
+          revoked: { type: boolean }
+    delegatedRoles:
+      type: array
+      constraints: unique-role, namespace-equals-root-namespace
+      item:
+        requiredFields:
+          - role
+          - namespace
+          - issuedAtEpochSecs
+          - expiresAtEpochSecs
+          - keys
+          - previousKeyIds
+          - overlapUntilEpochSecs
+        fields:
+          role: { type: string, constraints: non-empty }
+          namespace: { type: string, constraints: exact-root-namespace }
+          issuedAtEpochSecs: { type: uint64 }
+          expiresAtEpochSecs: { type: uint64, constraints: greater-than-issued }
+          keys:
+            type: array
+            constraints: non-empty, unique-key-id, unique-public-key
+            item:
+              requiredFields: [keyId, publicKeyHex, revoked]
+              fields:
+                keyId: { type: string, constraints: non-empty }
+                publicKeyHex: { type: string, constraints: exactly-32-bytes }
+                revoked: { type: boolean }
+          previousKeyIds:
+            type: array
+            constraints: at-most-one, each-must-be-in-keys
+          overlapUntilEpochSecs:
+            type: uint64-or-null
+            constraints: required-when-previousKeyIds-non-empty
+    previousMetadataDigest:
+      type: sha256-or-null
+
+thresholdEvidence:
+  signatures:
+    type: array
+    constraints: at-most-sixteen
+    item:
+      requiredFields: [keyId, signatureHex]
+      fields:
+        keyId: { type: string, constraints: non-empty }
+        signatureHex: { type: string, constraints: exactly-64-bytes }
+  acceptance:
+    threshold: 2
+    independentIdentity: public-key-bytes-not-key-id
+    duplicateSignatures: reject-or-do-not-count
+    revokedKeys: reject
+    invalidSignatures: reject
+
+failClosed:
+  - one signature cannot satisfy a two-of-three Root policy
+  - duplicate public-key identities do not count as independent signers
+  - unknown, revoked, malformed, expired or not-yet-valid identities are rejected
+  - namespace mismatch is rejected before delegated-key resolution
+  - overlap outside the one-key bounded rotation window is rejected
+  - monotonic rollback is handled by persisted TrustState, not by this payload
+
+notImplemented:
+  - offline key custody and HSM policy
+  - dual-person release approval
+  - recovery and disaster-restore acceptance evidence
+  - registry/CI/Runner integration
+  - promotion to Trusted or SCM authority

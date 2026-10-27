@@ -86,7 +86,7 @@ target/debug/erf-conformance \
   --resolver node --resolver-arg "$REPO_ROOT/backend-hosts/node-fake/resolver.js" \
   --cancel-window-ms 150 \
   >"$OUT_DIR/node-conformance.txt" 2>&1
-rg -q '^31/31 checks passed$' "$OUT_DIR/node-conformance.txt"
+rg -q '^33/33 checks passed$' "$OUT_DIR/node-conformance.txt"
 
 cat >"$OUT_DIR/phase1-exit-evidence.md" <<EOF
 # Phase 1 Exit Evidence
@@ -105,7 +105,7 @@ cat >"$OUT_DIR/phase1-exit-evidence.md" <<EOF
 | Core Ontology + Java Extension → content-addressed pack | ontology.txt, ontology-pack/manifest.json | PASS |
 | Runtime scan → findings → Completeness → Gate preview | \`runtime-scan.txt\` | PASS |
 | No partial findings after failed unit | rf-runner atomic commit path and failure probe | PASS |
-| Fake Node.js Host/Resolver → shared Conformance Suite | \`node-conformance.txt\` (31/31) | PASS |
+| Fake Node.js Host/Resolver → shared Conformance Suite | \`node-conformance.txt\` (33/33) | PASS |
 
 ## Pilot Success Contract
 

@@ -7,7 +7,7 @@ use erf_contracts::workspace::v0 as wb;
 use erf_framing::{FrameError, FrameReader, FrameWriter};
 use prost::Message;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::io::Read;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
@@ -18,6 +18,14 @@ pub const PROTOCOL_MINOR: u32 = 1;
 /// Maximum number of decoded resolver responses waiting for the runtime.
 /// Keeping this explicit makes the memory bound part of the client contract.
 pub const RESPONSE_QUEUE_CAPACITY: usize = 8;
+
+fn unmet_capabilities(required: &[String], facts: &HashMap<String, bool>) -> Vec<String> {
+    required
+        .iter()
+        .filter(|capability| !facts.get(*capability).copied().unwrap_or(false))
+        .cloned()
+        .collect()
+}
 
 #[derive(Debug, Clone)]
 pub struct ResolverConfig {
@@ -164,12 +172,7 @@ impl ResolverHandle {
                         acked: ack.protocol_major,
                     });
                 }
-                let missing: Vec<String> = config
-                    .required_capabilities
-                    .iter()
-                    .filter(|c| !ack.facts.contains_key(*c))
-                    .cloned()
-                    .collect();
+                let missing = unmet_capabilities(&config.required_capabilities, &ack.facts);
                 if !missing.is_empty() {
                     return Err(ResolverError::MissingCapabilities { missing });
                 }
@@ -629,5 +632,25 @@ mod tests {
         assert_eq!(queued, RESPONSE_QUEUE_CAPACITY);
         release.store(true, Ordering::Release);
         drop(receiver);
+    }
+}
+
+
+#[cfg(test)]
+mod capability_tests {
+    use super::unmet_capabilities;
+    use std::collections::HashMap;
+
+    #[test]
+    fn required_capability_must_be_true() {
+        let required = vec!["ecosystem.static-layout".to_string()];
+        let facts = HashMap::from([("ecosystem.static-layout".to_string(), false)]);
+        assert_eq!(unmet_capabilities(&required, &facts), vec!["ecosystem.static-layout"]);
+    }
+
+    #[test]
+    fn missing_required_capability_is_unmet() {
+        let required = vec!["ecosystem.static-layout".to_string()];
+        assert_eq!(unmet_capabilities(&required, &HashMap::new()), vec!["ecosystem.static-layout"]);
     }
 }

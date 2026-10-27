@@ -35,6 +35,8 @@ expected_checks=(
   malformed_frame_rejected
   oversized_frame_rejected
   execute_round_trip_completeness
+  execute_attempt_accounting
+  execute_attempt_accounting_rejects_tampering
   deadline_is_failure
   cooperative_cancel_accounts_units
   crash_is_incomplete_failure
@@ -61,7 +63,7 @@ expected_checks=(
   local_malformed_typed_observation_never_passes
 )
 for acceptance_log in "$OUT/fake-host-acceptance.log" "$OUT/node-fake-acceptance.log"; do
-  rg -q '^31/31 checks passed$' "$acceptance_log"
+  rg -q '^33/33 checks passed$' "$acceptance_log"
   for check in "${expected_checks[@]}"; do
     rg -q "^PASS ${check}[[:space:]]" "$acceptance_log" || {
       echo "missing passing check: ${check} in ${acceptance_log}" >&2
@@ -70,6 +72,22 @@ for acceptance_log in "$OUT/fake-host-acceptance.log" "$OUT/node-fake-acceptance
   done
   [[ "$(rg -c '^PASS ' "$acceptance_log")" == "${#expected_checks[@]}" ]]
 done
+
+# The Rust and Node reference Hosts use the same canonical event fixtures.
+# Compare the emitted attempt digest directly so a host that only reports the
+# right count (but encodes a different event sequence) cannot pass as an
+# interchangeable implementation.
+fake_attempt_digest="$(sed -n 's/^PASS execute_attempt_accounting .*attempt_digest=\([[:xdigit:]]*\).*$/\1/p' "$OUT/fake-host-acceptance.log")"
+node_attempt_digest="$(sed -n 's/^PASS execute_attempt_accounting .*attempt_digest=\([[:xdigit:]]*\).*$/\1/p' "$OUT/node-fake-acceptance.log")"
+[[ -n "$fake_attempt_digest" && -n "$node_attempt_digest" ]] || {
+  echo "missing attempt digest evidence in acceptance logs" >&2
+  exit 1
+}
+[[ "$fake_attempt_digest" == "$node_attempt_digest" ]] || {
+  echo "Rust and Node fake Hosts emitted different attempt digests" >&2
+  echo "rust=$fake_attempt_digest node=$node_attempt_digest" >&2
+  exit 1
+}
 
 cat > "$OUT/phase2-acceptance.md" <<EOF
 # Phase 2 独立验收
@@ -82,7 +100,7 @@ cat > "$OUT/phase2-acceptance.md" <<EOF
 
 ## Result
 
-Rust Fake 与 Node.js Fake 均通过同一版本化的 31 项检查，包含 Backend Host 与 Workspace Resolver 的协议故障注入，
+Rust Fake 与 Node.js Fake 均通过同一版本化的 33 项检查，包含 Backend Host 与 Workspace Resolver 的协议故障注入，
 以及 typed location 规范化、canonical Finding 排序与去重、与消息无关的
 SemanticResultDigest、Baseline/Exception 正交决策、畸形 observation 和不完整
 执行的独立 local Gate 检查。Resolver 检查还覆盖 golden compatibility、
@@ -98,4 +116,4 @@ contract，不导入任一 engine。
 完整控制台证据：\`fake-host-acceptance.log\`、\`node-fake-acceptance.log\`。
 EOF
 
-echo "acceptance=PASS checks=31 evidence=$OUT/phase2-acceptance.md"
+echo "acceptance=PASS checks=33 evidence=$OUT/phase2-acceptance.md"
