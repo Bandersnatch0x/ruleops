@@ -428,3 +428,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 执行顺序：先完成 ADR、威胁模型、回滚/恢复和验收契约；再按单一动作拆分实际权限变更。
 - 当前仍不等同于已启用生产 authority：每个具体启用动作需在目标、权限变化、影响面和回滚点明确后进行 action-time confirmation；在确认前保持 fail-closed。
 - 推荐顺序：主分支合并准备 → Trusted CI/registry 准入准备 → Root/HSM/ExceptionGrant 运维准备；任何一步失败都回滚到 `LOCAL_UNATTESTED` / `SHADOW` / `RDFC_NOT_ADMITTED`。
+
+
+### 24.2 Rollout plan prepared
+
+- 新增 `docs/research/production-authority-rollout-plan-20261027.md`，将 1/2/3 拆成 branch promotion、Trusted CI/registry、Root/HSM/ExceptionGrant 三阶段，分别定义输入、证据、回滚和 fail-closed 不变量。
+- 远端提交：7bf1583；本地提交 aeefaba。
+- 该文档只记录准备方案，不启用任何 production authority；每个实际启用动作仍需 action-time confirmation。
