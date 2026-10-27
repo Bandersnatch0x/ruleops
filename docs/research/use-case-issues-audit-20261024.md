@@ -450,3 +450,11 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 用户已手动合并 PR #248；远端 master 最新合并提交为 `2a64fa5`，提交信息包含 `(#248)`。
 - 已复核 master README 与维护文档包含本轮内容；本次合并只落地代码/文档，未启用 Trusted CI、registry、Root/HSM、ExceptionGrant 或生产 Gate authority。
 - 后续仍按 rollout plan 分阶段执行；任何生产 authority enablement 需 action-time confirmation 与独立证据/回滚点。
+
+
+## 26. Production authority preflight (2026-10-27)
+
+- 新增只读 `scripts/production-authority-preflight.sh` 与负例测试：检查 rollout plan、ADR、java/javac/cargo/mvn/protoc、workflow、workload identity/attestation、HSM custody、双人审批/recovery 与 registry admission。
+- 默认输出 `production-authority-preflight-v1`，`diagnosticOnly=true`、`gate=NOT_RUN`、`trust=NOT_EVALUATED`；缺失项只报告 `BLOCKED`，`--strict` 返回 3，不修改系统/网络/信任材料。
+- 本地提交 `07c9b5f`；远端分支文件提交 `5a2a846`、`89f7664`；已创建 PR #249，等待评审，不自动合并。
+- 验收：production-authority-preflight-test=PASS、bash -n、git diff --check；该切片不启用任何 production authority。
