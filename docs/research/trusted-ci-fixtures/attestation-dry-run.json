@@ -1,0 +1,14 @@
+{
+  "schema": "trusted-ci-attestation-v1",
+  "mode": "DRY_RUN",
+  "workloadIdentity": "ci://example/repo/workflow",
+  "repository": "Bandersnatch0x/ruleops",
+  "workflow": "verify.yml",
+  "commitSha": "6070ba783b540c9250b769c6421bc489c74bb8b2",
+  "attestationSubject": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "issuer": "https://issuer.example.invalid",
+  "policyDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "issuedAt": "2026-10-28T09:00:00Z",
+  "expiresAt": "2026-10-28T10:00:00Z",
+  "rollbackRef": "master@6070ba7"
+}
