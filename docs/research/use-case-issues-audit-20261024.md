@@ -485,3 +485,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 
 - 用户已合并 PR #251；master 最新合并提交为 `6070ba7`，双人审批 checker/test 已进入 master（blob `cc6eb12` / `ea7a468`）。
 - 该合并仍是 policy preflight/fixture，不是生产双人审批系统；没有签名、HSM、密钥托管或 ExceptionGrant authority。
+
+
+## 28. Trusted CI attestation dry-run (2026-10-28)
+
+- 新增静态 `trusted-ci-attestation-check.py`、dry-run fixture 与负例测试，校验 workload/commit/attestation/policy digest、issuer、有效期和 rollbackRef。
+- 本地验收：`trusted-ci-attestation-test=PASS`、py_compile、bash -n、git diff --check。
+- PR #252 已按用户授权自动合并；合并提交 `19d0fa1`，只增加准备/证据校验，不启用 Trusted CI、registry、生产 Gate、Root/HSM 或 ExceptionGrant authority。
