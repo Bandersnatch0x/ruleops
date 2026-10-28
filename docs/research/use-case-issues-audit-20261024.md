@@ -492,3 +492,10 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 新增静态 `trusted-ci-attestation-check.py`、dry-run fixture 与负例测试，校验 workload/commit/attestation/policy digest、issuer、有效期和 rollbackRef。
 - 本地验收：`trusted-ci-attestation-test=PASS`、py_compile、bash -n、git diff --check。
 - PR #252 已按用户授权自动合并；合并提交 `19d0fa1`，只增加准备/证据校验，不启用 Trusted CI、registry、生产 Gate、Root/HSM 或 ExceptionGrant authority。
+
+
+## 29. Registry admission dry-run (2026-10-28)
+
+- 新增静态 `registry-admission-dry-run-check.py`、fixture 与负例测试，校验 registry URL、artifact/signature/revocation digest、rollbackRef 和 `FORMAT_ONLY` authority。
+- 本地验收：`registry-admission-dry-run-test=PASS`、py_compile、bash -n、git diff --check。
+- PR #253 已按用户授权自动合并；合并提交 `1616761`，只增加准备/证据校验，不接入生产 registry admission 或 authority。
