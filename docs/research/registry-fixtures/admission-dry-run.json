@@ -1,0 +1,12 @@
+{
+  "schema": "registry-admission-v1",
+  "mode": "DRY_RUN",
+  "registry": "https://registry.example.invalid",
+  "repository": "Bandersnatch0x/ruleops",
+  "version": "local-dry-run",
+  "artifactDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "signatureDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "revocationSnapshot": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "rollbackRef": "registry://previous",
+  "authority": "FORMAT_ONLY"
+}
