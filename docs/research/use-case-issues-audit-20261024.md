@@ -479,3 +479,9 @@ ERF（Enterprise Rule Factory）不是单纯的规则集合或 IDE 插件，而�
 - 该切片不签名、不接 HSM、密钥托管、ExceptionGrant 签发/撤回或生产 authority；fixture 仅为 illustrative / PROPOSED。
 - 本地提交 `3252895`；远端文件提交 `8d69a15`、`083806c`、`4eadf86`；PR #251 已创建，等待评审，不自动合并。
 - 验收：dual-approval-policy-test=PASS、py_compile、bash -n、git diff --check。
+
+
+### 27.1 PR #251 merged (2026-10-28)
+
+- 用户已合并 PR #251；master 最新合并提交为 `6070ba7`，双人审批 checker/test 已进入 master（blob `cc6eb12` / `ea7a468`）。
+- 该合并仍是 policy preflight/fixture，不是生产双人审批系统；没有签名、HSM、密钥托管或 ExceptionGrant authority。
