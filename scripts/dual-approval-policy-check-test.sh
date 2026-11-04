@@ -19,4 +19,22 @@ d["approvals"][1]["revoked"] = True
 pathlib.Path(sys.argv[2]).write_text(json.dumps(d))
 PY
 if python3 scripts/dual-approval-policy-check.py "$TMP/revoked.json" >/dev/null 2>&1; then echo 'FAIL revoked approval accepted'; exit 1; fi
+for field in operationId target requestedBy; do
+  python3 - "$GOOD" "$TMP/empty-$field.json" "$field" <<'PY'
+import json, pathlib, sys
+d=json.loads(pathlib.Path(sys.argv[1]).read_text())
+d[sys.argv[3]] = ""
+pathlib.Path(sys.argv[2]).write_text(json.dumps(d))
+PY
+  if python3 scripts/dual-approval-policy-check.py "$TMP/empty-$field.json" >/dev/null 2>&1; then
+    echo "FAIL empty $field accepted"; exit 1
+  fi
+done
+python3 - "$GOOD" "$TMP/empty-actor.json" <<'PY'
+import json, pathlib, sys
+d=json.loads(pathlib.Path(sys.argv[1]).read_text())
+d["approvals"][0]["actor"] = ""
+pathlib.Path(sys.argv[2]).write_text(json.dumps(d))
+PY
+if python3 scripts/dual-approval-policy-check.py "$TMP/empty-actor.json" >/dev/null 2>&1; then echo 'FAIL empty approval actor accepted'; exit 1; fi
 echo 'dual-approval-policy-test=PASS'
