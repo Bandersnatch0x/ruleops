@@ -9,12 +9,16 @@ except Exception as e: fail(f"invalid-json {e}")
 for k in ("schema","operationId","target","requestedBy","requestDigest","rollbackRef","approvals"):
     if k not in d: fail(f"missing-{k}")
 if d["schema"] != "dual-approval-policy-v1": fail("schema")
+for k in ("operationId", "target", "requestedBy", "rollbackRef"):
+    if not isinstance(d[k], str) or not d[k].strip(): fail(f"empty-{k}")
 if not re.fullmatch(r"sha256:[0-9a-f]{64}", d["requestDigest"]): fail("request-digest")
 if not isinstance(d["approvals"], list) or len(d["approvals"]) < 2: fail("approval-count")
 actors=[]
 for a in d["approvals"]:
     for k in ("actor","role","decision","approvedAt","expiresAt","revoked","requestDigest"):
         if k not in a: fail(f"approval-missing-{k}")
+    for k in ("actor", "role"):
+        if not isinstance(a[k], str) or not a[k].strip(): fail(f"empty-approval-{k}")
     if a["actor"] == d["requestedBy"]: fail("requester-cannot-approve")
     if a["actor"] in actors: fail("duplicate-approver")
     actors.append(a["actor"])
