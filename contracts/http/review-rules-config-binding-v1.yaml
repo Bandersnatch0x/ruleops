@@ -5,24 +5,27 @@ status: preparation-only
 
 purpose: >-
   Load repository rules and project configuration from one immutable base
-  revision and bind the review inputs to that revision and their independent
-  content digests. A review result is stale when the base identity or either
-  input digest changes while the review is in progress.
+  revision and bind the review inputs to that revision, repository identity,
+  and their independent content digests. A review result is stale when the
+  repository identity, base identity, or either input digest changes while
+  the review is in progress.
 
 baseRevision:
   schemaVersion: review-base-rules-config-v1
-  required: [baseRef, baseSha, rulesDigest, configDigest, bindingDigest]
+  required: [repositoryDigest, baseRef, baseSha, rulesDigest, configDigest, bindingDigest]
+  repositoryDigest: sha256-prefixed
   baseRef: immutable-git-reference
   baseSha: lowercase-hex-40-or-64
   rulesDigest: sha256-prefixed
   configDigest: sha256-prefixed
   bindingDigest: sha256-prefixed
   digestBinding:
-    bindingDigestBinds: [baseRef, baseSha, rulesDigest, configDigest]
+    bindingDigestBinds: [repositoryDigest, baseRef, baseSha, rulesDigest, configDigest]
     canonicalization: deterministic-field-order
     canonicalEncoding: canonical-json-sorted-keys-without-whitespace
+    canonicalBytes: UTF-8
   stalePolicy:
-    rejectWhenAnyChanges: [baseRef, baseSha, rulesDigest, configDigest]
+    rejectWhenAnyChanges: [repositoryDigest, baseRef, baseSha, rulesDigest, configDigest]
     staleResult: reject
   sourceContent: forbidden
 
@@ -34,24 +37,39 @@ loadFromBase:
   workingTreeFallback: forbidden
   currentHeadFallback: forbidden
   rules:
-    required: [rulesDigest, loadedFromBaseRef, loadedFromBaseSha]
+    required: [repositoryDigest, rulesDigest, loadedBaseRef, loadedBaseSha]
     digestField: rulesDigest
     loadedFrom: base-revision
-    loadedFromBaseRef: baseRef
-    loadedFromBaseSha: baseSha
-    digestMustMatchBytesAtBase: true
+    loadedBaseRef: baseRef
+    loadedBaseSha: baseSha
+    repositoryDigest: repositoryDigest
+    digestInput: raw-file-bytes
+    digestEncoding: raw-file-bytes
+    canonicalization: none
+    newlineNormalization: forbidden
+    digestMustMatchExactBytesAtBase: true
     sourceContent: forbidden
   config:
-    required: [configDigest, loadedFromBaseRef, loadedFromBaseSha]
+    required: [repositoryDigest, configDigest, loadedBaseRef, loadedBaseSha]
     digestField: configDigest
     loadedFrom: base-revision
-    loadedFromBaseRef: baseRef
-    loadedFromBaseSha: baseSha
-    digestMustMatchBytesAtBase: true
+    loadedBaseRef: baseRef
+    loadedBaseSha: baseSha
+    repositoryDigest: repositoryDigest
+    digestInput: canonical-json-bytes
+    digestEncoding: canonical-json-bytes
+    canonicalization: canonical-json-sorted-keys-without-whitespace
+    canonicalJsonEncoding: UTF-8
+    sourceYamlNormalization: required
+    digestMustMatchCanonicalJsonAtBase: true
     sourceContent: forbidden
 
 consistency:
-  required: [baseRef, baseSha, rulesDigest, configDigest, bindingDigest]
+  required: [repositoryDigest, baseRef, baseSha, rulesDigest, configDigest, bindingDigest]
+  repositoryDigestMustEqualLoadedRepository: true
+  loadedRulesAndConfigMustShareRepositoryDigest: true
+  loadedBaseRefMustEqualBaseRef: true
+  loadedBaseShaMustEqualBaseSha: true
   rulesDigestMustEqualLoadedRules: true
   configDigestMustEqualLoadedConfig: true
   loadedRulesAndConfigMustShareBaseSha: true
