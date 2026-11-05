@@ -25,6 +25,7 @@ draftProjection:
   supportedProviders: [github, gitlab]
   draftOnly: true
   sourceContent: forbidden
+  rawPrompts: forbidden
   rawTitle: forbidden
   rawBody: forbidden
   diff: forbidden
@@ -76,6 +77,7 @@ rescoreJob:
   independentRescore: true
   metadataOnly: true
   sourceContent: forbidden
+  rawPrompts: forbidden
   input:
     draftDigest: sha256-prefixed
     baselineScoreDigest: sha256-prefixed
