@@ -1,0 +1,39 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewTelemetryContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Expose a read-only digest-only operational projection for review preparation;
+  it does not publish findings, mutate gates, or grant SCM authority.
+
+projection:
+  schemaVersion: review-telemetry-v1
+  required: [snapshotDigest, queue, versionChain, findingSummary, coverage, usage, audit]
+  sourceContent: forbidden
+  queue:
+    required: [queued, running, succeeded, inconclusive, rejected]
+    values: nonNegativeInteger
+  versionChain:
+    required: [reviewRunId, baseDigest, headDigest, status, stale]
+    digestOnly: true
+  findingSummary:
+    required: [open, kept, resolved, dismissed]
+    values: nonNegativeInteger
+  coverage:
+    required: [files, changedLines, reviewedScopes, completedScopes]
+    values: nonNegativeInteger
+  usage:
+    required: [durationMs, modelTurns, toolCalls, deniedToolCalls, estimatedCost]
+    rawPrompts: forbidden
+  audit:
+    required: [eventCount, headEventDigest, lastEventDigest]
+    appendOnly: true
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  readOnly: true
+  scmWriteback: forbidden
+  releasePromotion: forbidden
+  gateReplacement: forbidden
