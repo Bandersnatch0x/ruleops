@@ -1,0 +1,60 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewRunContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Bind a review to an immutable revision, partition changed files into
+  deterministic scopes, and preserve finding lifecycle and review telemetry
+  without granting release, promotion, or SCM write authority.
+
+revisionBinding:
+  schemaVersion: revision-binding-v1
+  required: [baseSha, headSha, sourceRef, targetRef, bindingDigest]
+  shaFormat: lowercase-hex-40-or-64
+  stalePolicy: reject-result-when-headSha-or-baseSha-changes
+  sourceContent: forbidden
+
+scopePlan:
+  schemaVersion: scope-plan-v1
+  required: [planId, revisionBindingDigest, scopes, constraints, planDigest]
+  constraints:
+    maxChangedLines: positiveInteger
+    maxFilesPerScope: positiveInteger
+    exactlyOneScopePerFile: true
+  scope:
+    required: [scopeId, files, changedLines]
+    files: repository-relative-paths
+    fallback: deterministic-single-scope
+  sourceContent: forbidden
+
+findingLifecycle:
+  schemaVersion: finding-lifecycle-v1
+  states: [OPEN, KEPT, RESOLVED, DISMISSED]
+  transitions:
+    OPEN: [KEPT, RESOLVED, DISMISSED]
+    KEPT: [OPEN, RESOLVED, DISMISSED]
+    RESOLVED: [OPEN]
+    DISMISSED: [OPEN]
+  humanResolvedStateIsPreserved: true
+
+incrementalReview:
+  schemaVersion: incremental-review-v1
+  required: [reviewRunId, reviewedHeadSha, baselineReviewRunDigest, deltaMode, findings]
+  deltaModes: [FULL, CHANGED_SCOPES_ONLY, NEW_FINDINGS_ONLY]
+  baselineMustBeDigestBound: true
+  staleBaseline: reject-result
+
+reviewTrace:
+  schemaVersion: review-trace-v1
+  fields: [reviewRunId, scopeId, modelTurns, toolCalls, deniedToolCalls, durationMs, estimatedCost, verifierDiscarded]
+  toolCalls: metadata-only
+  deniedToolCalls: metadata-only
+  sourceContent: forbidden
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  scmWriteback: forbidden
+  releasePromotion: forbidden
+  gateReplacement: forbidden
