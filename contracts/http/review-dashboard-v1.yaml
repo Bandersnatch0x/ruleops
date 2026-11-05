@@ -1,0 +1,133 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewDashboardTransportContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Provide a bounded read-only dashboard projection and a resumable SSE transport
+  for review preparation.  The projection is digest-only: it exposes counts and
+  content identities, never source text, prompts, or full finding payloads.
+
+transport:
+  schemaVersion: review-dashboard-sse-v1
+  snapshotMediaType: application/json
+  eventMediaType: text/event-stream
+  methods: [GET]
+  readEndpoints:
+    - method: GET
+      path: /v1/reviews/dashboard
+      response: review-telemetry-snapshot-v1
+      readOnly: true
+    - method: GET
+      path: /v1/reviews/dashboard/events
+      response: review-dashboard-sse-event-v1
+      readOnly: true
+  writeMethods: forbidden
+  writeEndpoints: forbidden
+  requestBody: forbidden
+  sourceUpload: forbidden
+  fullFindingUpload: forbidden
+  reconnect:
+    cursorQuery: cursor
+    lastEventIdHeader: Last-Event-ID
+    replayFrom: exclusive
+    staleCursor: SNAPSHOT_CURSOR_STALE
+
+snapshot:
+  schemaVersion: review-telemetry-snapshot-v1
+  required: [cursor, sequence, snapshotDigest, queue, version, finding, coverage, audit, authority, mode]
+  additionalFields: false
+  digestOnly: true
+  sourceContent: forbidden
+  fullFinding: forbidden
+  rawPrompts: forbidden
+  cursor:
+    type: opaqueResourceCursor
+    required: [value, sequence]
+    valueEncoding: digest-bound-opaque
+    sequenceType: uint64
+    ordering: monotonicallyIncreasing
+  sequence:
+    type: uint64
+    startsAt: 1
+    ordering: strictlyIncreasing
+  snapshotDigest:
+    type: lowercaseSha256Digest
+    binds: canonicalSnapshotWithoutSnapshotDigest
+  sections:
+    queue:
+      required: [queued, running, succeeded, inconclusive, rejected, projectionDigest]
+      values: nonNegativeInteger
+      projectionDigest: lowercaseSha256Digest
+    version:
+      required: [reviewRunDigest, baseDigest, headDigest, status, stale, projectionDigest]
+      digestOnly: true
+      digestFields: [reviewRunDigest, baseDigest, headDigest, projectionDigest]
+      projectionDigest: lowercaseSha256Digest
+    finding:
+      required: [open, kept, resolved, dismissed, projectionDigest]
+      values: nonNegativeInteger
+      fullFinding: forbidden
+      projectionDigest: lowercaseSha256Digest
+    coverage:
+      required: [files, changedLines, reviewedScopes, completedScopes, projectionDigest]
+      values: nonNegativeInteger
+      projectionDigest: lowercaseSha256Digest
+    audit:
+      required: [eventCount, headEventDigest, lastEventDigest, projectionDigest]
+      values: nonNegativeInteger
+      appendOnly: true
+      headEventDigest: lowercaseSha256Digest
+      lastEventDigest: lowercaseSha256Digest
+      projectionDigest: lowercaseSha256Digest
+  invariants:
+    - cursor.sequence == sequence
+    - snapshotDigest is lowercaseSha256Digest
+    - every section projectionDigest is lowercaseSha256Digest
+    - authority == LOCAL_UNATTESTED
+    - mode == PREPARATION_ONLY
+
+eventEnvelope:
+  schemaVersion: review-dashboard-sse-event-v1
+  required: [eventId, eventType, cursor, sequence, snapshotDigest, payloadDigest, previousEventDigest, eventDigest]
+  additionalFields: false
+  frame:
+    format: SSE
+    fields: [id, event, data, retry]
+    data: canonicalJson
+    retryMilliseconds: optionalNonNegativeInteger
+  eventType:
+    values: [snapshot, queue, version, finding, coverage, audit, heartbeat, reset]
+  cursor:
+    type: opaqueResourceCursor
+  sequence:
+    type: uint64
+    ordering: strictlyIncreasing
+  snapshotDigest:
+    type: lowercaseSha256Digest
+  payloadDigest:
+    type: lowercaseSha256Digest
+    binds: digestOnlyEventPayload
+  previousEventDigest:
+    type: lowercaseSha256Digest
+  eventDigest:
+    type: lowercaseSha256Digest
+    binds: [schemaVersion, eventId, eventType, cursor, sequence, snapshotDigest, payloadDigest, previousEventDigest]
+  payload:
+    sourceContent: forbidden
+    fullFinding: forbidden
+    rawPrompts: forbidden
+    digestOnly: true
+  chain:
+    firstPreviousEventDigest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    continuity: event[n].previousEventDigest == event[n-1].eventDigest
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  readOnly: true
+  noWriteEndpoints: true
+  scmWriteback: forbidden
+  gateMutation: forbidden
+  gateReplacement: forbidden
+  releasePromotion: forbidden
