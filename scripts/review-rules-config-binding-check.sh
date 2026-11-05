@@ -43,20 +43,20 @@ cat > "$OUT_DIR/valid-binding.json" <<'JSON'
   "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
   "baseRef": "refs/heads/main",
   "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "bindingDigest": "sha256:c605689cb8009470ee29281d71c01ae7c60512c976a83bcb1ad469feed28a8db",
+  "rulesDigest": "sha256:5532aa0d12add99c2b6a662572faebefbd4350c836a3bbd6f93d8a3bf759432f",
+  "configDigest": "sha256:16de320e8b89f3bb433d437b3ec6e50e21ce296ddd640aa1465135fcd5771202",
+  "bindingDigest": "sha256:ad72176041e4a1ba256a9fa910231385f5dff0af94eac78960349826cbb3b0cb",
   "loaded": {
     "rules": {
       "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "rulesDigest": "sha256:5532aa0d12add99c2b6a662572faebefbd4350c836a3bbd6f93d8a3bf759432f",
       "loadedBaseRef": "refs/heads/main",
       "loadedBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "digestInput": "raw-file-bytes"
     },
     "config": {
       "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "configDigest": "sha256:16de320e8b89f3bb433d437b3ec6e50e21ce296ddd640aa1465135fcd5771202",
       "loadedBaseRef": "refs/heads/main",
       "loadedBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "digestInput": "canonical-json-bytes"
@@ -90,6 +90,12 @@ def validate_binding(payload):
     assert rules["loadedBaseSha"] == config["loadedBaseSha"] == payload["baseSha"]
     assert rules["digestInput"] == "raw-file-bytes"
     assert config["digestInput"] == "canonical-json-bytes"
+    # Pin the two digest domains to concrete bytes so the fixture cannot pass
+    # merely because it repeats opaque placeholder digests.
+    raw_rules = b"<ruleset name='review-fixture'/>\n"
+    canonical_config = b'{"buildSystem":"maven","version":"ruleops.config/v1"}'
+    assert payload["rulesDigest"] == "sha256:" + hashlib.sha256(raw_rules).hexdigest()
+    assert payload["configDigest"] == "sha256:" + hashlib.sha256(canonical_config).hexdigest()
     identity = {key: payload[key] for key in (
         "repositoryDigest", "baseRef", "baseSha", "rulesDigest", "configDigest"
     )}
@@ -184,9 +190,9 @@ cat > "$OUT_DIR/inconsistent-binding.json" <<'JSON'
   "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
   "baseRef": "refs/heads/main",
   "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "bindingDigest": "sha256:c605689cb8009470ee29281d71c01ae7c60512c976a83bcb1ad469feed28a8db",
+  "rulesDigest": "sha256:5532aa0d12add99c2b6a662572faebefbd4350c836a3bbd6f93d8a3bf759432f",
+  "configDigest": "sha256:16de320e8b89f3bb433d437b3ec6e50e21ce296ddd640aa1465135fcd5771202",
+  "bindingDigest": "sha256:ad72176041e4a1ba256a9fa910231385f5dff0af94eac78960349826cbb3b0cb",
   "loaded": {
     "rules": {
       "repositoryDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
