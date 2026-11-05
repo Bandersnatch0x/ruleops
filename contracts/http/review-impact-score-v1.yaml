@@ -1,0 +1,81 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewImpactScoreContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Define an optional, non-authoritative Code Graph impact context and a
+  deterministic finding-derived score projection for review preparation. The
+  projection is display-only: it never changes GateDecision, trust, or SCM
+  state, and it never carries source content.
+
+impactContext:
+  schemaVersion: code-graph-impact-context-v1
+  optional: true
+  suppliedWhenAvailable: true
+  authoritative: false
+  authority: non-authoritative
+  advisoryOnly: true
+  digestOnly: true
+  required:
+    - graphDigest
+    - graphRevisionDigest
+    - impactedNodeCount
+    - impactedEdgeCount
+    - impactDigest
+  graphDigest: sha256-prefixed
+  graphRevisionDigest: sha256-prefixed
+  impactDigest: sha256-prefixed
+  counts: nonNegativeInteger
+  sourceContent: forbidden
+  sourceSnippet: forbidden
+  scmWriteback: forbidden
+  graphMutation: forbidden
+  gateInput: forbidden
+  missingGraph: allowed
+  unavailableGraph: remains-absent
+
+scoreProjection:
+  schemaVersion: finding-score-projection-v1
+  required:
+    - projectionDigest
+    - findingSetDigest
+    - findingCount
+    - severityWeights
+    - rawScore
+    - normalizedScore
+    - scoreLabel
+  derivedFrom: findings-only
+  findingSetDigest: sha256-prefixed
+  findingCount: nonNegativeInteger
+  severityWeights:
+    INFO: 1
+    LOW: 2
+    MEDIUM: 5
+    HIGH: 8
+    CRITICAL: 13
+  scoreFormula: sum(severityWeights[finding.severity])
+  rawScore: nonNegativeInteger
+  normalizedScore:
+    range: 0..100
+    deterministic: true
+  scoreLabel: [NONE, LOW, MEDIUM, HIGH, CRITICAL]
+  projectionDigest: sha256-prefixed
+  displayOnly: true
+  digestOnly: true
+  impactContextUse: advisory-only
+  authority: non-authoritative
+  gateDecision: unchanged
+  gateReplacement: forbidden
+  sourceContent: forbidden
+  rawFindingPayload: forbidden
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  readOnly: true
+  nonAuthoritative: true
+  scmWriteback: forbidden
+  gateReplacement: forbidden
+  gateMutation: forbidden
+  releasePromotion: forbidden
