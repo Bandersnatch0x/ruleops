@@ -9,15 +9,21 @@ test -s "$CONTRACT"
 
 for needle in \
   'schemaVersion: review-base-rules-config-v1' \
-  'required: [baseRef, baseSha, rulesDigest, configDigest, bindingDigest]' \
+  'required: [repositoryDigest, baseRef, baseSha, rulesDigest, configDigest, bindingDigest]' \
   'digestBinding:' \
-  'bindingDigestBinds: [baseRef, baseSha, rulesDigest, configDigest]' \
+  'bindingDigestBinds: [repositoryDigest, baseRef, baseSha, rulesDigest, configDigest]' \
   'canonicalEncoding: canonical-json-sorted-keys-without-whitespace' \
   'revision: base' \
   'exactBaseRequired: true' \
   'workingTreeFallback: forbidden' \
   'currentHeadFallback: forbidden' \
-  'digestMustMatchBytesAtBase: true' \
+  'digestInput: raw-file-bytes' \
+  'digestInput: canonical-json-bytes' \
+  'digestMustMatchExactBytesAtBase: true' \
+  'digestMustMatchCanonicalJsonAtBase: true' \
+  'repositoryDigestMustEqualLoadedRepository: true' \
+  'loadedRulesAndConfigMustShareRepositoryDigest: true' \
+  'loadedBaseRefMustEqualBaseRef: true' \
   'loadedRulesAndConfigMustShareBaseSha: true' \
   'loadedRulesAndConfigMustShareBaseRef: true' \
   'mismatch: reject' \
@@ -26,29 +32,34 @@ for needle in \
   'mode: PREPARATION_ONLY' \
   'authority: LOCAL_UNATTESTED' \
   'scmWriteback: forbidden' \
-  'gateReplacement: forbidden'; do
+  'gateReplacement: forbidden' \
+  'gateMutation: forbidden'; do
   rg -F -q -- "$needle" "$CONTRACT"
 done
 
 cat > "$OUT_DIR/valid-binding.json" <<'JSON'
 {
   "schemaVersion": "review-base-rules-config-v1",
-  "repositoryDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
   "baseRef": "refs/heads/main",
   "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "bindingDigest": "sha256:eae7cb809e3515cd8994e873bf0ac31f6263a10eb65e47521cf4aef162fb5176",
+  "bindingDigest": "sha256:c605689cb8009470ee29281d71c01ae7c60512c976a83bcb1ad469feed28a8db",
   "loaded": {
     "rules": {
+      "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "loadedFromBaseRef": "refs/heads/main",
-      "loadedFromBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "loadedBaseRef": "refs/heads/main",
+      "loadedBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "digestInput": "raw-file-bytes"
     },
     "config": {
+      "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "loadedFromBaseRef": "refs/heads/main",
-      "loadedFromBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "loadedBaseRef": "refs/heads/main",
+      "loadedBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "digestInput": "canonical-json-bytes"
     }
   },
   "authority": "LOCAL_UNATTESTED",
@@ -62,111 +73,173 @@ import json
 import re
 import sys
 
-payload = json.load(open(sys.argv[1], encoding="utf-8"))
-assert payload["schemaVersion"] == "review-base-rules-config-v1"
-assert re.fullmatch(r"refs/(heads|tags|remotes)/[^\s]+", payload["baseRef"])
-assert re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", payload["baseSha"])
-for key in ("repositoryDigest", "rulesDigest", "configDigest", "bindingDigest"):
-    assert re.fullmatch(r"sha256:[0-9a-f]{64}", payload[key]), key
-loaded = payload["loaded"]
-rules = loaded["rules"]
-config = loaded["config"]
-assert rules["rulesDigest"] == payload["rulesDigest"]
-assert config["configDigest"] == payload["configDigest"]
-assert rules["loadedFromBaseRef"] == config["loadedFromBaseRef"] == payload["baseRef"]
-assert rules["loadedFromBaseSha"] == config["loadedFromBaseSha"] == payload["baseSha"]
-identity = {key: payload[key] for key in ("baseRef", "baseSha", "rulesDigest", "configDigest")}
-canonical = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
-expected_binding = "sha256:" + hashlib.sha256(canonical).hexdigest()
-assert payload["bindingDigest"] == expected_binding
-assert payload["authority"] == "LOCAL_UNATTESTED"
-assert payload["mode"] == "PREPARATION_ONLY"
-# The preparation projection is digest-only and must never carry source bytes.
-def assert_no_source_content(value):
-    if isinstance(value, dict):
-        assert "sourceContent" not in value
-        for child in value.values():
-            assert_no_source_content(child)
-    elif isinstance(value, list):
-        for child in value:
-            assert_no_source_content(child)
 
-assert_no_source_content(payload)
+def validate_binding(payload):
+    assert payload["schemaVersion"] == "review-base-rules-config-v1"
+    assert re.fullmatch(r"refs/(heads|tags|remotes)/[^\s]+", payload["baseRef"])
+    assert re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", payload["baseSha"])
+    for key in ("repositoryDigest", "rulesDigest", "configDigest", "bindingDigest"):
+        assert re.fullmatch(r"sha256:[0-9a-f]{64}", payload[key]), key
+    loaded = payload["loaded"]
+    rules = loaded["rules"]
+    config = loaded["config"]
+    assert rules["repositoryDigest"] == config["repositoryDigest"] == payload["repositoryDigest"]
+    assert rules["rulesDigest"] == payload["rulesDigest"]
+    assert config["configDigest"] == payload["configDigest"]
+    assert rules["loadedBaseRef"] == config["loadedBaseRef"] == payload["baseRef"]
+    assert rules["loadedBaseSha"] == config["loadedBaseSha"] == payload["baseSha"]
+    assert rules["digestInput"] == "raw-file-bytes"
+    assert config["digestInput"] == "canonical-json-bytes"
+    identity = {key: payload[key] for key in (
+        "repositoryDigest", "baseRef", "baseSha", "rulesDigest", "configDigest"
+    )}
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    expected_binding = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    assert payload["bindingDigest"] == expected_binding
+    assert payload["authority"] == "LOCAL_UNATTESTED"
+    assert payload["mode"] == "PREPARATION_ONLY"
+
+    # The preparation projection is digest-only and must never carry source bytes.
+    def assert_no_source_content(value):
+        if isinstance(value, dict):
+            assert "sourceContent" not in value
+            for child in value.values():
+                assert_no_source_content(child)
+        elif isinstance(value, list):
+            for child in value:
+                assert_no_source_content(child)
+
+    assert_no_source_content(payload)
+
+
+valid = json.load(open(sys.argv[1], encoding="utf-8"))
+validate_binding(valid)
+
+# A single inconsistent identity/digest must be rejected even when every other
+# field is unchanged. This guards against validators that only compare the two
+# loaded projections with one another and forget the top-level binding.
+from copy import deepcopy
+
+def expect_reject(label, mutate):
+    candidate = deepcopy(valid)
+    mutate(candidate)
+    try:
+        validate_binding(candidate)
+    except (AssertionError, KeyError):
+        print(f"inconsistent-{label}=REJECT")
+    else:
+        raise AssertionError(f"inconsistent {label} was accepted")
+
+expect_reject("repositoryDigest", lambda value: value["loaded"]["rules"].__setitem__("repositoryDigest", "sha256:" + "e" * 64))
+expect_reject("loadedBaseRef", lambda value: value["loaded"]["config"].__setitem__("loadedBaseRef", "refs/heads/release"))
+expect_reject("rulesDigest", lambda value: value["loaded"]["rules"].__setitem__("rulesDigest", "sha256:" + "f" * 64))
+expect_reject("configDigest", lambda value: value["loaded"]["config"].__setitem__("configDigest", "sha256:" + "9" * 64))
+expect_reject("rulesDigestInput", lambda value: value["loaded"]["rules"].__setitem__("digestInput", "canonical-json-bytes"))
 PY
 
 cat > "$OUT_DIR/stale-binding.json" <<'JSON'
 {
   "captured": {
+    "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     "baseRef": "refs/heads/main",
     "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   },
   "current": {
+    "repositoryDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
     "baseRef": "refs/heads/release",
-    "baseSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "rulesDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "configDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+    "baseSha": "ffffffffffffffffffffffffffffffffffffffff",
+    "rulesDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "configDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
   }
 }
 JSON
-set +e
 python3 - "$OUT_DIR/stale-binding.json" <<'PY'
 import json
 import sys
+
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
-fields = ("baseRef", "baseSha", "rulesDigest", "configDigest")
-assert payload["captured"] != payload["current"]
-changed = [field for field in fields if payload["captured"][field] != payload["current"][field]]
-assert changed == list(fields), changed
+fields = ("repositoryDigest", "baseRef", "baseSha", "rulesDigest", "configDigest")
+captured = payload["captured"]
+current = payload["current"]
+
+def stale_rejected(candidate, observed):
+    # This is the contract's fail-closed stale predicate: no changed identity or
+    # input digest may be reused for an in-flight review.
+    return any(candidate[field] != observed[field] for field in fields)
+
+assert not stale_rejected(captured, captured), "unchanged binding must remain usable"
+assert stale_rejected(captured, current), "changed binding must be rejected as stale"
 for field in fields:
-    candidate = dict(payload["captured"])
-    candidate[field] = payload["current"][field]
-    assert candidate != payload["captured"], field
+    one_field_change = dict(captured)
+    one_field_change[field] = current[field]
+    assert stale_rejected(captured, one_field_change), field
     print(f"stale-{field}=REJECT")
 PY
-stale_rc=$?
-set -e
-[ "$stale_rc" -eq 0 ]
 
 cat > "$OUT_DIR/inconsistent-binding.json" <<'JSON'
 {
+  "schemaVersion": "review-base-rules-config-v1",
+  "repositoryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
   "baseRef": "refs/heads/main",
   "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "rulesDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "configDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "bindingDigest": "sha256:c605689cb8009470ee29281d71c01ae7c60512c976a83bcb1ad469feed28a8db",
   "loaded": {
-    "rules": {"rulesDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "loadedFromBaseRef": "refs/heads/main", "loadedFromBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-    "config": {"configDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "loadedFromBaseRef": "refs/heads/release", "loadedFromBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
-  }
+    "rules": {
+      "repositoryDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "rulesDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "loadedBaseRef": "refs/heads/main",
+      "loadedBaseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "digestInput": "raw-file-bytes"
+    },
+    "config": {
+      "repositoryDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "configDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "loadedBaseRef": "refs/heads/release",
+      "loadedBaseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "digestInput": "raw-file-bytes"
+    }
+  },
+  "authority": "LOCAL_UNATTESTED",
+  "mode": "PREPARATION_ONLY"
 }
 JSON
-set +e
 python3 - "$OUT_DIR/inconsistent-binding.json" <<'PY'
 import json
 import sys
+
+# Reuse the same validation rules as the positive fixture without importing a
+# generated file. Every identity/digest mismatch must fail closed.
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
-invalid_rules = payload["rulesDigest"] != payload["loaded"]["rules"]["rulesDigest"]
-invalid_config_digest = payload["configDigest"] != payload["loaded"]["config"]["configDigest"]
-invalid_config_base = payload["baseSha"] != payload["loaded"]["config"]["loadedFromBaseSha"]
-invalid_config_ref = payload["baseRef"] != payload["loaded"]["config"]["loadedFromBaseRef"]
-assert invalid_rules, "rules digest mismatch should be rejected"
-assert invalid_config_digest, "config digest mismatch should be rejected"
-assert not invalid_config_base, "fixture should keep config at the same base"
-assert invalid_config_ref, "config base ref mismatch should be rejected"
-print("rules-digest-mismatch=REJECT")
+loaded = payload["loaded"]
+violations = {
+    "rules-repositoryDigest": loaded["rules"]["repositoryDigest"] != payload["repositoryDigest"],
+    "config-repositoryDigest": loaded["config"]["repositoryDigest"] != payload["repositoryDigest"],
+    "rulesDigest": loaded["rules"]["rulesDigest"] != payload["rulesDigest"],
+    "configDigest": loaded["config"]["configDigest"] != payload["configDigest"],
+    "config-loadedBaseRef": loaded["config"]["loadedBaseRef"] != payload["baseRef"],
+    "config-loadedBaseSha": loaded["config"]["loadedBaseSha"] != payload["baseSha"],
+    "config-digestInput": loaded["config"]["digestInput"] != "canonical-json-bytes",
+}
+assert all(violations.values()), violations
+for name in violations:
+    print(f"inconsistent-{name}=REJECT")
 PY
-inconsistent_rc=$?
-set -e
-[ "$inconsistent_rc" -eq 0 ]
 
 cat > "$OUT_DIR/review-rules-config-binding.md" <<'EOF2'
 # Review Base Rules and Config Binding Evidence
 
-- Rules and project config are loaded only from the immutable `baseRef`/`baseSha`.
-- `rulesDigest` and `configDigest` must match the bytes loaded at that base revision;
-  one binding digest covers the base identity and both input digests.
-- A changed base revision or digest mismatch is rejected as stale/inconsistent.
+- Rules are hashed from exact raw file bytes at the immutable `baseRef`/`baseSha`;
+  newline or formatting normalization is forbidden.
+- Project config is parsed from that base revision, then hashed as UTF-8 canonical
+  JSON bytes with sorted keys and no whitespace; YAML source bytes are not hashed.
+- `repositoryDigest`, `loadedBaseRef`, `loadedBaseSha`, and each input digest must
+  agree across the top-level binding and both loaded projections.
+- Any changed repository/base identity or input digest is rejected as stale, and
+  inconsistent loaded metadata is rejected before a review result is usable.
 - The projection carries no source content and cannot write back to SCM, replace a Gate,
   mutate a Gate, or promote a release.
 - Boundary remains PREPARATION_ONLY / LOCAL_UNATTESTED.
