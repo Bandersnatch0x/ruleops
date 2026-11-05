@@ -129,8 +129,8 @@ assert job["independentRescore"] is True
 assert job["draftDigest"].startswith("sha256:")
 assert job["baselineScoreDigest"].startswith("sha256:")
 assert job["metadataDigest"].startswith("sha256:")
-assert job["resultDigest"].startswith("sha256:")
-assert job["scoreDigest"] != job["baselineScoreDigest"]
+assert job["result"]["resultDigest"].startswith("sha256:")
+assert job["result"]["scoreDigest"] != job["baselineScoreDigest"]
 assert payload["authority"] == "LOCAL_UNATTESTED"
 assert payload["mode"] == "PREPARATION_ONLY"
 # Source payloads are never part of a provider-neutral draft or rescore metadata.
