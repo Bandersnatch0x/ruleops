@@ -13,6 +13,7 @@ for needle in \
   'supportedProviders: [github, gitlab]' \
   'draftOnly: true' \
   'sourceContent: forbidden' \
+  'rawPrompts: forbidden' \
   'schemaVersion: review-rescore-job-v1' \
   'independentRescore: true' \
   'metadataOnly: true' \
@@ -35,6 +36,12 @@ cat > "$OUT_DIR/provider-drafts.json" <<'JSON'
       "provider": "github",
       "repositoryDigest": "sha256:repo-github",
       "changeRequestId": "42",
+      "changeRequest": {
+        "providerNeutralKind": "change-request",
+        "number": 42,
+        "titleDigest": "sha256:title-github",
+        "bodyDigest": "sha256:body-github"
+      },
       "changeRequestKind": "change-request",
       "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "headSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -54,6 +61,12 @@ cat > "$OUT_DIR/provider-drafts.json" <<'JSON'
       "provider": "gitlab",
       "repositoryDigest": "sha256:repo-gitlab",
       "changeRequestId": "7",
+      "changeRequest": {
+        "providerNeutralKind": "change-request",
+        "number": 7,
+        "titleDigest": "sha256:title-gitlab",
+        "bodyDigest": "sha256:body-gitlab"
+      },
       "changeRequestKind": "change-request",
       "baseSha": "cccccccccccccccccccccccccccccccccccccccc",
       "headSha": "dddddddddddddddddddddddddddddddddddddddd",
@@ -74,8 +87,10 @@ cat > "$OUT_DIR/provider-drafts.json" <<'JSON'
     },
     "requestedAt": "2026-11-05T15:00:00Z",
     "status": "SUCCEEDED",
-    "resultDigest": "sha256:rescore-result",
-    "scoreDigest": "sha256:score-rescored",
+    "result": {
+      "resultDigest": "sha256:rescore-result",
+      "scoreDigest": "sha256:score-rescored"
+    },
     "metadataDigest": "sha256:rescore-metadata"
   },
   "authority": "LOCAL_UNATTESTED",
@@ -97,6 +112,10 @@ for draft in payload["drafts"]:
     for key in ("draftId", "repositoryDigest", "changeRequestId", "projectionDigest"):
         assert draft[key]
     assert draft["changeRequestKind"] == "change-request"
+    assert draft["changeRequest"]["providerNeutralKind"] == "change-request"
+    assert draft["changeRequest"]["number"] == int(draft["changeRequestId"])
+    assert draft["changeRequest"]["titleDigest"].startswith("sha256:")
+    assert draft["changeRequest"]["bodyDigest"].startswith("sha256:")
     assert sha.fullmatch(draft["baseSha"]) and sha.fullmatch(draft["headSha"])
     assert draft["repositoryDigest"].startswith("sha256:")
     assert draft["projectionDigest"].startswith("sha256:")
