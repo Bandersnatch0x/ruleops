@@ -1,0 +1,72 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewRulesConfigBindingContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Load repository rules and project configuration from one immutable base
+  revision and bind the review inputs to that revision and their independent
+  content digests. A review result is stale when the base identity or either
+  input digest changes while the review is in progress.
+
+baseRevision:
+  schemaVersion: review-base-rules-config-v1
+  required: [baseRef, baseSha, rulesDigest, configDigest, bindingDigest]
+  baseRef: immutable-git-reference
+  baseSha: lowercase-hex-40-or-64
+  rulesDigest: sha256-prefixed
+  configDigest: sha256-prefixed
+  bindingDigest: sha256-prefixed
+  digestBinding:
+    bindingDigestBinds: [baseRef, baseSha, rulesDigest, configDigest]
+    canonicalization: deterministic-field-order
+    canonicalEncoding: canonical-json-sorted-keys-without-whitespace
+  stalePolicy:
+    rejectWhenAnyChanges: [baseRef, baseSha, rulesDigest, configDigest]
+    staleResult: reject
+  sourceContent: forbidden
+
+loadFromBase:
+  schemaVersion: base-revision-input-load-v1
+  revision: base
+  exactBaseRequired: true
+  baseRefMustResolveToBaseSha: true
+  workingTreeFallback: forbidden
+  currentHeadFallback: forbidden
+  rules:
+    required: [rulesDigest, loadedFromBaseRef, loadedFromBaseSha]
+    digestField: rulesDigest
+    loadedFrom: base-revision
+    loadedFromBaseRef: baseRef
+    loadedFromBaseSha: baseSha
+    digestMustMatchBytesAtBase: true
+    sourceContent: forbidden
+  config:
+    required: [configDigest, loadedFromBaseRef, loadedFromBaseSha]
+    digestField: configDigest
+    loadedFrom: base-revision
+    loadedFromBaseRef: baseRef
+    loadedFromBaseSha: baseSha
+    digestMustMatchBytesAtBase: true
+    sourceContent: forbidden
+
+consistency:
+  required: [baseRef, baseSha, rulesDigest, configDigest, bindingDigest]
+  rulesDigestMustEqualLoadedRules: true
+  configDigestMustEqualLoadedConfig: true
+  loadedRulesAndConfigMustShareBaseSha: true
+  loadedRulesAndConfigMustShareBaseRef: true
+  bindingDigestMustCoverAllRequiredFields: true
+  bindingDigestMustMatchCanonicalIdentity: true
+  mismatch: reject
+  stale: reject
+  sourceContent: forbidden
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  sourceContent: forbidden
+  scmWriteback: forbidden
+  gateReplacement: forbidden
+  gateMutation: forbidden
+  releasePromotion: forbidden
