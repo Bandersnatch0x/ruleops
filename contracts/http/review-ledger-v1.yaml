@@ -1,0 +1,42 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewLedgerContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Persist digest-only review runs and append-only events so interrupted review
+  preparation can be resumed and audited without source upload or SCM writeback.
+
+evidenceBundle:
+  schemaVersion: evidence-bundle-v1
+  required: [bundleDigest, reviewRunDigest, revisionBindingDigest, planDigest, artifacts]
+  artifacts:
+    required: [artifactId, kind, digest, mediaType]
+    sourceContent: forbidden
+
+reviewRun:
+  schemaVersion: review-run-ledger-v1
+  required: [reviewRunId, revisionBindingDigest, planDigest, state, headDigest, eventHeadDigest]
+  states: [PLANNED, RUNNING, SUCCEEDED, INCONCLUSIVE, REJECTED]
+  resumability: digest-bound
+  staleRevision: reject
+
+eventLedger:
+  schemaVersion: review-event-ledger-v1
+  appendOnly: true
+  required: [sequence, eventId, reviewRunId, eventType, payloadDigest, previousEventDigest, eventDigest]
+  eventTypes: [RUN_CREATED, SCOPE_STARTED, SCOPE_COMPLETED, FINDING_UPDATED, VERIFIER_DISCARDED, RUN_COMPLETED, RUN_REJECTED]
+  chainRule: eventDigest binds previousEventDigest and payloadDigest
+  sourceContent: forbidden
+
+reviewTrace:
+  schemaVersion: review-trace-v1
+  required: [scopeId, modelTurns, toolCalls, deniedToolCalls, durationMs, verifierDiscarded]
+  values: metadata-only
+  sourceContent: forbidden
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  scmWriteback: forbidden
+  releasePromotion: forbidden
