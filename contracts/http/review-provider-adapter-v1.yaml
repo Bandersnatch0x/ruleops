@@ -1,0 +1,107 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewProviderAdapterContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Define the smallest provider adapter seam for preparing review drafts and
+  independent rescoring metadata. GitHub and GitLab objects are projected into
+  one digest-only, provider-neutral shape; no provider API is called and no
+  draft is published from this contract.
+
+draftProjection:
+  schemaVersion: review-provider-draft-v1
+  required:
+    - schemaVersion
+    - draftId
+    - provider
+    - repositoryDigest
+    - changeRequestId
+    - baseSha
+    - headSha
+    - findings
+    - projectionDigest
+  providerNeutral: true
+  supportedProviders: [github, gitlab]
+  draftOnly: true
+  sourceContent: forbidden
+  rawTitle: forbidden
+  rawBody: forbidden
+  diff: forbidden
+  comments: forbidden
+  identity:
+    digestOnly: true
+    repositoryDigest: sha256-prefixed
+    projectionDigest: sha256-prefixed
+    revision:
+      baseSha: lowercase-hex-40-or-64
+      headSha: lowercase-hex-40-or-64
+      staleHead: reject
+  changeRequest:
+    providerNeutralKind: change-request
+    providerSpecificKindMapping:
+      github: pull-request
+      gitlab: merge-request
+    number: nonNegativeInteger
+    titleDigest: sha256-prefixed
+    bodyDigest: sha256-prefixed
+  findings:
+    required: [findingId, ruleDigest, locationDigest, severity, disposition]
+    location: digest-only
+    severity: [INFO, LOW, MEDIUM, HIGH, CRITICAL]
+    disposition: [OPEN, KEPT, RESOLVED, DISMISSED]
+    sourceContent: forbidden
+  providerMapping:
+    github:
+      inputObject: pull_request
+      outputShape: provider-neutral-draft
+      writeApi: forbidden
+    gitlab:
+      inputObject: merge_request
+      outputShape: provider-neutral-draft
+      writeApi: forbidden
+
+rescoreJob:
+  schemaVersion: review-rescore-job-v1
+  required:
+    - rescoreJobId
+    - draftDigest
+    - baselineScoreDigest
+    - independentRescore
+    - scorer
+    - requestedAt
+    - status
+    - metadataDigest
+  independent: true
+  independentRescore: true
+  metadataOnly: true
+  sourceContent: forbidden
+  input:
+    draftDigest: sha256-prefixed
+    baselineScoreDigest: sha256-prefixed
+    baselineMustBeDigestBound: true
+  scorer:
+    required: [provider, model, modelVersion, policyDigest]
+    providerIdentity: digest-or-opaque-identifier
+    modelIdentity: metadata-only
+  statusValues: [QUEUED, RUNNING, SUCCEEDED, INCONCLUSIVE, REJECTED]
+  result:
+    resultDigest: sha256-prefixed
+    scoreDigest: sha256-prefixed
+    resultRequiredOn: [SUCCEEDED, INCONCLUSIVE]
+  retry:
+    sameJobId: idempotent
+    changedDraftDigest: new-job-required
+  mutation:
+    updatesOriginalDraft: forbidden
+    replacesBaseline: forbidden
+    changesGate: forbidden
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  readOnly: true
+  scmWriteback: forbidden
+  gateReplacement: forbidden
+  releasePromotion: forbidden
+  providerNetworkCall: forbidden
