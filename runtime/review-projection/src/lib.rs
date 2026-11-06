@@ -706,6 +706,72 @@ impl DashboardTransport {
     }
 }
 
+/// Small runtime facade that keeps the ledger and read-only dashboard stream
+/// on one local boundary.  It is deliberately not a server: callers choose
+/// how (or whether) to persist the JSON values and expose GET/SSE routes.
+#[derive(Debug, Clone, Default)]
+pub struct ReviewProjectionAdapter {
+    ledger: ReviewLedger,
+    dashboard: DashboardTransport,
+}
+
+impl ReviewProjectionAdapter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn ledger(&self) -> &ReviewLedger {
+        &self.ledger
+    }
+
+    pub fn ledger_mut(&mut self) -> &mut ReviewLedger {
+        &mut self.ledger
+    }
+
+    pub fn dashboard(&self) -> &DashboardTransport {
+        &self.dashboard
+    }
+
+    pub fn create_run(&mut self, input: ReviewRunInput) -> Result<ReviewRunRecord, ReviewProjectionError> {
+        self.ledger.create_run(input)
+    }
+
+    pub fn append_event(
+        &mut self,
+        event_id: impl Into<String>,
+        review_run_id: impl Into<String>,
+        event_type: ReviewEventType,
+        payload: &Value,
+    ) -> Result<ReviewEvent, ReviewProjectionError> {
+        self.ledger.append_event(event_id, review_run_id, event_type, payload)
+    }
+
+    pub fn snapshot(&self, telemetry: &TelemetryProjection, sequence: u64) -> Result<DashboardSnapshot, ReviewProjectionError> {
+        DashboardSnapshot::from_telemetry(telemetry, sequence)
+    }
+
+    pub fn publish(
+        &mut self,
+        snapshot: &DashboardSnapshot,
+        event_type: DashboardEventType,
+        payload: &Value,
+    ) -> Result<DashboardEvent, ReviewProjectionError> {
+        self.dashboard.publish(snapshot, event_type, payload)
+    }
+
+    pub fn telemetry(
+        &self,
+        review_run_id: &str,
+        stale: bool,
+        queue: QueueCounts,
+        finding_summary: FindingSummary,
+        coverage: CoverageSummary,
+        usage: UsageSummary,
+    ) -> Result<TelemetryProjection, ReviewProjectionError> {
+        TelemetryProjection::from_ledger(&self.ledger, review_run_id, stale, queue, finding_summary, coverage, usage)
+    }
+}
+
 fn dashboard_event_digest(
     event_id: &str,
     event_type: DashboardEventType,
@@ -820,5 +886,22 @@ mod tests {
         let first = transport.publish(&snapshot, DashboardEventType::Snapshot, &serde_json::json!({"section": "snapshot"})).unwrap();
         assert_eq!(first.event_digest, dashboard_event_digest(&first.event_id, first.event_type, &first.cursor, first.sequence, &first.snapshot_digest, &first.payload_digest, GENESIS_EVENT_DIGEST));
         assert_eq!(first.event_id, domain_digest("review-dashboard-event-id/v1", &[&first.cursor, first.event_type.as_str(), &first.payload_digest]));
+    }
+
+    #[test]
+    fn facade_keeps_ledger_and_dashboard_on_the_same_local_boundary() {
+        let mut adapter = ReviewProjectionAdapter::new();
+        adapter.create_run(ReviewRunInput {
+            review_run_id: "run-1".into(),
+            revision_binding_digest: digest('a'),
+            plan_digest: digest('b'),
+            head_digest: digest('c'),
+        }).unwrap();
+        adapter.append_event("e-1", "run-1", ReviewEventType::RunCreated, &serde_json::json!({"scopeDigest": digest('d')})).unwrap();
+        let telemetry = adapter.telemetry("run-1", false, QueueCounts::default(), FindingSummary::default(), CoverageSummary::default(), usage()).unwrap();
+        let snapshot = adapter.snapshot(&telemetry, 1).unwrap();
+        let event = adapter.publish(&snapshot, DashboardEventType::Snapshot, &serde_json::json!({"projectionDigest": digest('e')})).unwrap();
+        assert_eq!(adapter.ledger().event_count(), 1);
+        assert_eq!(adapter.dashboard().events()[0].event_digest, event.event_digest);
     }
 }
