@@ -186,6 +186,38 @@ pub struct ChangedSet {
 }
 
 impl ChangedSet {
+    /// Build a ChangedSet from an already-bound, digest-only review input.
+    ///
+    /// This constructor intentionally does not inspect Git. A review
+    /// RevisionBinding has already established the base/head identities and a
+    /// ScopePlan only carries repository-relative paths, so the merge-base
+    /// field is conservatively pinned to `base_commit` as a projection
+    /// marker. Consumers must not treat this value as a Git merge-base proof;
+    /// callers that need SCM facts must use [`GitChangeResolver::resolve`].
+    ///
+    /// Every path is represented as a modified path because the review
+    /// contract does not expose SCM status or source content. The resulting
+    /// value remains deterministic, sortable and safe for `AffectedScope` and
+    /// `ScanPlan` preparation.
+    pub fn from_digest_only_paths<I, S>(
+        base_commit: impl Into<String>,
+        head_commit: impl Into<String>,
+        paths: I,
+    ) -> Result<Self, GitChangeScopeError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let base_commit = base_commit.into();
+        let head_commit = head_commit.into();
+        let range = CommitRange::new(base_commit.clone(), head_commit, base_commit)?;
+        let entries = paths
+            .into_iter()
+            .map(|path| ChangedPath::new(ChangeKind::Modified, path.as_ref().as_bytes(), None, None))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self::new(range, entries))
+    }
+
     fn new(range: CommitRange, mut entries: Vec<ChangedPath>) -> Self {
         entries.sort_by(changed_path_order);
         Self { range, entries }
@@ -581,6 +613,21 @@ mod tests {
         assert_eq!(left_set.entries().len(), 5);
         assert_eq!(left_set.entries()[0].path(), "a.java");
         assert_eq!(left_set.entries()[1].old_path(), Some("source.java"));
+    }
+
+    #[test]
+    fn digest_only_projection_is_sorted_and_does_not_claim_a_git_merge_base() {
+        let projected = ChangedSet::from_digest_only_paths(
+            "a".repeat(40),
+            "b".repeat(40),
+            ["src/z.java", "src/a.java"],
+        )
+        .unwrap();
+        assert_eq!(projected.range().base_commit(), "a".repeat(40));
+        assert_eq!(projected.range().head_commit(), "b".repeat(40));
+        assert_eq!(projected.range().merge_base(), "a".repeat(40));
+        assert_eq!(projected.entries().iter().map(ChangedPath::path).collect::<Vec<_>>(), vec!["src/a.java", "src/z.java"]);
+        assert_eq!(projected.entries().iter().map(ChangedPath::kind).collect::<Vec<_>>(), vec![ChangeKind::Modified, ChangeKind::Modified]);
     }
 
     #[test]
