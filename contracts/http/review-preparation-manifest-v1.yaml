@@ -9,9 +9,13 @@ purpose: >-
 
 manifest:
   schemaVersion: review-preparation-manifest-v1
-  required: [manifestId, revisionBindingDigest, scopePlanDigest, reviewRunDigest, ledgerHeadDigest, telemetrySnapshotDigest, dashboardSnapshotDigest, providerDraftDigest, impactScoreDigest, rulesConfigBindingDigest, manifestDigest]
+  required: [manifestId, revisionBindingDigest, scopePlanDigest, reviewRunDigest, ledgerHeadDigest, telemetrySnapshotDigest, dashboardSnapshotDigest, rulesConfigBindingDigest, manifestDigest]
+  optional: [providerDraftDigest, impactScoreDigest]
   artifactDigests: sha256-prefixed
+  optionalArtifactRule: providerDraftDigest and impactScoreDigest may be omitted; when present they must be sha256-prefixed and resolve to the matching artifact
   consistency: all referenced digests must resolve to the same base/head revision binding
+  artifactRevisionBinding: every present artifact must match revision.baseSha and revision.headSha
+  revisionMismatch: reject
   staleManifest: reject
   sourceContent: forbidden
 
