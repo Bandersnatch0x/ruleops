@@ -50,19 +50,34 @@ cat > "$OUT_DIR/event.json" <<'JSON'
   "sequence": 7,
   "snapshotDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "payloadDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-  "previousEventDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+  "previousEventDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "eventDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
   "payload": {"section": "snapshot", "projectionDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"}
 }
 JSON
 
-python3 - "$OUT_DIR/snapshot.json" "$OUT_DIR/event.json" <<'PY'
+cat > "$OUT_DIR/event-2.json" <<'JSON'
+{
+  "eventId": "evt-0008",
+  "eventType": "heartbeat",
+  "cursor": "cursor-0008",
+  "sequence": 8,
+  "snapshotDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "payloadDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+  "previousEventDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "eventDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "payload": {"section": "heartbeat", "projectionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+}
+JSON
+
+python3 - "$OUT_DIR/snapshot.json" "$OUT_DIR/event.json" "$OUT_DIR/event-2.json" <<'PY'
 import json
 import re
 import sys
 
 snapshot = json.load(open(sys.argv[1], encoding="utf-8"))
 event = json.load(open(sys.argv[2], encoding="utf-8"))
+event_2 = json.load(open(sys.argv[3], encoding="utf-8"))
 digest = re.compile(r"^sha256:[0-9a-f]{64}$")
 assert snapshot["cursor"]["sequence"] == snapshot["sequence"]
 assert digest.fullmatch(snapshot["snapshotDigest"])
@@ -87,13 +102,35 @@ assert snapshot["mode"] == "PREPARATION_ONLY"
 assert event["sequence"] == snapshot["sequence"]
 assert event["cursor"] == snapshot["cursor"]["value"]
 assert event["snapshotDigest"] == snapshot["snapshotDigest"]
+assert event["previousEventDigest"] == "sha256:" + "0" * 64
 for field in ("snapshotDigest", "payloadDigest", "previousEventDigest", "eventDigest"):
     assert digest.fullmatch(event[field])
 assert event["eventType"] in {"snapshot", "queue", "version", "finding", "coverage", "audit", "heartbeat", "reset"}
 assert "sourceContent" not in event["payload"]
 assert "fullFinding" not in event["payload"]
 assert "rawPrompts" not in event["payload"]
-print("snapshot=PASS event-envelope=PASS")
+
+assert event_2["sequence"] == event["sequence"] + 1
+assert event_2["previousEventDigest"] == event["eventDigest"]
+assert event_2["snapshotDigest"] == event["snapshotDigest"]
+for field in ("snapshotDigest", "payloadDigest", "previousEventDigest", "eventDigest"):
+    assert digest.fullmatch(event_2[field])
+assert event_2["eventType"] in {"snapshot", "queue", "version", "finding", "coverage", "audit", "heartbeat", "reset"}
+assert "sourceContent" not in event_2["payload"]
+assert "fullFinding" not in event_2["payload"]
+assert "rawPrompts" not in event_2["payload"]
+print("snapshot=PASS event-envelope=PASS genesis=PASS continuity=PASS")
+PY
+
+cat > "$OUT_DIR/rejected-chain.json" <<'JSON'
+{"firstEventDigest":"sha256:7777777777777777777777777777777777777777777777777777777777777777","secondPreviousEventDigest":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+JSON
+python3 - "$OUT_DIR/rejected-chain.json" <<'PY'
+import json
+import sys
+chain = json.load(open(sys.argv[1], encoding="utf-8"))
+assert chain["secondPreviousEventDigest"] != chain["firstEventDigest"]
+print("tampered-chain=REJECT")
 PY
 
 cat > "$OUT_DIR/rejected-write.json" <<'JSON'
@@ -112,7 +149,8 @@ cat > "$OUT_DIR/review-dashboard.md" <<'EOF2'
 # Review Dashboard / SSE Evidence
 
 - Telemetry snapshot is deterministic, cursor/sequence aligned and digest-only.
-- SSE event envelope carries cursor, sequence, snapshotDigest and eventDigest for resumable consumers.
+- SSE event envelope carries cursor, sequence, snapshotDigest and eventDigest for resumable consumers;
+  the first event uses the declared zero genesis digest and subsequent events preserve continuity.
 - Queue, version, finding, coverage and audit projections expose counts/identities only; source content,
   raw prompts and full findings are forbidden.
 - Only GET dashboard and SSE endpoints are defined; writes are rejected.
