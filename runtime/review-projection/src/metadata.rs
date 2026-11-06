@@ -243,6 +243,7 @@ impl ProviderDraftMetadata {
         let mut value = serde_json::to_value(self).map_err(serialization_error)?;
         let object = value.as_object_mut().expect("provider draft is an object");
         object.remove("projectionDigest");
+        object.insert("providerNeutral".to_owned(), Value::Bool(true));
         object.insert(
             "changeRequest".to_owned(),
             serde_json::json!({
