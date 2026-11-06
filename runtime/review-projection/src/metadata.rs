@@ -241,15 +241,29 @@ impl ProviderDraftMetadata {
 
     fn projection_value_without_digest(&self) -> Result<Value, ReviewProjectionError> {
         let mut value = serde_json::to_value(self).map_err(serialization_error)?;
-        value
-            .as_object_mut()
-            .expect("provider draft is an object")
-            .remove("projectionDigest");
+        let object = value.as_object_mut().expect("provider draft is an object");
+        object.remove("projectionDigest");
+        object.insert(
+            "changeRequest".to_owned(),
+            serde_json::json!({
+                "providerNeutralKind": "change-request",
+                "number": self.change_request_number,
+                "titleDigest": self.title_digest.as_str(),
+                "bodyDigest": self.body_digest.as_str(),
+            }),
+        );
         Ok(value)
     }
 
     pub fn to_json(&self) -> Value {
-        serde_json::to_value(self).expect("provider draft metadata is serializable")
+        let mut value = self
+            .projection_value_without_digest()
+            .expect("provider draft metadata is serializable");
+        value.as_object_mut().expect("provider draft is an object").insert(
+            "projectionDigest".to_owned(),
+            Value::String(self.projection_digest.clone()),
+        );
+        value
     }
 }
 
@@ -995,6 +1009,8 @@ mod tests {
         assert_eq!(draft.schema_version, PROVIDER_DRAFT_VERSION);
         assert!(draft.validate().is_ok());
         assert_eq!(draft.to_json()["changeRequestId"], "42");
+        assert_eq!(draft.to_json()["changeRequest"]["providerNeutralKind"], "change-request");
+        assert_eq!(draft.to_json()["changeRequest"]["number"], 42);
 
         let scorer = ProviderScorerMetadata::new("local", "reviewer", "1", digest('f')).unwrap();
         let result = RescoreResult::new(digest('1'), digest('2')).unwrap();
