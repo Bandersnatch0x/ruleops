@@ -42,11 +42,11 @@ bash scripts/review-preparation-manifest-check.sh OUT/review-preparation-manifes
 bash scripts/review-capability-doc-check.sh OUT/review-capability-doc
 ```
 
-The preparation-manifest check is the cross-contract check: it verifies that the
-referenced digests and optional projections retain the shared revision and
-preparation-only boundary. The documentation check is intentionally small and
-read-only. It fails if this page, its contract links, or the explicit authority
-boundary drifts from the repository contracts.
+The preparation-manifest check validates the manifest contract markers and a
+digest-bound/stale fixture; the contract declares that all referenced digests
+must resolve to one base/head revision. The documentation check is intentionally
+small and read-only. It fails if this page, its contract links, or the explicit
+authority boundary drifts from the repository contracts.
 
 ## Full-check prerequisites
 
@@ -65,11 +65,13 @@ starts, the script requires:
   and `RUSTFLAGS` before the checks run.
 
 The full check runs both language test suites, reproducible-build checks, host
-and pilot acceptance scripts, and all contract checks. It writes evidence below
-`.scratch/gate/`. A missing tool or unsuitable JDK fails early with exit code 2;
-a blocked dependency/build phase is not evidence of a passing review contract.
-The review contracts themselves are local, digest-only checks and do not contact
-SCM providers or grant production authority.
+and pilot acceptance scripts, and every checker wired into the current
+`scripts/check.sh`; run the review commands above when a review-only check is
+needed. It writes evidence below `.scratch/gate/`. A missing tool or unsuitable
+JDK fails early with exit code 2; a blocked dependency/build phase is not
+evidence of a passing review contract. The review contracts themselves are
+local, digest-only checks and do not contact SCM providers or grant production
+authority.
 
 ## Roadmap boundary
 
