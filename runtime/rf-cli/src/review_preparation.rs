@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub const REVIEW_PREPARATION_VERSION: &str = "review-preparation/v1";
 pub const PREPARATION_MODE: &str = "PREPARATION_ONLY";
@@ -199,6 +199,12 @@ impl ReviewRun {
         let mut total_changed_lines = 0u64;
         for scope in &self.scope_plan.scopes {
             validate_text(&scope.scope_id, "scopePlan.scope.scopeId")?;
+            if scope.changed_lines == 0 {
+                return Err(ReviewPreparationError::InvalidInput(format!(
+                    "scope {} must report positive changedLines",
+                    scope.scope_id
+                )));
+            }
             if !scope_ids.insert(&scope.scope_id) {
                 return Err(ReviewPreparationError::InvalidInput(format!(
                     "scope {} is duplicated",
@@ -891,7 +897,7 @@ mod tests {
         })
     }
 
-    fn runtime(root: &Path) -> RuntimePlanIdentity {
+    fn runtime() -> RuntimePlanIdentity {
         RuntimePlanIdentity {
             repository: "example.invalid/ruleops".into(),
             rule_bundle_digest: digest(),
@@ -907,7 +913,7 @@ mod tests {
     #[test]
     fn normalizes_prefixed_runtime_digests_before_scan_plan_validation() {
         let root = std::env::temp_dir();
-        let input = runtime(&root);
+        let input = runtime();
         validate_runtime_identity(&input).unwrap();
         let raw = normalize_runtime_digest(&input.rule_bundle_digest, "rule_bundle_digest").unwrap();
         assert_eq!(raw, "0".repeat(64));
@@ -965,7 +971,7 @@ mod tests {
         let request = ReviewPreparationRequest {
             repository_root: root.clone(),
             review: ReviewRun::from_json(&review_json()).unwrap(),
-            runtime: runtime(&root),
+            runtime: runtime(),
         };
         let preparation = ReviewPreparationAdapter::prepare(request).unwrap();
         assert_eq!(preparation.mode(), PREPARATION_MODE);
