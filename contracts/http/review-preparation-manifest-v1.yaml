@@ -1,0 +1,42 @@
+apiVersion: rulefactory.io/v1
+kind: ReviewPreparationManifestContract
+version: 1.0.0
+status: preparation-only
+
+purpose: >-
+  Bind the review preparation artifacts into one digest-addressed manifest so
+  a run can be resumed and audited without granting Gate or SCM authority.
+
+manifest:
+  schemaVersion: review-preparation-manifest-v1
+  required: [manifestId, revisionBindingDigest, scopePlanDigest, reviewRunDigest, ledgerHeadDigest, telemetrySnapshotDigest, dashboardSnapshotDigest, providerDraftDigest, impactScoreDigest, rulesConfigBindingDigest, manifestDigest]
+  artifactDigests: sha256-prefixed
+  consistency: all referenced digests must resolve to the same base/head revision binding
+  staleManifest: reject
+  sourceContent: forbidden
+
+artifacts:
+  revisionBinding: required
+  scopePlan: required
+  reviewRun: required
+  reviewLedger: required
+  telemetrySnapshot: required
+  dashboardSnapshot: required
+  providerDraft: optional
+  impactScore: optional
+  rulesConfigBinding: required
+
+crossContract:
+  scoreIsProjectionOnly: true
+  codeGraphIsOptional: true
+  dashboardReadOnly: true
+  providerDraftOnly: true
+  ledgerAppendOnly: true
+  rulesLoadedFromBaseRevision: true
+
+authorityBoundary:
+  mode: PREPARATION_ONLY
+  authority: LOCAL_UNATTESTED
+  scmWriteback: forbidden
+  gateMutation: forbidden
+  releasePromotion: forbidden
