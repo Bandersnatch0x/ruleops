@@ -1,0 +1,15 @@
+[package]
+name = "erf-review-projection"
+version = "0.1.0"
+edition = "2021"
+description = "Digest-only ReviewLedger, telemetry and read-only dashboard/SSE projection"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[lib]
+name = "erf_review_projection"
+path = "src/lib.rs"
