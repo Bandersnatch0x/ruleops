@@ -1397,6 +1397,7 @@ dependencies = [
  "erf-trust",
  "rf-gate",
  "rf-runner",
+ "serde",
  "serde_json",
  "sha2",
 ]
