@@ -818,34 +818,49 @@ impl ReviewMetadataAdapter {
 
     pub fn set_provider_draft(&mut self, value: ProviderDraftMetadata) -> Result<(), ReviewProjectionError> {
         value.validate()?;
-        self.metadata.provider_draft = Some(value);
-        self.metadata.validate()
+        let mut candidate = self.metadata.clone();
+        candidate.provider_draft = Some(value);
+        candidate.validate()?;
+        self.metadata = candidate;
+        Ok(())
     }
 
     pub fn set_rescore_job(&mut self, value: ProviderRescoreMetadata) -> Result<(), ReviewProjectionError> {
         value.validate()?;
-        self.metadata.rescore_job = Some(value);
-        self.metadata.validate()
+        let mut candidate = self.metadata.clone();
+        candidate.rescore_job = Some(value);
+        candidate.validate()?;
+        self.metadata = candidate;
+        Ok(())
     }
 
     pub fn set_base_rules_binding(&mut self, value: BaseRulesConfigBinding) -> Result<(), ReviewProjectionError> {
         value.validate()?;
-        self.metadata.base_rules_binding = Some(value);
-        self.metadata.validate()
+        let mut candidate = self.metadata.clone();
+        candidate.base_rules_binding = Some(value);
+        candidate.validate()?;
+        self.metadata = candidate;
+        Ok(())
     }
 
     pub fn set_impact_context(&mut self, value: Option<ImpactContext>) -> Result<(), ReviewProjectionError> {
         if let Some(value) = &value {
             value.validate()?;
         }
-        self.metadata.impact_context = value;
-        self.metadata.validate()
+        let mut candidate = self.metadata.clone();
+        candidate.impact_context = value;
+        candidate.validate()?;
+        self.metadata = candidate;
+        Ok(())
     }
 
     pub fn set_score_projection(&mut self, value: ImpactScoreProjection) -> Result<(), ReviewProjectionError> {
         value.validate()?;
-        self.metadata.score_projection = Some(value);
-        self.metadata.validate()
+        let mut candidate = self.metadata.clone();
+        candidate.score_projection = Some(value);
+        candidate.validate()?;
+        self.metadata = candidate;
+        Ok(())
     }
 
     pub fn to_json(&self) -> Result<Value, ReviewProjectionError> {
