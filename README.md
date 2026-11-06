@@ -1,5 +1,7 @@
 # ruleops
 
+Review capability roadmap: `docs/review-capability-roadmap.md` (P0/P1/P2 preparation-only contracts, no SCM writeback or Gate mutation).
+
 Enterprise Rule Factory (ERF) — 面向平台工程与安全/合规工程团队的**可信规则执行层**：用冻结
 ScanPlan 的 Completeness、PASS/FAIL/INCONCLUSIVE 三态 Gate 与签名执行证明，取代「0 告警即通过」，
 把企业代码规范转化为可验证、可审计、可演进的机器检查资产。
