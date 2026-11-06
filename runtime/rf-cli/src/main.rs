@@ -1,5 +1,6 @@
 mod delivery;
 mod registry_sync;
+mod review_preparation;
 
 use delivery::load_delivery;
 use erf_incremental_baseline::{digest_summary, Stage, StageTimer};
