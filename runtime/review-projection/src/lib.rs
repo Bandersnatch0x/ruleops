@@ -13,6 +13,18 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+/// Optional P2 metadata projections.  The module is intentionally separate
+/// from the append-only ledger so callers can adopt the metadata seam without
+/// expanding ledger identity or authority.
+pub mod metadata;
+pub use metadata::{
+    BaseRulesConfigBinding, FindingDisposition, FindingSeverity, ImpactContext,
+    ImpactFinding, ImpactScoreProjection, Provider, ProviderDraftMetadata,
+    ProviderFindingMetadata, ProviderRescoreMetadata, ProviderScorerMetadata,
+    RescoreResult, RescoreStatus, ReviewMetadataAdapter, ReviewProjectionMetadata,
+    ReviewProjectionMetadataAdapter,
+};
+
 pub const REVIEW_LEDGER_VERSION: &str = "review-event-ledger-v1";
 pub const REVIEW_RUN_VERSION: &str = "review-run-ledger-v1";
 pub const REVIEW_TELEMETRY_VERSION: &str = "review-telemetry-v1";
