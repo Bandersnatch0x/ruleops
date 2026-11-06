@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "runtime/rf-runner",
+    "runtime/review-projection",
     "runtime/rf-cli",
     "runtime/trust",
     "runtime/sandbox",
